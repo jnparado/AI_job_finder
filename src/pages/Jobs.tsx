@@ -309,7 +309,7 @@ export function JobDetailsPage() {
               ? 'Preparing…'
               : m.job.employerId || m.job.source === 'atelier'
                 ? 'Apply to employer'
-                : 'Apply with AI'}
+                : `Prepare packet for ${sourceLabel(m.job.source)}`}
           </Button>
           {m.job.applicationUrl?.startsWith('http') ? (
             <Button variant="outline" asChild>

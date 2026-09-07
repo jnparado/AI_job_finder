@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Inbox, Plus } from 'lucide-react'
 import type { Currency, EmploymentType, Job } from '@shared/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import { prettyStatus } from '@/lib/utils'
+import { greeting, initials, moneyBand, prettyStatus } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, Badge, Textarea } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -85,54 +85,148 @@ export function EmployerDashboardPage() {
     queryKey: ['employer-inbox'],
     queryFn: () => api<InboxRow[]>('/api/employer/applications'),
   })
-  const open = inbox.data?.filter((a) => a.status !== 'rejected' && a.status !== 'offer') ?? []
+  const list = inbox.data ?? []
+  const roles = jobs.data ?? []
+  const review = list.filter((a) => a.status === 'submitted' || a.status === 'under_review').length
+  const interview = list.filter((a) => a.status.includes('interview')).length
+  const offers = list.filter((a) => a.status === 'offer').length
+  const company = profile.companyName || 'Your company'
+  const latest = list[0]
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        kicker="Employer"
-        title={profile.companyName || 'Hiring dashboard'}
-        description="Post roles on Atelier. When a candidate approves their packet, it lands in your inbox."
-        actions={
+    <div className="space-y-8">
+      <section className="overflow-hidden rounded-3xl border border-border bg-[var(--forest)] text-[var(--paper)]">
+        <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-[#1f3d32] font-serif text-2xl">
+              {initials(company)}
+            </span>
+            <div>
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">
+                Employer home
+              </p>
+              <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">
+                {greeting()}, {company}
+              </h1>
+              <p className="mt-2 max-w-xl text-sm text-[#d8d0c0]">
+                Post roles on Atelier. When a candidate approves a packet, it lands in your inbox.
+              </p>
+            </div>
+          </div>
           <Button variant="copper" asChild>
-            <Link to="/employer/jobs/new">Post a job</Link>
+            <Link to="/employer/jobs/new">
+              <Plus className="size-4" />
+              Post a job
+            </Link>
           </Button>
-        }
-      />
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card className="py-4">
-          <div className="font-serif text-2xl tabular-nums">{jobs.data?.length ?? 0}</div>
-          <div className="text-sm text-muted-foreground">Open roles</div>
+        </div>
+        <div className="grid grid-cols-2 gap-px bg-[#c9c0ae22] sm:grid-cols-5">
+          <DashStat n={roles.length} label="Open roles" />
+          <DashStat n={list.length} label="Received" />
+          <DashStat n={review} label="In review" />
+          <DashStat n={interview} label="Interview" />
+          <DashStat n={offers} label="Offers" />
+        </div>
+      </section>
+
+      {latest ? (
+        <Card className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-muted font-serif text-xl">
+            {initials(latest.candidateName || latest.candidateEmail || 'C')}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="eyebrow">Latest packet</p>
+            <h2 className="mt-1 text-2xl">{latest.candidateName || latest.candidateEmail}</h2>
+            <p className="mt-1 text-muted-foreground">
+              {latest.job?.title} · {prettyStatus(latest.status)}
+            </p>
+            {latest.candidateHeadline ? <p className="mt-3 text-sm">{latest.candidateHeadline}</p> : null}
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button variant="copper" asChild>
+                <Link to={`/employer/inbox/${latest.id}`}>
+                  <Inbox className="size-4" />
+                  Review packet
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link to="/employer/inbox">Open inbox</Link>
+              </Button>
+            </div>
+          </div>
         </Card>
-        <Card className="py-4">
-          <div className="font-serif text-2xl tabular-nums">{inbox.data?.length ?? 0}</div>
-          <div className="text-sm text-muted-foreground">Applications received</div>
+      ) : (
+        <EmptyState
+          title="Inbox is empty"
+          body="Post a job so matched candidates can apply to you on Atelier."
+          actionLabel="Post a job"
+          to="/employer/jobs/new"
+        />
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="eyebrow">Roles</p>
+              <h2 className="mt-1 text-2xl">Open jobs</h2>
+            </div>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/employer/jobs">All posts</Link>
+            </Button>
+          </div>
+          {roles.length ? (
+            <ul className="mt-4 space-y-3">
+              {roles.slice(0, 4).map((job) => (
+                <li key={job.id} className="rounded-2xl border border-border px-4 py-3">
+                  <div className="font-medium">{job.title}</div>
+                  <p className="text-sm text-muted-foreground">
+                    {job.location || 'Remote'} · {moneyBand(job.salaryMin, job.salaryMax, job.currency)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 text-sm text-muted-foreground">No roles yet. Publish one to appear in candidate search.</p>
+          )}
         </Card>
-        <Card className="py-4">
-          <div className="font-serif text-2xl tabular-nums">{open.length}</div>
-          <div className="text-sm text-muted-foreground">In review</div>
+        <Card>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="eyebrow">Pipeline</p>
+              <h2 className="mt-1 text-2xl">Applications</h2>
+            </div>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/employer/inbox">Inbox</Link>
+            </Button>
+          </div>
+          {list.length ? (
+            <ul className="mt-4 space-y-3">
+              {list.slice(0, 4).map((a) => (
+                <li key={a.id}>
+                  <Link to={`/employer/inbox/${a.id}`} className="block rounded-2xl border border-border px-4 py-3 hover:border-primary">
+                    <div className="flex items-center justify-between gap-3">
+                      <strong className="truncate">{a.candidateName || a.candidateEmail}</strong>
+                      <Badge>{prettyStatus(a.status)}</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">{a.job?.title}</p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 text-sm text-muted-foreground">Waiting for the first approved packet.</p>
+          )}
         </Card>
       </div>
-      <Card>
-        <h2 className="text-lg">Latest applications</h2>
-        {(inbox.data ?? []).slice(0, 5).length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">None yet. Post a job so candidates can apply on Atelier.</p>
-        ) : (
-          <ul className="mt-4 space-y-3">
-            {(inbox.data ?? []).slice(0, 5).map((a) => (
-              <li key={a.id}>
-                <Link to={`/employer/inbox/${a.id}`} className="block rounded-xl border border-border px-4 py-3 hover:border-primary">
-                  <div className="flex items-center justify-between gap-3">
-                    <strong>{a.candidateName || a.candidateEmail}</strong>
-                    <Badge>{prettyStatus(a.status)}</Badge>
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{a.job?.title}</p>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+    </div>
+  )
+}
+
+function DashStat({ n, label }: { n: number; label: string }) {
+  return (
+    <div className="bg-[var(--forest-2)] px-4 py-4">
+      <div className="font-serif text-2xl tabular-nums sm:text-3xl">{n}</div>
+      <div className="mt-1 text-xs text-[#c9c0ae] sm:text-sm">{label}</div>
     </div>
   )
 }

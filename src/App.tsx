@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/lib/auth'
 import { AppShell } from '@/components/layout/AppShell'
-import { LandingPage } from '@/pages/Landing'
+import { CandidateLandingPage, EmployerLandingPage, LandingPage } from '@/pages/Landing'
 import { CallbackPage, LoginPage, RegisterPage, VerifyPage } from '@/pages/Auth'
 import { OnboardingPage } from '@/pages/Onboarding'
 import { DashboardPage } from '@/pages/Dashboard'
@@ -11,6 +11,7 @@ import { ApplicationDetailsPage, ApplicationsPage } from '@/pages/Applications'
 import { ResumePage } from '@/pages/Resume'
 import { ProfilePage } from '@/pages/Profile'
 import { CareerPage, InterviewPage, SettingsPage } from '@/pages/Settings'
+import { BillingPage } from '@/pages/Billing'
 import { RequireEmployer, RequireOnboarding, RequireSession } from '@/pages/guards'
 import { EmployerShell } from '@/components/layout/EmployerShell'
 import {
@@ -31,6 +32,8 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LandingPage />} />
+            <Route path="/candidates" element={<CandidateLandingPage />} />
+            <Route path="/employers" element={<EmployerLandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/verify" element={<VerifyPage />} />
@@ -51,6 +54,7 @@ export default function App() {
                 <Route path="interview" element={<InterviewPage />} />
                 <Route path="career" element={<CareerPage />} />
                 <Route path="settings" element={<SettingsPage />} />
+                <Route path="billing" element={<BillingPage />} />
               </Route>
             </Route>
             <Route element={<RequireEmployer />}>
@@ -60,6 +64,7 @@ export default function App() {
                 <Route path="jobs/new" element={<EmployerPostJobPage />} />
                 <Route path="inbox" element={<EmployerInboxPage />} />
                 <Route path="inbox/:id" element={<EmployerApplicationPage />} />
+                <Route path="billing" element={<BillingPage />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

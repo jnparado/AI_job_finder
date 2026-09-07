@@ -15,6 +15,20 @@ import { DEMO_EMPLOYER, DEMO_USER, memory, type StoredApplication } from './memo
 import { extractFileText, parseResumeSmart } from './resume'
 import { confirmUserEmail, ensureProfileRow, registerUser } from './authUsers'
 import { supabaseAdmin, supabaseAuth } from './supabase'
+import { PLANS, defaultPlanId, isPaidPlan, planById, plansFor } from '../shared/billing'
+import type { BillingInterval, BillingProvider, BillingRole } from '../shared/billing'
+import {
+  activateSubscription,
+  appOrigin,
+  billingConfigured,
+  cancelSubscription,
+  confirmPayPalSubscription,
+  confirmStripeSession,
+  createPayPalCheckout,
+  createStripeCheckout,
+  handleStripeWebhook,
+  loadSubscription,
+} from './billing'
 
 const app = new Hono()
 const port = Number(process.env.API_PORT ?? 8787)
@@ -320,6 +334,7 @@ app.get('/api/health', (c) =>
     openai: Boolean(process.env.OPENAI_API_KEY),
     discovery: configuredProviders(),
     router: routerStatus(),
+    billing: billingConfigured(),
   }),
 )
 
@@ -888,6 +903,162 @@ app.get('/api/interview', async (c) => {
     matchedSkills: match.matchedSkills,
     ...coached,
   })
+})
+
+function originFromReferer(referer?: string) {
+  if (!referer) return undefined
+  try {
+    return new URL(referer).origin
+  } catch {
+    return undefined
+  }
+}
+
+app.get('/api/billing/plans', async (c) => {
+  const user = await auth(c)
+  const profile = user ? await loadProfile(user) : null
+  const role: BillingRole = profile?.role === 'employer' ? 'employer' : 'candidate'
+  return c.json({
+    role,
+    plans: plansFor(role),
+    catalog: PLANS,
+    providers: billingConfigured(),
+  })
+})
+
+app.get('/api/billing/subscription', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  const role: BillingRole = profile.role === 'employer' ? 'employer' : 'candidate'
+  const subscription = await loadSubscription(user.id, role)
+  return c.json({
+    subscription,
+    plan: planById(subscription.planId) ?? planById(defaultPlanId(role)),
+    providers: billingConfigured(),
+    role,
+  })
+})
+
+app.post('/api/billing/checkout', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  const role: BillingRole = profile.role === 'employer' ? 'employer' : 'candidate'
+  const body = (await c.req.json()) as {
+    planId?: string
+    interval?: BillingInterval
+    provider?: BillingProvider | 'card'
+  }
+  const planId = String(body.planId ?? '')
+  const plan = planById(planId)
+  if (!plan || plan.role !== role) return c.json({ error: 'That plan is not available for this account.' }, 400)
+  const interval: BillingInterval = body.interval === 'year' ? 'year' : 'month'
+  const provider = body.provider === 'paypal' ? 'paypal' : 'stripe'
+  const origin = appOrigin(c.req.header('Origin') ?? originFromReferer(c.req.header('Referer')))
+  const returnPath = role === 'employer' ? '/employer/billing' : '/app/billing'
+  const successUrl = `${origin}${returnPath}?status=success&session_id={CHECKOUT_SESSION_ID}`
+  const cancelUrl = `${origin}${returnPath}?status=cancel`
+  const paypalReturn = `${origin}${returnPath}?status=success&provider=paypal`
+
+  if (!isPaidPlan(planId)) {
+    const subscription = await activateSubscription(user.id, planId, interval, 'demo')
+    return c.json({ url: `${origin}${returnPath}?status=success&demo=1`, demo: true, subscription })
+  }
+
+  const configured = billingConfigured()
+  if (provider === 'stripe' && !configured.stripe) {
+    const subscription = await activateSubscription(user.id, planId, interval, 'demo')
+    return c.json({
+      url: `${origin}${returnPath}?status=success&demo=1`,
+      demo: true,
+      subscription,
+      note: 'Add STRIPE_SECRET_KEY to charge real cards. Demo subscription is active on this machine.',
+    })
+  }
+  if (provider === 'paypal' && !configured.paypal) {
+    const subscription = await activateSubscription(user.id, planId, interval, 'demo')
+    return c.json({
+      url: `${origin}${returnPath}?status=success&demo=1`,
+      demo: true,
+      subscription,
+      note: 'Add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET for live PayPal. Demo subscription is active on this machine.',
+    })
+  }
+
+  try {
+    if (provider === 'paypal') {
+      const checkout = await createPayPalCheckout({
+        userId: user.id,
+        planId,
+        interval,
+        returnUrl: paypalReturn,
+        cancelUrl,
+      })
+      return c.json({ url: checkout.url, provider: 'paypal', subscriptionId: checkout.subscriptionId })
+    }
+    const checkout = await createStripeCheckout({
+      userId: user.id,
+      email: profile.email || user.email,
+      planId,
+      interval,
+      successUrl,
+      cancelUrl,
+    })
+    return c.json({ url: checkout.url, provider: 'stripe', sessionId: checkout.sessionId })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Checkout failed.' }, 400)
+  }
+})
+
+app.post('/api/billing/confirm', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  const role: BillingRole = profile.role === 'employer' ? 'employer' : 'candidate'
+  const body = (await c.req.json().catch(() => ({}))) as {
+    provider?: string
+    sessionId?: string
+    subscriptionId?: string
+    demo?: boolean
+    planId?: string
+    interval?: BillingInterval
+  }
+  try {
+    if (body.sessionId && billingConfigured().stripe) {
+      const next = await confirmStripeSession(body.sessionId)
+      if (next) return c.json({ subscription: next })
+    }
+    if (body.subscriptionId && billingConfigured().paypal) {
+      const next = await confirmPayPalSubscription(body.subscriptionId)
+      if (next) return c.json({ subscription: next })
+    }
+    if (body.demo && body.planId && isPaidPlan(body.planId)) {
+      const next = await activateSubscription(user.id, body.planId, body.interval === 'year' ? 'year' : 'month', 'demo')
+      return c.json({ subscription: next })
+    }
+    return c.json({ subscription: await loadSubscription(user.id, role) })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Could not confirm payment.' }, 400)
+  }
+})
+
+app.post('/api/billing/cancel', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  const role: BillingRole = profile.role === 'employer' ? 'employer' : 'candidate'
+  return c.json({ subscription: await cancelSubscription(user.id, role) })
+})
+
+app.post('/api/billing/webhook/stripe', async (c) => {
+  const raw = await c.req.text()
+  try {
+    await handleStripeWebhook(raw, c.req.header('stripe-signature'))
+    return c.json({ ok: true })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Webhook failed' }, 400)
+  }
 })
 
 app.get('/api/router', (c) => c.json({ lanes: routerStatus(), diagram: true }))

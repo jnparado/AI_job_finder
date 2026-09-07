@@ -86,6 +86,10 @@ export function LoginPage() {
       ) : null}
       <p className="mt-6 text-sm">
         New here? <Link to="/register" className="font-medium text-[var(--copper)]">Create an account</Link>
+        <span className="text-muted-foreground"> · </span>
+        <Link to="/candidates" className="font-medium text-[var(--copper)]">Candidates</Link>
+        <span className="text-muted-foreground"> · </span>
+        <Link to="/employers" className="font-medium text-[var(--copper)]">Employers</Link>
       </p>
     </AuthFrame>
   )
@@ -187,6 +191,10 @@ export function RegisterPage() {
       </Button>
       <p className="mt-6 text-sm">
         Already registered? <Link to="/login" className="font-medium text-[var(--copper)]">Sign in</Link>
+        <span className="text-muted-foreground"> · </span>
+        <Link to="/candidates" className="font-medium text-[var(--copper)]">Candidates</Link>
+        <span className="text-muted-foreground"> · </span>
+        <Link to="/employers" className="font-medium text-[var(--copper)]">Employers</Link>
       </p>
     </AuthFrame>
   )

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Card } from '@/components/ui/card'
@@ -6,7 +7,6 @@ import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/feedback'
 import { useAuth } from '@/lib/auth'
 import { supabaseConfigured } from '@/lib/supabase'
-import { RouterDiagram } from '@/components/ai/RouterDiagram'
 
 interface Settings {
   enabled: boolean
@@ -47,6 +47,15 @@ export function SettingsPage() {
         title="Settings"
         description="The daily agent only notifies you. It never applies without approval."
       />
+      <Card className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2>Subscription</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Card (Stripe), PayPal, Apple Pay, and Google Pay.</p>
+        </div>
+        <Link to="/app/billing" className="text-sm font-medium text-[var(--copper)]">
+          Manage billing
+        </Link>
+      </Card>
       <Card className="space-y-3">
         <h2>Daily job agent</h2>
         <label className="flex items-center gap-2 text-sm">
@@ -83,26 +92,6 @@ export function SettingsPage() {
           <li>API Supabase: {health.data?.supabase ? 'connected' : 'demo memory store'}</li>
           <li>OpenAI: {health.data?.openai ? 'router enabled (Luna / Terra / Sol)' : 'local engines until OPENAI_API_KEY is set'}</li>
         </ul>
-      </Card>
-      <Card>
-        <h2>AI router</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {health.data?.router?.configured
-            ? `Luna ${health.data.router.luna} · Terra ${health.data.router.terra} · Sol ${health.data.router.sol}`
-            : 'Add OPENAI_API_KEY to .env. Until then, parsing, matching, and writing stay on the local engines.'}
-        </p>
-        <div className="mt-5">
-          <RouterDiagram />
-        </div>
-        {health.data?.router?.traces?.length ? (
-          <ul className="mt-4 space-y-1 text-xs text-muted-foreground">
-            {health.data.router.traces.slice(0, 6).map((t, i) => (
-              <li key={`${t.task}-${i}`}>
-                {t.lane} · {t.task} · {t.ok ? `${t.ms}ms` : 'fallback'}
-              </li>
-            ))}
-          </ul>
-        ) : null}
       </Card>
       <Card>
         <h2>Job platforms</h2>

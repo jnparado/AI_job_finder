@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Copy, ExternalLink } from 'lucide-react'
 import type { JobMatch } from '@shared/types'
+import { sourceLabel } from '@shared/types'
 import { api } from '@/lib/api'
 import { prettyStatus } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -142,9 +143,20 @@ export function ApplicationDetailsPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['application', id] }),
   })
 
+  const [copied, setCopied] = useState('')
   const a = q.data
   if (!a) return <Card className="h-40 animate-pulse bg-muted/60" />
   const p = a.packet
+  const officialUrl = a.match?.job.applicationUrl?.startsWith('http') ? a.match.job.applicationUrl : undefined
+  const platform = a.match?.job.source ? sourceLabel(a.match.job.source) : a.channel
+  const external = !a.directToEmployer && Boolean(officialUrl)
+
+  function copyText(label: string, text: string) {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(label)
+      window.setTimeout(() => setCopied(''), 2000)
+    })
+  }
 
   function updatePacket(next: ApplicationRow['packet']) {
     save.mutate(next)
@@ -182,10 +194,20 @@ export function ApplicationDetailsPage() {
       </div>
 
       {tab === 'resume' ? (
-        <Textarea className="min-h-80 font-mono text-xs" value={p.tailoredResume} onChange={(e) => updatePacket({ ...p, tailoredResume: e.target.value })} />
+        <div className="space-y-2">
+          <Button variant="outline" size="sm" type="button" onClick={() => copyText('resume', p.tailoredResume)}>
+            <Copy className="size-3.5" />
+            {copied === 'resume' ? 'Copied' : 'Copy resume'}
+          </Button>
+          <Textarea className="min-h-80 font-mono text-xs" value={p.tailoredResume} onChange={(e) => updatePacket({ ...p, tailoredResume: e.target.value })} />
+        </div>
       ) : null}
       {tab === 'letter' ? (
-        <div className="space-y-3">
+        <div className="space-y-2">
+          <Button variant="outline" size="sm" type="button" onClick={() => copyText('letter', p.coverLetter)}>
+            <Copy className="size-3.5" />
+            {copied === 'letter' ? 'Copied' : 'Copy cover letter'}
+          </Button>
           <Textarea className="min-h-72" value={p.coverLetter} onChange={(e) => updatePacket({ ...p, coverLetter: e.target.value })} />
         </div>
       ) : null}
@@ -216,23 +238,50 @@ export function ApplicationDetailsPage() {
 
       {a.status === 'draft' || a.status === 'ready' ? (
         <Card className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {a.directToEmployer
+              ? 'This role is on Atelier. Approving sends the packet to the employer inbox.'
+              : officialUrl
+                ? `This role is on ${platform}. Atelier prepares the materials. You paste them and submit on the official listing — LinkedIn, Indeed, Upwork, and similar sites do not allow us to click Apply for you.`
+                : `This role uses ${a.channel}. Approve the packet, then submit through that channel.`}
+          </p>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} />
             {a.directToEmployer
               ? `I approve sending this packet to ${a.match?.job.company ?? 'the employer'} on Atelier.`
-              : `I approve this packet. Submit only through ${a.channel}. Do not automate restricted platforms.`}
+              : `I approve this packet and will submit it myself on ${platform}.`}
           </label>
-          <Button variant="copper" disabled={!authorized} onClick={() => approve.mutate()}>
-            {a.directToEmployer ? 'Send to employer' : 'Approve and submit'}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="copper" disabled={!authorized} onClick={() => approve.mutate()}>
+              {a.directToEmployer ? 'Send to employer' : officialUrl ? `Approve and open ${platform}` : 'Approve packet'}
+            </Button>
+            {officialUrl ? (
+              <Button variant="outline" asChild>
+                <a href={officialUrl} target="_blank" rel="noreferrer">
+                  Official listing
+                  <ExternalLink className="size-3.5" />
+                </a>
+              </Button>
+            ) : null}
+          </div>
         </Card>
       ) : (
         <Card>
           <p>
             {a.deliveredToEmployer
               ? 'Sent to the employer on Atelier. They can review your packet in their inbox.'
-              : 'Submitted. Track status and send follow-ups only with your approval.'}
+              : external
+                ? `Packet is ready. Finish the application on ${platform}, then update the status here.`
+                : 'Submitted. Track status and send follow-ups only with your approval.'}
           </p>
+          {officialUrl ? (
+            <Button className="mt-3" variant="copper" asChild>
+              <a href={officialUrl} target="_blank" rel="noreferrer">
+                Continue on {platform}
+                <ExternalLink className="size-3.5" />
+              </a>
+            </Button>
+          ) : null}
           <select
             className="mt-3 h-10 rounded-lg border border-input bg-card px-3 text-sm"
             value={a.status}

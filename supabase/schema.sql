@@ -321,6 +321,22 @@ create policy "employers read inbox" on public.applications for select
     select 1 from public.jobs j
     where j.id = job_id and j.employer_id = auth.uid()
   ));
+create table if not exists public.subscriptions (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  plan_id text not null,
+  status text not null default 'active',
+  provider text,
+  provider_ref text,
+  interval text default 'month',
+  current_period_end timestamptz,
+  updated_at timestamptz default now()
+);
+
+alter table public.subscriptions enable row level security;
+drop policy if exists "own subscription" on public.subscriptions;
+create policy "own subscription" on public.subscriptions for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
 drop policy if exists "employers update inbox" on public.applications;
 create policy "employers update inbox" on public.applications for update
   using (exists (

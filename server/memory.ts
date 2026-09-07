@@ -1,3 +1,4 @@
+import type { Subscription } from '../shared/billing'
 import type { CandidateProfile, DiscoverySummary, Job, JobMatch, PreparedPacket } from '../shared/types'
 import { emptyProfile } from '../shared/types'
 
@@ -47,6 +48,7 @@ const notifications = new Map<string, StoredNotification[]>()
 const settings = new Map<string, AgentSettings>()
 const jobs = new Map<string, Job>()
 const discovery = new Map<string, DiscoverySummary>()
+const subscriptions = new Map<string, Subscription>()
 
 export const memory = {
   getProfile(userId: string) {
@@ -123,5 +125,12 @@ export const memory = {
   },
   getDiscovery(userId: string) {
     return discovery.get(userId) ?? null
+  },
+  getSubscription(userId: string) {
+    return subscriptions.get(userId)
+  },
+  setSubscription(row: Subscription) {
+    subscriptions.set(row.userId, row)
+    return row
   },
 }

@@ -1,13 +1,14 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { Search } from 'lucide-react'
 import type { JobMatch } from '@shared/types'
 import { displayName } from '@shared/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import { greeting, moneyBand } from '@/lib/utils'
+import { greeting, initials, moneyBand } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Card, Badge } from '@/components/ui/card'
-import { EmptyState, PageHeader } from '@/components/ui/feedback'
+import { Card } from '@/components/ui/card'
+import { EmptyState } from '@/components/ui/feedback'
 import { MatchCard } from '@/components/jobs/MatchCard'
 import { ScoreBadge } from '@/components/jobs/ScoreBadge'
 
@@ -44,34 +45,46 @@ export function DashboardPage() {
   const good = matches.filter((m) => m.category === 'good').length
   const top = recommended[0] ?? matches[0]
   const applied = (apps.data ?? []).filter((a) => a.status !== 'draft').length
-  const first = displayName(profile).split(' ')[0] || 'there'
+  const name = displayName(profile)
+  const first = name.split(' ')[0] || 'there'
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        kicker="Dashboard"
-        title={`${greeting()}, ${first}`}
-        description={
-          jobs.isLoading
-            ? 'Loading your matches…'
-            : recommended.length
-              ? `${recommended.length} roles currently clear your 70% bar.`
-              : 'Run the job agent to pull live listings and score them against your profile.'
-        }
-        actions={
+      <section className="overflow-hidden rounded-3xl border border-border bg-[var(--forest)] text-[var(--paper)]">
+        <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-[#1f3d32] font-serif text-2xl">
+              {initials(name)}
+            </span>
+            <div>
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">
+                Candidate home
+              </p>
+              <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">
+                {greeting()}, {first}
+              </h1>
+              <p className="mt-2 max-w-xl text-sm text-[#d8d0c0]">
+                {jobs.isLoading
+                  ? 'Loading roles scored against your profile…'
+                  : recommended.length
+                    ? `${recommended.length} roles currently clear your 70% bar.`
+                    : 'Search authorized boards and we will score every listing against you.'}
+              </p>
+            </div>
+          </div>
           <Button variant="copper" onClick={() => search.mutate()} disabled={search.isPending}>
-            {search.isPending ? 'Searching platforms…' : 'Find new jobs'}
+            <Search className="size-4" />
+            {search.isPending ? 'Searching…' : 'Find new jobs'}
           </Button>
-        }
-      />
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat n={matches.length} label="Found" />
-        <Stat n={excellent} label="Excellent" />
-        <Stat n={strong} label="Strong" />
-        <Stat n={good} label="Good" />
-        <Stat n={applied} label="Applied" />
-      </div>
+        </div>
+        <div className="grid grid-cols-2 gap-px bg-[#c9c0ae22] sm:grid-cols-5">
+          <DashStat n={matches.length} label="Found" />
+          <DashStat n={excellent} label="Excellent" />
+          <DashStat n={strong} label="Strong" />
+          <DashStat n={good} label="Good" />
+          <DashStat n={applied} label="Applied" />
+        </div>
+      </section>
 
       {jobs.isLoading ? (
         <Card className="h-40 animate-pulse bg-muted/60" />
@@ -97,13 +110,11 @@ export function DashboardPage() {
       ) : (
         <EmptyState
           title="No matches yet"
-          body="Complete your profile, then search Remotive, career pages, and other authorized boards. LinkedIn and Upwork open on their official sites."
+          body="Complete your profile, then search authorized boards. LinkedIn and Upwork open on their official sites."
           actionLabel="Find jobs now"
           onClick={() => search.mutate()}
         />
       )}
-
-      <CareerCard />
 
       {matches.length > 0 ? (
         <section>
@@ -129,54 +140,11 @@ export function DashboardPage() {
   )
 }
 
-function CareerCard() {
-  const { profile } = useAuth()
+function DashStat({ n, label }: { n: number; label: string }) {
   return (
-    <Card>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="eyebrow">Your career profile</p>
-          <h2 className="mt-1">{displayName(profile) || 'Candidate'}</h2>
-        </div>
-        <Button variant="outline" size="sm" asChild>
-          <Link to="/app/profile">Edit profile</Link>
-        </Button>
-      </div>
-      <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-4">
-        <div>
-          <dt className="text-muted-foreground">Target</dt>
-          <dd className="mt-1 font-medium">{profile.desiredTitle || '—'}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Experience</dt>
-          <dd className="mt-1 font-medium">{profile.yearsExperience} years</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Work style</dt>
-          <dd className="mt-1 font-medium capitalize">{profile.workModes.join(', ') || '—'}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Salary floor</dt>
-          <dd className="mt-1 font-medium">${profile.salaryMin.toLocaleString()}</dd>
-        </div>
-      </dl>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {profile.skills.slice(0, 8).map((s) => (
-          <Badge key={s}>{s}</Badge>
-        ))}
-        {profile.aiSkills.map((s) => (
-          <Badge key={s} tone="copper">{s}</Badge>
-        ))}
-      </div>
-    </Card>
-  )
-}
-
-function Stat({ n, label }: { n: number; label: string }) {
-  return (
-    <Card className="py-4">
-      <div className="font-serif text-3xl tabular-nums">{n}</div>
-      <div className="mt-1 text-sm text-muted-foreground">{label}</div>
-    </Card>
+    <div className="bg-[var(--forest-2)] px-4 py-4">
+      <div className="font-serif text-2xl tabular-nums sm:text-3xl">{n}</div>
+      <div className="mt-1 text-xs text-[#c9c0ae] sm:text-sm">{label}</div>
+    </div>
   )
 }
