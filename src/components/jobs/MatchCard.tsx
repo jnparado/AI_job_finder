@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { JobMatch } from '@shared/types'
 import { categoryLabel, sourceLabel } from '@shared/types'
-import { laneLabel } from '@shared/engine/router'
 import { moneyBand } from '@/lib/utils'
 import { ScoreBadge } from './ScoreBadge'
 import { Badge } from '@/components/ui/card'
@@ -16,12 +15,9 @@ export function MatchCard({
   onApply?: () => void
   applying?: boolean
 }) {
-  const sources = match.job.sources?.length
-    ? match.job.sources.map((s) => s.source)
-    : [match.job.source]
   const atelier = match.job.source === 'atelier' || Boolean(match.job.employerId)
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary sm:flex-row sm:items-stretch sm:p-5">
+    <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-[var(--forest)] sm:flex-row sm:items-center sm:p-5">
       <Link to={`/app/jobs/${match.job.id}`} className="flex min-w-0 flex-1 gap-4">
         <ScoreBadge score={match.score} category={match.category} />
         <div className="min-w-0 flex-1">
@@ -30,11 +26,7 @@ export function MatchCard({
               {categoryLabel(match.category)}
             </Badge>
             {match.job.remote ? <Badge>Remote</Badge> : null}
-            {atelier ? <Badge tone="copper">Apply on Atelier</Badge> : null}
-            {match.aiLane ? <Badge tone="copper">{laneLabel(match.aiLane)}</Badge> : null}
-            {sources.slice(0, 3).map((source) => (
-              <Badge key={source}>{sourceLabel(source)}</Badge>
-            ))}
+            {atelier ? <Badge tone="copper">Atelier</Badge> : <Badge>{sourceLabel(match.job.source)}</Badge>}
           </div>
           <h3 className="mt-1.5 font-serif text-xl leading-tight">{match.job.title}</h3>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -51,11 +43,9 @@ export function MatchCard({
         </div>
       </Link>
       {onApply ? (
-        <div className="flex shrink-0 items-center sm:pl-2">
-          <Button variant="copper" size="sm" disabled={applying} onClick={onApply}>
-            {applying ? 'Preparing…' : atelier ? 'Apply' : 'Apply with AI'}
-          </Button>
-        </div>
+        <Button variant="copper" size="sm" className="shrink-0 self-start sm:self-center" disabled={applying} onClick={onApply}>
+          {applying ? 'Preparing…' : atelier ? 'Apply' : 'Apply with AI'}
+        </Button>
       ) : null}
     </div>
   )

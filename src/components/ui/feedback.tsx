@@ -70,10 +70,21 @@ export function LoadingScreen({ label = 'Loading…' }: { label?: string }) {
 
 export function BrandMark({ light = false }: { light?: boolean }) {
   return (
-    <div>
-      <div className={`font-serif text-lg ${light ? 'text-[var(--paper)]' : ''}`}>Atelier</div>
-      <div className={`text-[0.68rem] uppercase tracking-[0.16em] ${light ? 'text-[#c9c0ae]' : 'text-muted-foreground'}`}>
-        AI Job Assistant
+    <div className="flex items-center gap-2.5">
+      <img
+        src="/brand/atelier-logo.png"
+        alt=""
+        width={40}
+        height={40}
+        className="size-10 rounded-xl object-cover shadow-[0_0_0_1px_rgba(198,161,91,0.28)]"
+      />
+      <div>
+        <div className={`font-serif text-lg leading-none ${light ? 'text-[var(--paper)]' : ''}`}>Atelier</div>
+        <div
+          className={`mt-1 text-[0.62rem] uppercase tracking-[0.16em] ${light ? 'text-[#c9c0ae]' : 'text-muted-foreground'}`}
+        >
+          AI Job Assistant
+        </div>
       </div>
     </div>
   )

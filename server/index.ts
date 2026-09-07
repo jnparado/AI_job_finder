@@ -10,7 +10,7 @@ import { coachInterview, enrichMatches, parseJobs, planSearch, strategizeCareer,
 import { routerStatus } from './ai'
 import { asJob } from '../shared/engine/jobFields'
 import type { CandidateProfile, Currency, DiscoverySummary, EmploymentType, Job, JobMatch, PreparedPacket } from '../shared/types'
-import { displayName, emptyProfile } from '../shared/types'
+import { displayName, emptyProfile, type SocialIdentity } from '../shared/types'
 import { DEMO_EMPLOYER, DEMO_USER, memory, type StoredApplication } from './memory'
 import { extractFileText, parseResumeSmart } from './resume'
 import { confirmUserEmail, ensureProfileRow, registerUser } from './authUsers'
@@ -69,8 +69,34 @@ async function auth(c: { req: { header: (n: string) => string | undefined } }): 
   return { id: data.user.id, email: data.user.email ?? '' }
 }
 
+function socialMetaFromParsed(parsed: unknown) {
+  if (!parsed || typeof parsed !== 'object') return {}
+  const meta = (parsed as { _atelier?: Record<string, unknown> })._atelier
+  if (!meta) return {}
+  return {
+    avatarUrl: String(meta.avatarUrl ?? ''),
+    locale: String(meta.locale ?? ''),
+    identities: Array.isArray(meta.identities) ? (meta.identities as SocialIdentity[]) : [],
+    socialLinks: meta.socialLinks && typeof meta.socialLinks === 'object' ? (meta.socialLinks as Record<string, string>) : {},
+  }
+}
+
+function withSocialMeta(parsed: CandidateProfile['parsedProfile'], profile: CandidateProfile) {
+  const base = parsed && typeof parsed === 'object' ? { ...parsed } : {}
+  return {
+    ...base,
+    _atelier: {
+      avatarUrl: profile.avatarUrl ?? '',
+      locale: profile.locale ?? '',
+      identities: profile.identities ?? [],
+      socialLinks: profile.socialLinks ?? {},
+    },
+  }
+}
+
 function profileFromRow(row: Record<string, unknown>, email: string): CandidateProfile {
   const parsed = (row.parsed_profile as CandidateProfile['parsedProfile']) ?? null
+  const packed = socialMetaFromParsed(parsed)
   return {
     id: String(row.id),
     firstName: String(row.first_name ?? ''),
@@ -101,6 +127,13 @@ function profileFromRow(row: Record<string, unknown>, email: string): CandidateP
     role: row.role === 'employer' ? 'employer' : 'candidate',
     companyName: String(row.company_name ?? ''),
     companyWebsite: String(row.company_website ?? ''),
+    avatarUrl: String(row.avatar_url ?? packed.avatarUrl ?? ''),
+    locale: String(row.locale ?? packed.locale ?? ''),
+    identities: Array.isArray(row.identities) ? (row.identities as SocialIdentity[]) : packed.identities ?? [],
+    socialLinks:
+      row.social_links && typeof row.social_links === 'object'
+        ? (row.social_links as Record<string, string>)
+        : packed.socialLinks ?? {},
   }
 }
 
@@ -173,18 +206,26 @@ async function saveProfile(user: AuthUser, profile: CandidateProfile) {
     career_goals: profile.careerGoals,
     onboarding_completed: profile.onboardingCompleted,
     resume_text: profile.resumeText,
-    parsed_profile: profile.parsedProfile,
+    parsed_profile: withSocialMeta(profile.parsedProfile, profile),
     role: profile.role ?? 'candidate',
     company_name: profile.companyName ?? '',
     company_website: profile.companyWebsite ?? '',
+    avatar_url: profile.avatarUrl ?? '',
+    locale: profile.locale ?? '',
+    identities: profile.identities ?? [],
+    social_links: profile.socialLinks ?? {},
   }
   const { error } = await supabaseAdmin.from('profiles').upsert(row)
-  if (error && /role|company_name|company_website/.test(error.message)) {
+  if (error && /role|company_name|company_website|avatar_url|identities|social_links|locale/.test(error.message)) {
     delete row.role
     delete row.company_name
     delete row.company_website
+    delete row.avatar_url
+    delete row.locale
+    delete row.identities
+    delete row.social_links
     await supabaseAdmin.from('profiles').upsert(row)
-    console.warn('profiles missing employer columns — run supabase/schema.sql')
+    console.warn('profiles missing columns — run supabase/schema.sql')
   }
   await supabaseAdmin.from('user_skills').delete().eq('user_id', user.id)
   const skillRows = [
@@ -398,6 +439,39 @@ app.post('/api/profile', async (c) => {
   const body = (await c.req.json()) as Partial<CandidateProfile>
   const current = await loadProfile(user)
   const next = { ...current, ...body, email: body.email || current.email || user.email }
+  return c.json(await saveProfile(user, next))
+})
+
+app.post('/api/profile/sync-identity', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const body = (await c.req.json()) as {
+    provider?: string
+    email?: string
+    firstName?: string
+    lastName?: string
+    fullName?: string
+    avatarUrl?: string
+    locale?: string
+  }
+  const current = await loadProfile(user)
+  const [first, ...rest] = (body.fullName ?? '').split(/\s+/).filter(Boolean)
+  const identity: SocialIdentity = {
+    provider: body.provider || 'google',
+    email: body.email || user.email,
+    name: body.fullName || `${body.firstName ?? ''} ${body.lastName ?? ''}`.trim(),
+    avatarUrl: body.avatarUrl,
+    connectedAt: new Date().toISOString(),
+  }
+  const next = {
+    ...current,
+    firstName: current.firstName || body.firstName || first || '',
+    lastName: current.lastName || body.lastName || rest.join(' '),
+    email: current.email || body.email || user.email,
+    avatarUrl: current.avatarUrl || body.avatarUrl || '',
+    locale: current.locale || body.locale || '',
+    identities: [...(current.identities ?? []).filter((i) => i.provider !== identity.provider), identity],
+  }
   return c.json(await saveProfile(user, next))
 })
 
@@ -1111,6 +1185,13 @@ const demoRole = asJob({
 })
 memory.setJobs([demoRole])
 
-serve({ fetch: app.fetch, port }, () => {
-  console.log(`API http://localhost:${port}  supabase=${Boolean(supabaseAdmin)}`)
+const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, () => {
+  console.log(`API http://127.0.0.1:${port}  supabase=${Boolean(supabaseAdmin)}`)
+})
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${port} is already in use. Stop the other API (kill the old npm run dev) and start again.`)
+    process.exit(1)
+  }
+  throw err
 })

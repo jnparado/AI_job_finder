@@ -10,6 +10,7 @@ const buttonVariants = cva(
       variant: {
         default: 'bg-[var(--forest)] !text-[var(--paper)] hover:bg-[var(--forest-2)]',
         copper: 'bg-[var(--copper)] !text-[var(--paper)] hover:bg-[var(--copper-dark)]',
+        paper: 'bg-[var(--paper)] !text-[var(--forest)] hover:bg-[#e7e1d4]',
         outline: 'border border-border bg-transparent text-foreground hover:bg-muted',
         ghost: 'text-foreground hover:bg-muted',
         link: 'text-[var(--copper)] underline-offset-4 hover:underline',

@@ -22,6 +22,9 @@ import {
   EmployerPostJobPage,
   EmployerSetupPage,
 } from '@/pages/Employer'
+import { MetaPixel } from '@/components/social/MetaPixel'
+import { GoogleTags } from '@/components/social/GoogleTags'
+import { JsonLd } from '@/components/social/JsonLd'
 
 const queryClient = new QueryClient()
 
@@ -29,6 +32,9 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <MetaPixel />
+        <GoogleTags />
+        <JsonLd />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LandingPage />} />

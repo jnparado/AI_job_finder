@@ -108,6 +108,18 @@ export interface CandidateProfile {
   role?: 'candidate' | 'employer'
   companyName?: string
   companyWebsite?: string
+  avatarUrl?: string
+  locale?: string
+  identities?: SocialIdentity[]
+  socialLinks?: Record<string, string>
+}
+
+export interface SocialIdentity {
+  provider: string
+  email?: string
+  name?: string
+  avatarUrl?: string
+  connectedAt: string
 }
 
 export interface JobAnalysis {
@@ -220,6 +232,10 @@ export function emptyProfile(): CandidateProfile {
     role: 'candidate',
     companyName: '',
     companyWebsite: '',
+    avatarUrl: '',
+    locale: '',
+    identities: [],
+    socialLinks: {},
   }
 }
 

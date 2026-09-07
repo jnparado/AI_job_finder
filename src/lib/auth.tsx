@@ -1,9 +1,11 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { User } from '@supabase/supabase-js'
+import type { Provider, User } from '@supabase/supabase-js'
 import type { CandidateProfile } from '@shared/types'
 import { emptyProfile } from '@shared/types'
 import { api, getDemoToken, setDemoToken } from './api'
+import { identityFromUser } from './identity'
+import { oauthOptions } from './social'
 import { supabase, supabaseConfigured } from './supabase'
 
 interface AuthValue {
@@ -23,6 +25,7 @@ interface AuthValue {
     extras?: { role?: 'candidate' | 'employer'; companyName?: string },
   ) => Promise<CandidateProfile>
   signInGoogle: () => Promise<void>
+  signInSocial: (provider: Provider) => Promise<void>
   destinationFor: (p?: CandidateProfile) => string
   signOut: () => Promise<void>
 }
@@ -41,6 +44,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return p
   }, [])
 
+  const syncSocialProfile = useCallback(async (next: User) => {
+    try {
+      return await api<CandidateProfile>('/api/profile/sync-identity', {
+        method: 'POST',
+        body: JSON.stringify(identityFromUser(next)),
+      })
+    } catch {
+      return refreshProfile()
+    }
+  }, [refreshProfile])
+
   const establish = useCallback(async (next: User | null) => {
     setUser(next)
     if (!next) {
@@ -48,13 +62,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return emptyProfile()
     }
     try {
-      return await refreshProfile()
+      const synced = next.identities?.length ? await syncSocialProfile(next) : await refreshProfile()
+      setProfile(synced)
+      return synced
     } catch {
       const fallback = { ...emptyProfile(), email: next.email ?? '' }
       setProfile(fallback)
       return fallback
     }
-  }, [refreshProfile])
+  }, [refreshProfile, syncSocialProfile])
 
   useEffect(() => {
     let cancelled = false
@@ -65,7 +81,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (session?.user) {
             setDemoToken(false)
             setDemo(false)
-            void api<CandidateProfile>('/api/profile').then((p) => {
+            void (session.user.identities?.length
+              ? api<CandidateProfile>('/api/profile/sync-identity', {
+                  method: 'POST',
+                  body: JSON.stringify(identityFromUser(session.user)),
+                })
+              : api<CandidateProfile>('/api/profile')
+            ).then((p) => {
               if (!cancelled) setProfile(p)
             }).catch(() => {})
           }
@@ -177,13 +199,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return profile
       },
-      signInGoogle: async () => {
+      signInSocial: async (provider: Provider) => {
         if (!supabase) throw new Error('Add your Supabase keys in .env, then restart the app.')
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: { redirectTo: `${window.location.origin}/auth/callback` },
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: { ...oauthOptions(provider), skipBrowserRedirect: true },
         })
         if (error) throw error
+        if (data.url) window.location.assign(data.url)
+      },
+      signInGoogle: async () => {
+        if (!supabase) throw new Error('Add your Supabase keys in .env, then restart the app.')
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: { ...oauthOptions('google'), skipBrowserRedirect: true },
+        })
+        if (error) throw error
+        if (data.url) window.location.assign(data.url)
       },
       signOut: async () => {
         setDemoToken(false)

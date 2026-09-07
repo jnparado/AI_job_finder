@@ -15,6 +15,8 @@ import { displayName } from '@shared/types'
 import { initials, money } from '@/lib/utils'
 import { Badge, Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { SocialConnectForm } from '@/components/social/SocialConnectForm'
+import { SOCIAL_LINK_FIELDS } from '@/lib/social'
 
 export function ProfilePage() {
   const { profile } = useAuth()
@@ -29,9 +31,17 @@ export function ProfilePage() {
       <section className="overflow-hidden rounded-3xl border border-border bg-[var(--forest)] text-[var(--paper)]">
         <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
           <div className="flex min-w-0 items-start gap-4">
-            <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-[#1f3d32] font-serif text-2xl text-[var(--paper)] sm:size-20 sm:text-3xl">
-              {initials(name)}
-            </span>
+            {profile.avatarUrl ? (
+              <img
+                src={profile.avatarUrl}
+                alt=""
+                className="size-16 rounded-2xl object-cover sm:size-20"
+              />
+            ) : (
+              <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-[#1f3d32] font-serif text-2xl text-[var(--paper)] sm:size-20 sm:text-3xl">
+                {initials(name)}
+              </span>
+            )}
             <div className="min-w-0">
               <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">
                 Candidate
@@ -127,6 +137,30 @@ export function ProfilePage() {
           </Button>
         </Card>
       </div>
+
+      <Card>
+        <p className="eyebrow">Elsewhere</p>
+        <h2 className="mt-1 text-2xl">Social profiles</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Google, Meta, LinkedIn, and the rest — paste the public URLs so they live on your Atelier profile.
+        </p>
+        {Object.entries(profile.socialLinks ?? {}).filter(([, href]) => href).length ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {SOCIAL_LINK_FIELDS.filter((f) => profile.socialLinks?.[f.id]).map((f) => (
+              <a
+                key={f.id}
+                href={profile.socialLinks?.[f.id]}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full border border-border px-3 py-1 text-sm hover:border-[var(--forest)]"
+              >
+                {f.label}
+              </a>
+            ))}
+          </div>
+        ) : null}
+        <SocialConnectForm />
+      </Card>
 
       {profile.careerGoals ? (
         <Card>

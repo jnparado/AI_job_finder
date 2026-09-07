@@ -1,8 +1,10 @@
 -- AI Job Assistant — run this in the Supabase SQL editor (or via CLI).
 -- Dashboard → SQL → New query → paste → Run.
--- Then: Authentication → Providers → enable Email and Google.
+-- Then: Authentication → Providers → enable Email, Google, Facebook (Meta),
+-- LinkedIn, Twitter, Apple, GitHub, Discord, Slack.
 -- Site URL: http://localhost:5173
 -- Redirect URLs: http://localhost:5173/auth/callback
+-- Google OAuth redirect also: https://YOUR_PROJECT.supabase.co/auth/v1/callback
 
 create extension if not exists pgcrypto;
 create extension if not exists vector;
@@ -302,6 +304,10 @@ with check (bucket_id = 'resumes' and auth.uid()::text = (storage.foldername(nam
 alter table public.profiles add column if not exists role text default 'candidate';
 alter table public.profiles add column if not exists company_name text;
 alter table public.profiles add column if not exists company_website text;
+alter table public.profiles add column if not exists avatar_url text;
+alter table public.profiles add column if not exists locale text;
+alter table public.profiles add column if not exists identities jsonb default '[]'::jsonb;
+alter table public.profiles add column if not exists social_links jsonb default '{}'::jsonb;
 alter table public.jobs add column if not exists employer_id uuid references public.profiles (id) on delete set null;
 alter table public.applications add column if not exists delivered_to_employer boolean default false;
 

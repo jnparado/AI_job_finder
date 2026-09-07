@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="42%" r="55%">
+      <stop offset="0%" stop-color="#2a4a3c"/>
+      <stop offset="70%" stop-color="#13261f"/>
+      <stop offset="100%" stop-color="#0b1612"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="20" y1="12" x2="60" y2="68" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#e8d5a3"/>
+      <stop offset="45%" stop-color="#c6a15b"/>
+      <stop offset="100%" stop-color="#8d6d32"/>
+    </linearGradient>
+  </defs>
+  <rect width="80" height="80" rx="20" fill="#0f1f19"/>
+  <circle cx="40" cy="40" r="30" fill="url(#glow)"/>
+  <circle cx="40" cy="40" r="29" stroke="url(#gold)" stroke-width="1.15" opacity="0.95"/>
+  <circle cx="40" cy="40" r="25.5" stroke="url(#gold)" stroke-width="0.7" opacity="0.45"/>
+  <path
+    d="M25.5 58 L40 18 L54.5 58"
+    stroke="url(#gold)"
+    stroke-width="3.6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M31.4 43.2 H48.6"
+    stroke="url(#gold)"
+    stroke-width="3.1"
+    stroke-linecap="round"
+  />
+  <path
+    d="M40 11.2 L41.15 13.7 L43.8 14.15 L41.7 15.85 L42.3 18.5 L40 17.05 L37.7 18.5 L38.3 15.85 L36.2 14.15 L38.85 13.7 Z"
+    fill="url(#gold)"
+  />
+</svg>

@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /employer
+Disallow: /onboarding
+Sitemap: /sitemap.xml

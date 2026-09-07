@@ -2,6 +2,7 @@ import { Link, NavLink } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/ui/feedback'
+import { SocialFollow, SocialShare } from '@/components/social/SocialLinks'
 
 export function MarketingShell({
   audience,
@@ -11,40 +12,110 @@ export function MarketingShell({
   children: ReactNode
 }) {
   const registerTo = audience === 'employer' ? '/register?role=employer' : '/register'
+  const hiring = audience === 'employer'
+
   return (
-    <div className="min-h-svh bg-[var(--forest)] text-[var(--paper)]">
-      <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-5 sm:px-8">
-        <Link to="/">
-          <BrandMark light />
-        </Link>
-        <nav className="flex flex-wrap items-center gap-1 text-sm">
-          <NavLink
-            to="/candidates"
-            className={({ isActive }) =>
-              `rounded-full px-3 py-1.5 ${isActive ? 'bg-[#1f3d32] text-white' : 'text-[#d8d0c0] hover:bg-[#1f3d32]/70'}`
-            }
-          >
-            Candidates
-          </NavLink>
-          <NavLink
-            to="/employers"
-            className={({ isActive }) =>
-              `rounded-full px-3 py-1.5 ${isActive ? 'bg-[#1f3d32] text-white' : 'text-[#d8d0c0] hover:bg-[#1f3d32]/70'}`
-            }
-          >
-            Employers
-          </NavLink>
-        </nav>
-        <div className="flex gap-2">
-          <Button variant="outline" className="border-[#c9c0ae55] text-[var(--paper)]" asChild>
-            <Link to="/login">Sign in</Link>
-          </Button>
-          <Button variant="copper" asChild>
-            <Link to={registerTo}>{audience === 'employer' ? 'Post a job' : 'Get started'}</Link>
-          </Button>
+    <div className="marketing-shell min-h-svh text-[var(--paper)]">
+      <div className="h-0.5 bg-[#c6a15b]" />
+      <header className="sticky top-0 z-30 border-b border-[#c9c0ae14] bg-[var(--forest)]/80 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-8">
+          <Link to="/" className="shrink-0">
+            <BrandMark light />
+          </Link>
+
+          {audience ? (
+            <div className="flex items-center rounded-full border border-[#c9c0ae33] p-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em]">
+              <Link
+                to="/employers"
+                className={`rounded-full px-3 py-1.5 ${hiring ? 'bg-[var(--paper)] text-[var(--forest)]' : 'text-[#d8d0c0] hover:text-[var(--paper)]'}`}
+              >
+                Employers
+              </Link>
+              <Link
+                to="/candidates"
+                className={`rounded-full px-3 py-1.5 ${!hiring ? 'bg-[var(--paper)] text-[var(--forest)]' : 'text-[#d8d0c0] hover:text-[var(--paper)]'}`}
+              >
+                Candidates
+              </Link>
+            </div>
+          ) : (
+            <nav className="order-3 flex w-full items-center justify-center gap-1 text-sm sm:order-0 sm:w-auto">
+              <NavLink
+                to="/candidates"
+                className={({ isActive }) =>
+                  `rounded-full px-3 py-1.5 transition-colors ${isActive ? 'bg-[#1f3d32] text-white' : 'text-[#d8d0c0] hover:bg-[#1f3d32]/70'}`
+                }
+              >
+                Candidates
+              </NavLink>
+              <NavLink
+                to="/employers"
+                className={({ isActive }) =>
+                  `rounded-full px-3 py-1.5 transition-colors ${isActive ? 'bg-[#1f3d32] text-white' : 'text-[#d8d0c0] hover:bg-[#1f3d32]/70'}`
+                }
+              >
+                Employers
+              </NavLink>
+            </nav>
+          )}
+
+          {hiring ? (
+            <nav className="hidden items-center gap-5 text-sm text-[#d8d0c0] lg:flex">
+              <a href="#platform" className="hover:text-[var(--paper)]">
+                Platform
+              </a>
+              <a href="#help" className="hover:text-[var(--paper)]">
+                How we help
+              </a>
+              <a href="#serve" className="hover:text-[var(--paper)]">
+                Who we serve
+              </a>
+            </nav>
+          ) : null}
+
+          <div className="flex shrink-0 gap-2">
+            <Button variant="outline" className="border-[#c9c0ae55] text-[var(--paper)] hover:bg-[#1f3d32]" asChild>
+              <Link to="/login">{hiring ? 'Login' : 'Sign in'}</Link>
+            </Button>
+            <Button variant={hiring ? 'paper' : 'copper'} asChild>
+              <Link to={registerTo}>{hiring ? 'Signup' : audience === 'candidate' ? 'Get started' : 'Get started'}</Link>
+            </Button>
+          </div>
         </div>
       </header>
       {children}
+      <footer className="mt-8 border-t border-[#c9c0ae22] px-5 py-10 sm:px-8">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <BrandMark light />
+            <p className="mt-3 max-w-sm text-sm leading-relaxed text-[#c9c0ae]">
+              Authorized boards. Honest scores. Nothing sent until you approve.
+            </p>
+            <p className="mt-4 text-xs leading-relaxed text-[#8f8878]">
+              © {new Date().getFullYear()} Atelier, AI Job Assistant. All rights reserved.
+              An independent product — not affiliated with other companies named Atelier.
+            </p>
+          </div>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-[#d8d0c0]">
+              <Link to="/candidates" className="hover:text-[var(--paper)]">
+                Candidates
+              </Link>
+              <Link to="/employers" className="hover:text-[var(--paper)]">
+                Employers
+              </Link>
+              <Link to="/login" className="hover:text-[var(--paper)]">
+                Sign in
+              </Link>
+              <Link to="/register" className="hover:text-[var(--paper)]">
+                Get started
+              </Link>
+            </div>
+            <SocialFollow light />
+            <SocialShare light />
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
@@ -63,12 +134,15 @@ export function LandingVideo({
   caption: string
 }) {
   return (
-    <section className="border-t border-[#c9c0ae22] px-5 py-16 sm:px-8">
+    <section className="px-5 py-16 sm:px-8 sm:py-20">
       <div className="mx-auto max-w-6xl">
-        <p className="eyebrow text-center text-[#c6a15b]">{kicker}</p>
-        <h2 className="mt-3 text-center text-3xl text-[var(--paper)] sm:text-4xl">{title}</h2>
-        <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-relaxed text-[#c9c0ae]">{caption}</p>
-        <div className="mx-auto mt-8 overflow-hidden rounded-3xl border border-[#c9c0ae33] bg-[#0d1b16]">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="eyebrow text-[#c6a15b]">{kicker}</p>
+          <h2 className="mt-3 text-3xl text-[var(--paper)] sm:text-4xl">{title}</h2>
+          <p className="mt-3 text-sm leading-relaxed text-[#c9c0ae] sm:text-base">{caption}</p>
+        </div>
+        <div className="relative mx-auto mt-10 overflow-hidden rounded-[1.75rem] border border-[#c9c0ae28] bg-[#0d1b16] shadow-[0_30px_80px_-40px_rgba(0,0,0,0.7)]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-[#c6a15b66] to-transparent" />
           <video
             className="aspect-video w-full"
             controls
@@ -78,11 +152,6 @@ export function LandingVideo({
             src={src}
           />
         </div>
-        <p className="mt-4 text-center text-sm">
-          <a href={src} download className="text-[#c6a15b] underline-offset-4 hover:underline">
-            Download this ad
-          </a>
-        </p>
       </div>
     </section>
   )

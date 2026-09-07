@@ -54,11 +54,13 @@ function SidebarContent({
   onNavigate,
   noteCount,
   name,
+  avatarUrl,
   onSignOut,
 }: {
   onNavigate: (path: string) => void
   noteCount: number
   name: string
+  avatarUrl?: string
   onSignOut: () => void
 }) {
   return (
@@ -99,9 +101,13 @@ function SidebarContent({
           {noteCount} new matches waiting
         </div>
         <div className="flex items-center gap-3 px-1">
-          <span className="grid size-9 place-items-center rounded-full bg-[#1f3d32] font-serif text-sm text-[var(--paper)]">
-            {initials(name)}
-          </span>
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" className="size-9 rounded-full object-cover" />
+          ) : (
+            <span className="grid size-9 place-items-center rounded-full bg-[#1f3d32] font-serif text-sm text-[var(--paper)]">
+              {initials(name)}
+            </span>
+          )}
           <span className="truncate">{name}</span>
         </div>
         <Button variant="outline" className="w-full border-[#c9c0ae44] text-[#e7e1d4]" onClick={onSignOut}>
@@ -125,6 +131,7 @@ export function AppShell() {
   const sidebar = (
     <SidebarContent
       name={name}
+      avatarUrl={profile.avatarUrl}
       noteCount={notes.data?.length ?? 0}
       onNavigate={(path) => {
         setOpen(false)

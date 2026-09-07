@@ -7,6 +7,9 @@ import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/feedback'
 import { useAuth } from '@/lib/auth'
 import { supabaseConfigured } from '@/lib/supabase'
+import { SocialAuth } from '@/components/social/SocialAuth'
+import { SocialConnectForm } from '@/components/social/SocialConnectForm'
+import { SocialShare } from '@/components/social/SocialLinks'
 
 interface Settings {
   enabled: boolean
@@ -16,7 +19,7 @@ interface Settings {
 }
 
 export function SettingsPage() {
-  const { configured } = useAuth()
+  const { configured, profile } = useAuth()
   const qc = useQueryClient()
   const q = useQuery({
     queryKey: ['agent-settings'],
@@ -92,6 +95,34 @@ export function SettingsPage() {
           <li>API Supabase: {health.data?.supabase ? 'connected' : 'demo memory store'}</li>
           <li>OpenAI: {health.data?.openai ? 'router enabled (Luna / Terra / Sol)' : 'local engines until OPENAI_API_KEY is set'}</li>
         </ul>
+      </Card>
+      <Card>
+        <h2>Social profiles</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Paste your Google, Meta, LinkedIn, and other profile URLs. They save on your Atelier account and can be shared from Jobs.
+        </p>
+        {profile.identities?.length ? (
+          <ul className="mt-4 space-y-2 text-sm">
+            {profile.identities.map((i) => (
+              <li key={i.provider} className="flex items-center gap-3 rounded-xl border border-border px-3 py-2">
+                {i.avatarUrl ? (
+                  <img src={i.avatarUrl} alt="" className="size-8 rounded-full object-cover" />
+                ) : (
+                  <span className="grid size-8 place-items-center rounded-full bg-muted text-xs uppercase">
+                    {i.provider.slice(0, 1)}
+                  </span>
+                )}
+                <span className="capitalize">{i.provider}</span>
+                <span className="text-muted-foreground">{i.name || i.email}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <SocialConnectForm />
+        <SocialAuth />
+        <div className="mt-5">
+          <SocialShare />
+        </div>
       </Card>
       <Card>
         <h2>Job platforms</h2>

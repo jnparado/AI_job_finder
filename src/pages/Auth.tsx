@@ -8,10 +8,14 @@ import { BrandMark } from '@/components/ui/feedback'
 import { useAuth } from '@/lib/auth'
 import { supabase, supabaseConfigured } from '@/lib/supabase'
 import { emptyProfile } from '@shared/types'
+import { SocialAuth } from '@/components/social/SocialAuth'
+import { api } from '@/lib/api'
+import { identityFromUser } from '@/lib/identity'
+import type { CandidateProfile } from '@shared/types'
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { signInDemo, signInDemoEmployer, signInEmail, signInGoogle, configured, destinationFor, user, loading } = useAuth()
+  const { signInDemo, signInDemoEmployer, signInEmail, configured, destinationFor, user, loading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -49,15 +53,7 @@ export function LoginPage() {
           {busy ? 'Signing in…' : 'Sign in with email'}
         </Button>
       </form>
-      <Button
-        variant="outline"
-        className="mt-3 w-full"
-        type="button"
-        disabled={busy || !configured}
-        onClick={() => void signInGoogle().catch((err) => setError(err instanceof Error ? err.message : 'Google sign-in failed.'))}
-      >
-        Continue with Google
-      </Button>
+      <SocialAuth disabled={busy} />
       <Divider />
       <Button
         variant="ghost"
@@ -98,7 +94,7 @@ export function LoginPage() {
 export function RegisterPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { signInDemo, signInDemoEmployer, signUpEmail, signInGoogle, configured, destinationFor, user, loading } = useAuth()
+  const { signInDemo, signInDemoEmployer, signUpEmail, configured, destinationFor, user, loading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [companyName, setCompanyName] = useState('')
@@ -169,15 +165,7 @@ export function RegisterPage() {
           {busy ? 'Creating account…' : role === 'employer' ? 'Create employer account' : 'Register with email'}
         </Button>
       </form>
-      <Button
-        variant="outline"
-        className="mt-3 w-full"
-        type="button"
-        disabled={busy || !configured}
-        onClick={() => void signInGoogle().catch((err) => setError(err instanceof Error ? err.message : 'Google sign-in failed.'))}
-      >
-        Continue with Google
-      </Button>
+      <SocialAuth disabled={busy} />
       <Divider />
       <Button
         variant="ghost"
@@ -245,14 +233,27 @@ export function CallbackPage() {
           return
         }
       }
-      for (let i = 0; i < 8 && !cancelled; i += 1) {
+      for (let i = 0; i < 16 && !cancelled; i += 1) {
         const { data } = await supabase.auth.getSession()
         if (data.session) {
-          const profile = await refreshProfile().catch(() => emptyProfile())
+          let profile = emptyProfile()
+          try {
+            profile = data.session.user.identities?.length
+              ? await api<CandidateProfile>('/api/profile/sync-identity', {
+                  method: 'POST',
+                  body: JSON.stringify(identityFromUser(data.session.user)),
+                })
+              : await refreshProfile()
+          } catch {
+            profile = await refreshProfile().catch(() => ({
+              ...emptyProfile(),
+              email: data.session.user.email ?? '',
+            }))
+          }
           if (!cancelled) navigate(destinationFor(profile), { replace: true })
           return
         }
-        await wait(200)
+        await wait(250)
       }
       if (!cancelled) navigate('/login', { replace: true })
     }
