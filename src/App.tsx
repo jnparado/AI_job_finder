@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/lib/auth'
 import { AppShell } from '@/components/layout/AppShell'
 import { CandidateLandingPage, EmployerLandingPage, LandingPage } from '@/pages/Landing'
+import { AboutPage, PrivacyPage, SupportPage, TermsPage } from '@/pages/Legal'
 import { CallbackPage, LoginPage, RegisterPage, VerifyPage } from '@/pages/Auth'
 import { OnboardingPage } from '@/pages/Onboarding'
 import { DashboardPage } from '@/pages/Dashboard'
@@ -40,6 +41,10 @@ export default function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/candidates" element={<CandidateLandingPage />} />
             <Route path="/employers" element={<EmployerLandingPage />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/support" element={<SupportPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/verify" element={<VerifyPage />} />

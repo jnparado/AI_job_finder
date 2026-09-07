@@ -107,30 +107,52 @@ export function LandingPage() {
 export function CandidateLandingPage() {
   return (
     <MarketingShell audience="candidate">
-      <section className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1.1fr_0.9fr] lg:py-24">
+      <section id="platform" className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14 lg:py-20">
         <div>
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-[#c6a15b]">
             Atelier · Applicants
           </p>
-          <span className="mt-5 block h-px w-12 bg-[#c6a15b]" />
-          <h1 className="mt-6 max-w-[13ch] text-5xl leading-[1.02] sm:text-6xl">
-            Find the jobs that actually fit you.
+          <h1 className="mt-4 text-5xl leading-[1.02] sm:text-6xl lg:text-[4.25rem]">
+            Find the jobs
+            <br />
+            that actually
+            <br />
+            fit you.
           </h1>
           <p className="mt-4 font-serif text-xl text-[#d8d0c0]">Match. Prepare. Approve. Apply.</p>
           <p className="mt-5 max-w-xl text-base leading-relaxed text-[#c9c0ae] sm:text-lg">
-            Atelier searches authorized listings, scores every role, and prepares the application. You review. You approve. Then it tracks what happens next.
+            Atelier searches authorized listings, scores every role against your resume, and prepares the packet. You review. You approve. Then it tracks what happens next.
+          </p>
+          <p className="mt-5 flex items-center gap-2.5 text-sm text-[var(--paper)]">
+            <span className="size-2 shrink-0 rounded-full bg-[#c6a15b]" />
+            Nothing is sent until you say so
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Button variant="copper" size="lg" asChild>
+            <Button variant="copper" size="lg" className="h-12 px-7 text-[0.8rem] font-semibold uppercase tracking-[0.1em]" asChild>
               <Link to="/register">Get started free</Link>
             </Button>
-            <Button variant="outline" size="lg" className="border-[#c9c0ae55] text-[var(--paper)] hover:bg-[#1f3d32]" asChild>
+            <Button
+              variant="outline"
+              size="lg"
+              className="h-12 border-[#c9c0ae66] px-7 text-[0.8rem] font-semibold uppercase tracking-[0.1em] text-[var(--paper)] hover:bg-[#1f3d32]"
+              asChild
+            >
               <Link to="/login">I already have an account</Link>
             </Button>
           </div>
         </div>
-        <HeroMatchCard />
+        <div className="relative">
+          <img
+            src="/brand/candidate/candidate-hero.png"
+            alt="Applicant reviewing matched roles by a window"
+            className="aspect-[3/4] w-full rounded-[1.75rem] object-cover shadow-[0_40px_80px_-36px_rgba(0,0,0,0.7)] sm:aspect-[4/5] lg:aspect-[3/4]"
+          />
+          <div className="mt-4 lg:absolute lg:inset-x-6 lg:bottom-6 lg:mt-0">
+            <HeroMatchCard compact />
+          </div>
+        </div>
       </section>
+
       <StepPanel
         steps={[
           ['Discover', 'Authorized boards and Atelier employer posts'],
@@ -140,8 +162,61 @@ export function CandidateLandingPage() {
           ['Track', 'Follow-ups and interviews in one place'],
         ]}
       />
+
+      <section id="help" className="px-5 py-16 sm:px-8 sm:py-20">
+        <div className="mx-auto max-w-6xl">
+          <p className="eyebrow text-[#c6a15b]">How we help</p>
+          <h2 className="mt-3 max-w-[16ch] text-3xl sm:text-5xl">Match. Prepare. Apply with approval.</h2>
+          <div className="mt-10 grid gap-5 md:grid-cols-3">
+            <HelpShot
+              src="/brand/candidate/candidate-match.png"
+              title="Honest scores"
+              body="Every listing is weighed against your real skills, title, salary, and location — not invented keywords."
+            />
+            <HelpShot
+              src="/brand/candidate/candidate-prepare.png"
+              title="A packet you can stand behind"
+              body="Cover letter and answers drafted from your profile. You edit. You approve. Then it goes."
+            />
+            <HelpShot
+              src="/brand/candidate/candidate-track.png"
+              title="Follow what happens next"
+              body="Interviews, follow-ups, and status live in one place after you send."
+            />
+          </div>
+        </div>
+      </section>
+
+      <section id="serve" className="px-5 pb-16 sm:px-8">
+        <div className="mx-auto grid max-w-6xl items-center gap-10 overflow-hidden rounded-[2rem] border border-[#c9c0ae22] bg-[#0d1b16]/70 lg:grid-cols-2">
+          <img
+            src="/brand/candidate/candidate-life.png"
+            alt="People working quietly in a sunlit loft"
+            className="h-full min-h-[280px] w-full object-cover lg:min-h-[420px]"
+          />
+          <div className="p-8 sm:p-12">
+            <p className="eyebrow text-[#c6a15b]">Who we serve</p>
+            <h2 className="mt-3 text-3xl sm:text-4xl">People looking for a role that fits</h2>
+            <p className="mt-4 text-sm leading-relaxed text-[#c9c0ae] sm:text-base">
+              Upload a resume, search authorized boards and Atelier employer posts, and apply only when the packet is ready. No scraping. No auto-apply.
+            </p>
+            <ul className="mt-6 space-y-2 text-sm text-[var(--paper)]">
+              {['Specialists changing teams', 'People returning to the market', 'Applicants who want a cleaner search'].map((item) => (
+                <li key={item} className="flex items-center gap-2.5">
+                  <span className="size-2 shrink-0 rounded-full bg-[#c6a15b]" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+            <Button variant="copper" className="mt-8" asChild>
+              <Link to="/register">Create a free account</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
       <LandingVideo
-        kicker="Candidate ad"
+        kicker="Candidate film"
         title="Built for applicants"
         caption="Match, prepare, approve, then apply — including packets sent to employers on Atelier."
         src="/ads/atelier-ad-candidate.mp4"
@@ -380,25 +455,33 @@ function InviteClose({ audience }: { audience?: 'candidate' | 'employer' }) {
   )
 }
 
-function HeroMatchCard() {
+function HeroMatchCard({ compact }: { compact?: boolean }) {
   return (
     <div className="relative">
-      <div className="absolute -inset-6 rounded-[2rem] bg-[#c6a15b14] blur-2xl" />
-      <div className="relative rounded-[1.75rem] border border-[#e7e1d4] bg-[#f7f4ee] p-6 text-[#161c19] shadow-[0_28px_70px_-30px_rgba(0,0,0,0.65)] sm:p-7">
+      {compact ? null : <div className="absolute -inset-6 rounded-[2rem] bg-[#c6a15b14] blur-2xl" />}
+      <div
+        className={`relative border border-[#e7e1d4] bg-[#f7f4ee] text-[#161c19] shadow-[0_28px_70px_-30px_rgba(0,0,0,0.65)] ${
+          compact ? 'rounded-[1.35rem] p-4 sm:p-5' : 'rounded-[1.75rem] p-6 sm:p-7'
+        }`}
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#1c5c3a]">95 match</p>
-            <h3 className="mt-2 font-serif text-3xl leading-tight">Full Stack Engineer</h3>
+            <h3 className={`mt-2 font-serif leading-tight ${compact ? 'text-2xl' : 'text-3xl'}`}>Full Stack Engineer</h3>
             <p className="mt-1 flex items-center gap-1.5 text-sm text-[#5c635f]">
               <Briefcase className="size-3.5" />
               Atelier Labs
             </p>
           </div>
-          <span className="grid size-14 place-items-center rounded-2xl bg-[#e6f3ea] font-serif text-2xl text-[#1c5c3a]">
+          <span
+            className={`grid place-items-center rounded-2xl bg-[#e6f3ea] font-serif text-[#1c5c3a] ${
+              compact ? 'size-12 text-xl' : 'size-14 text-2xl'
+            }`}
+          >
             95
           </span>
         </div>
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className={`flex flex-wrap gap-2 ${compact ? 'mt-3' : 'mt-5'}`}>
           <span className="inline-flex items-center gap-1 rounded-full bg-[#ece9e2] px-2.5 py-1 text-xs">
             <MapPin className="size-3" />
             Remote
@@ -408,10 +491,16 @@ function HeroMatchCard() {
             Excellent match
           </span>
         </div>
-        <p className="mt-5 text-sm leading-relaxed text-[#3d4541]">
-          Scored against your real profile — Next.js, Node, and Postgres. No invented skills.
-        </p>
-        <div className="mt-6 flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--copper)] text-sm font-medium text-[var(--paper)]">
+        {compact ? null : (
+          <p className="mt-5 text-sm leading-relaxed text-[#3d4541]">
+            Scored against your real profile — Next.js, Node, and Postgres. No invented skills.
+          </p>
+        )}
+        <div
+          className={`flex items-center justify-center gap-2 rounded-full bg-[var(--copper)] text-sm font-medium text-[var(--paper)] ${
+            compact ? 'mt-4 h-10' : 'mt-6 h-11'
+          }`}
+        >
           Apply
           <ArrowUpRight className="size-4" />
         </div>

@@ -1,8 +1,8 @@
 import { Mail, MessageCircle, Send, Share2 } from 'lucide-react'
-import type { SVGProps } from 'react'
+import type { ReactElement, SVGProps } from 'react'
 import { publicAppUrl, shareNative, shareTargets, socialProfiles } from '@/lib/social'
 
-type Icon = (props: { className?: string }) => JSX.Element
+type Icon = (props: { className?: string }) => ReactElement
 
 function Brand({ d, className }: { d: string; className?: string }) {
   return (
@@ -37,7 +37,6 @@ function XMark({ className }: SVGProps<SVGSVGElement>) {
 
 const ICONS: Record<string, Icon> = {
   facebook: Facebook,
-  messenger: Facebook,
   instagram: Instagram,
   linkedin: Linkedin,
   youtube: Youtube,
@@ -52,15 +51,20 @@ const ICONS: Record<string, Icon> = {
   tiktok: Share2 as unknown as Icon,
 }
 
-export function SocialFollow({ light = false }: { light?: boolean }) {
-  const profiles = socialProfiles()
+export function SocialFollow({
+  light = false,
+  omit = [],
+}: {
+  light?: boolean
+  omit?: string[]
+}) {
+  const hidden = new Set(omit)
+  const profiles = socialProfiles().filter((p) => !hidden.has(p.id))
   const tone = light
     ? 'border-[#c9c0ae33] text-[#d8d0c0] hover:border-[#c6a15b] hover:text-[var(--paper)]'
     : 'border-border text-muted-foreground hover:border-[var(--forest)] hover:text-foreground'
 
-  if (!profiles.length) {
-    return <SocialShare light={light} label="Share Atelier" />
-  }
+  if (!profiles.length) return null
 
   return (
     <div className="flex flex-wrap items-center gap-2">

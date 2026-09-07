@@ -2,7 +2,7 @@ import { Link, NavLink } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/ui/feedback'
-import { SocialFollow, SocialShare } from '@/components/social/SocialLinks'
+import { SocialFollow } from '@/components/social/SocialLinks'
 
 export function MarketingShell({
   audience,
@@ -27,13 +27,21 @@ export function MarketingShell({
             <div className="flex items-center rounded-full border border-[#c9c0ae33] p-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em]">
               <Link
                 to="/employers"
-                className={`rounded-full px-3 py-1.5 ${hiring ? 'bg-[var(--paper)] text-[var(--forest)]' : 'text-[#d8d0c0] hover:text-[var(--paper)]'}`}
+                className={`rounded-full px-3 py-1.5 ${
+                  hiring
+                    ? 'bg-[var(--paper)] !text-[#13261f]'
+                    : '!text-[#d8d0c0] hover:!text-[var(--paper)]'
+                }`}
               >
                 Employers
               </Link>
               <Link
                 to="/candidates"
-                className={`rounded-full px-3 py-1.5 ${!hiring ? 'bg-[var(--paper)] text-[var(--forest)]' : 'text-[#d8d0c0] hover:text-[var(--paper)]'}`}
+                className={`rounded-full px-3 py-1.5 ${
+                  !hiring
+                    ? 'bg-[var(--paper)] !text-[#13261f]'
+                    : '!text-[#d8d0c0] hover:!text-[var(--paper)]'
+                }`}
               >
                 Candidates
               </Link>
@@ -59,7 +67,7 @@ export function MarketingShell({
             </nav>
           )}
 
-          {hiring ? (
+          {audience ? (
             <nav className="hidden items-center gap-5 text-sm text-[#d8d0c0] lg:flex">
               <a href="#platform" className="hover:text-[var(--paper)]">
                 Platform
@@ -84,39 +92,118 @@ export function MarketingShell({
         </div>
       </header>
       {children}
-      <footer className="mt-8 border-t border-[#c9c0ae22] px-5 py-10 sm:px-8">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <BrandMark light />
-            <p className="mt-3 max-w-sm text-sm leading-relaxed text-[#c9c0ae]">
-              Authorized boards. Honest scores. Nothing sent until you approve.
+      <MarketingFooter />
+    </div>
+  )
+}
+
+const FOOTER_COLS: { title: string; links: { to: string; label: string }[] }[] = [
+  {
+    title: 'Product',
+    links: [
+      { to: '/candidates', label: 'Candidates' },
+      { to: '/employers', label: 'Employers' },
+      { to: '/register', label: 'Get started' },
+      { to: '/login', label: 'Sign in' },
+    ],
+  },
+  {
+    title: 'Applicants',
+    links: [
+      { to: '/register', label: 'Find a job' },
+      { to: '/candidates#help', label: 'How we help' },
+      { to: '/candidates#serve', label: 'Who we serve' },
+      { to: '/login', label: 'I have an account' },
+    ],
+  },
+  {
+    title: 'Employers',
+    links: [
+      { to: '/register?role=employer', label: 'Post a role' },
+      { to: '/employers#help', label: 'How we help' },
+      { to: '/employers#serve', label: 'Who we serve' },
+      { to: '/register?role=employer', label: 'Review packets' },
+    ],
+  },
+  {
+    title: 'Company',
+    links: [
+      { to: '/about', label: 'About' },
+      { to: '/support', label: 'Support' },
+      { to: '/', label: 'Home' },
+    ],
+  },
+  {
+    title: 'Resources',
+    links: [
+      { to: '/support', label: 'Help Center' },
+      { to: '/privacy', label: 'Privacy Policy' },
+      { to: '/terms', label: 'Terms of Use' },
+    ],
+  },
+]
+
+function MarketingFooter() {
+  return (
+    <footer className="mt-8 bg-[#0a100e] px-5 pt-14 pb-8 sm:px-8 sm:pt-16">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-col gap-12 lg:flex-row lg:items-start lg:justify-between lg:gap-16">
+          <div className="max-w-xs shrink-0">
+            <Link to="/" className="inline-block">
+              <BrandMark light />
+            </Link>
+            <p className="mt-4 text-sm leading-relaxed text-[#9a9386]">
+              The workshop for jobs that fit. Authorized boards. Honest scores. Nothing sent until you approve.
             </p>
-            <p className="mt-4 text-xs leading-relaxed text-[#8f8878]">
+            <div className="mt-6">
+              <SocialFollow light omit={['facebook']} />
+            </div>
+          </div>
+
+          <nav aria-label="Footer" className="grid flex-1 grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 lg:grid-cols-5">
+            {FOOTER_COLS.map((col) => (
+              <div key={col.title}>
+                <p className="text-sm font-semibold text-[var(--paper)]">{col.title}</p>
+                <ul className="mt-4 space-y-2.5">
+                  {col.links.map((link) => (
+                    <li key={`${col.title}-${link.label}`}>
+                      <Link
+                        to={link.to}
+                        className="text-sm text-[#9a9386] transition-colors hover:text-[var(--paper)]"
+                      >
+                        {link.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </nav>
+        </div>
+
+        <div className="mt-14 flex flex-col gap-4 border-t border-[#c9c0ae22] pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-[#9a9386]">
               © {new Date().getFullYear()} Atelier, AI Job Assistant. All rights reserved.
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-[#6f6a60]">
               An independent product — not affiliated with other companies named Atelier.
             </p>
           </div>
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-[#d8d0c0]">
-              <Link to="/candidates" className="hover:text-[var(--paper)]">
-                Candidates
-              </Link>
-              <Link to="/employers" className="hover:text-[var(--paper)]">
-                Employers
-              </Link>
-              <Link to="/login" className="hover:text-[var(--paper)]">
-                Sign in
-              </Link>
-              <Link to="/register" className="hover:text-[var(--paper)]">
-                Get started
-              </Link>
-            </div>
-            <SocialFollow light />
-            <SocialShare light />
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-[#9a9386]">
+            <Link to="/privacy" className="hover:text-[var(--paper)]">
+              Privacy Policy
+            </Link>
+            <Link to="/terms" className="hover:text-[var(--paper)]">
+              Terms of Use
+            </Link>
+            <Link to="/support" className="hover:text-[var(--paper)]">
+              Support
+            </Link>
           </div>
         </div>
-      </footer>
-    </div>
+      </div>
+    </footer>
   )
 }
 

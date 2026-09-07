@@ -68,7 +68,6 @@ export function shareTargets(url: string, text: string) {
   const t = encodeURIComponent(text)
   return [
     { id: 'facebook', label: 'Facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${u}` },
-    { id: 'messenger', label: 'Messenger', href: `https://www.facebook.com/dialog/send?link=${u}&redirect_uri=${u}` },
     { id: 'instagram', label: 'Instagram', href: envUrl('VITE_SOCIAL_INSTAGRAM') || `https://www.instagram.com/` },
     { id: 'threads', label: 'Threads', href: `https://www.threads.net/intent/post?text=${t}%20${u}` },
     { id: 'linkedin', label: 'LinkedIn', href: `https://www.linkedin.com/sharing/share-offsite/?url=${u}` },
