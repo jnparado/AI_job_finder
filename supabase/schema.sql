@@ -1,0 +1,299 @@
+-- AI Job Assistant — run this in the Supabase SQL editor (or via CLI).
+-- Dashboard → SQL → New query → paste → Run.
+-- Then: Authentication → Providers → enable Email and Google.
+-- Site URL: http://localhost:5173
+-- Redirect URLs: http://localhost:5173/auth/callback
+
+create extension if not exists pgcrypto;
+create extension if not exists vector;
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  first_name text,
+  last_name text,
+  email text,
+  country text,
+  city text,
+  headline text,
+  current_title text,
+  desired_title text,
+  years_experience integer default 0,
+  industry text,
+  career_level text,
+  work_modes text[] default '{}',
+  employment_types text[] default '{}',
+  salary_min numeric,
+  salary_desired numeric,
+  currency text default 'USD',
+  locations text[] default '{}',
+  remote_worldwide boolean default false,
+  career_goals text,
+  onboarding_completed boolean default false,
+  resume_text text,
+  parsed_profile jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.user_skills (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  name text not null,
+  kind text not null default 'core',
+  unique (user_id, name, kind)
+);
+
+create table if not exists public.experiences (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  title text,
+  company text,
+  start_date text,
+  end_date text,
+  is_current boolean default false,
+  bullets text[] default '{}'
+);
+
+create table if not exists public.education (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  school text,
+  degree text,
+  field text,
+  year text
+);
+
+create table if not exists public.resumes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  file_path text,
+  file_name text,
+  mime_type text,
+  extracted_text text,
+  parsed jsonb,
+  is_primary boolean default true,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.job_sources (
+  id text primary key,
+  name text not null,
+  kind text not null,
+  authorized boolean default true
+);
+
+create table if not exists public.jobs (
+  id text primary key,
+  source text references public.job_sources (id),
+  source_job_id text,
+  canonical_key text,
+  title text not null,
+  company text not null,
+  description text,
+  location text,
+  remote boolean default false,
+  employment_type text,
+  salary_min numeric,
+  salary_max numeric,
+  currency text default 'USD',
+  skills text[] default '{}',
+  required_skills text[] default '{}',
+  preferred_skills text[] default '{}',
+  required_experience integer,
+  seniority text,
+  application_url text,
+  apply_channel text,
+  posted_at date,
+  analysis jsonb,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.job_listings (
+  id uuid primary key default gen_random_uuid(),
+  job_id text not null references public.jobs (id) on delete cascade,
+  source text not null,
+  source_url text,
+  source_job_id text
+);
+
+create table if not exists public.job_matches (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  job_id text not null references public.jobs (id) on delete cascade,
+  overall_score integer not null,
+  skills_score integer,
+  experience_score integer,
+  title_score integer,
+  salary_score integer,
+  location_score integer,
+  employment_score integer,
+  seniority_score integer,
+  career_score integer,
+  matched_skills text[] default '{}',
+  missing_skills text[] default '{}',
+  ai_summary text,
+  ai_recommendation text,
+  category text,
+  status text default 'new',
+  created_at timestamptz default now(),
+  unique (user_id, job_id)
+);
+
+create table if not exists public.applications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  job_id text not null references public.jobs (id),
+  match_id uuid references public.job_matches (id),
+  status text not null default 'draft',
+  channel text,
+  authorized boolean default false,
+  tailored_resume text,
+  cover_letter text,
+  recruiter_message text,
+  submitted_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.application_answers (
+  id uuid primary key default gen_random_uuid(),
+  application_id uuid not null references public.applications (id) on delete cascade,
+  question text not null,
+  answer text,
+  approved boolean default false
+);
+
+create table if not exists public.application_events (
+  id uuid primary key default gen_random_uuid(),
+  application_id uuid not null references public.applications (id) on delete cascade,
+  at timestamptz default now(),
+  label text not null,
+  detail text
+);
+
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  application_id uuid references public.applications (id) on delete cascade,
+  kind text not null,
+  to_name text,
+  body text,
+  approved boolean default false,
+  sent boolean default false,
+  sent_at timestamptz,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  title text not null,
+  body text,
+  href text,
+  read boolean default false,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.agent_settings (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  enabled boolean default false,
+  run_hour integer default 8,
+  min_match integer default 80,
+  max_jobs integer default 20
+);
+
+create table if not exists public.ai_agent_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles (id) on delete cascade,
+  agent text not null,
+  status text not null,
+  stats jsonb,
+  created_at timestamptz default now()
+);
+
+insert into public.job_sources (id, name, kind, authorized) values
+  ('linkedin', 'LinkedIn', 'ats', true),
+  ('indeed', 'Indeed', 'ats', true),
+  ('greenhouse', 'Greenhouse / career page', 'career_page', true),
+  ('lever', 'Lever / career page', 'career_page', true),
+  ('career_page', 'Employer career page', 'career_page', true),
+  ('feed', 'Permitted job feed', 'feed', true),
+  ('api', 'Licensed job API', 'api', true)
+on conflict (id) do nothing;
+
+create or replace function public.set_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_updated on public.profiles;
+create trigger profiles_updated before update on public.profiles
+for each row execute function public.set_updated_at();
+
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles (id, email)
+  values (new.id, new.email)
+  on conflict (id) do nothing;
+  insert into public.agent_settings (user_id)
+  values (new.id)
+  on conflict (user_id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+alter table public.profiles enable row level security;
+alter table public.user_skills enable row level security;
+alter table public.experiences enable row level security;
+alter table public.education enable row level security;
+alter table public.resumes enable row level security;
+alter table public.jobs enable row level security;
+alter table public.job_sources enable row level security;
+alter table public.job_listings enable row level security;
+alter table public.job_matches enable row level security;
+alter table public.applications enable row level security;
+alter table public.application_answers enable row level security;
+alter table public.application_events enable row level security;
+alter table public.messages enable row level security;
+alter table public.notifications enable row level security;
+alter table public.agent_settings enable row level security;
+alter table public.ai_agent_runs enable row level security;
+
+create policy "own profile" on public.profiles for all using (auth.uid() = id) with check (auth.uid() = id);
+create policy "own skills" on public.user_skills for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own experience" on public.experiences for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own education" on public.education for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own resumes" on public.resumes for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "read jobs" on public.jobs for select using (auth.role() = 'authenticated');
+create policy "read sources" on public.job_sources for select using (auth.role() = 'authenticated');
+create policy "read listings" on public.job_listings for select using (auth.role() = 'authenticated');
+create policy "own matches" on public.job_matches for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own applications" on public.applications for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own answers" on public.application_answers for all
+  using (exists (select 1 from public.applications a where a.id = application_id and a.user_id = auth.uid()))
+  with check (exists (select 1 from public.applications a where a.id = application_id and a.user_id = auth.uid()));
+create policy "own events" on public.application_events for all
+  using (exists (select 1 from public.applications a where a.id = application_id and a.user_id = auth.uid()))
+  with check (exists (select 1 from public.applications a where a.id = application_id and a.user_id = auth.uid()));
+create policy "own messages" on public.messages for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own notifications" on public.notifications for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own agent settings" on public.agent_settings for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own agent runs" on public.ai_agent_runs for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+insert into storage.buckets (id, name, public)
+values ('resumes', 'resumes', false)
+on conflict (id) do nothing;
+
+create policy "own resume files"
+on storage.objects for all
+using (bucket_id = 'resumes' and auth.uid()::text = (storage.foldername(name))[1])
+with check (bucket_id = 'resumes' and auth.uid()::text = (storage.foldername(name))[1]);
