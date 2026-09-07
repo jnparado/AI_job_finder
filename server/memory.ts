@@ -1,7 +1,8 @@
-import type { CandidateProfile, Job, JobMatch, PreparedPacket } from '../shared/types'
+import type { CandidateProfile, DiscoverySummary, Job, JobMatch, PreparedPacket } from '../shared/types'
 import { emptyProfile } from '../shared/types'
 
 export const DEMO_USER = '00000000-0000-0000-0000-000000000001'
+export const DEMO_EMPLOYER = '00000000-0000-0000-0000-000000000002'
 
 export interface StoredApplication {
   id: string
@@ -16,6 +17,10 @@ export interface StoredApplication {
   events: { at: string; label: string; detail: string }[]
   followUps: { dayOffset: number; title: string; body: string; sent: boolean }[]
   recruiterSent: boolean
+  deliveredToEmployer?: boolean
+  candidateName?: string
+  candidateEmail?: string
+  candidateHeadline?: string
 }
 
 export interface StoredNotification {
@@ -41,6 +46,7 @@ const applications = new Map<string, StoredApplication[]>()
 const notifications = new Map<string, StoredNotification[]>()
 const settings = new Map<string, AgentSettings>()
 const jobs = new Map<string, Job>()
+const discovery = new Map<string, DiscoverySummary>()
 
 export const memory = {
   getProfile(userId: string) {
@@ -75,6 +81,22 @@ export const memory = {
   getApplication(userId: string, id: string) {
     return (applications.get(userId) ?? []).find((a) => a.id === id)
   },
+  getApplicationById(id: string) {
+    for (const list of applications.values()) {
+      const found = list.find((a) => a.id === id)
+      if (found) return found
+    }
+    return undefined
+  },
+  allApplications() {
+    return [...applications.values()].flat()
+  },
+  jobsForEmployer(employerId: string) {
+    return [...jobs.values()].filter((job) => job.employerId === employerId)
+  },
+  atelierJobs() {
+    return [...jobs.values()].filter((job) => job.source === 'atelier' || Boolean(job.employerId))
+  },
   addNotification(n: StoredNotification) {
     const list = notifications.get(n.userId) ?? []
     notifications.set(n.userId, [n, ...list])
@@ -95,5 +117,11 @@ export const memory = {
   setSettings(userId: string, next: AgentSettings) {
     settings.set(userId, next)
     return next
+  },
+  setDiscovery(userId: string, summary: DiscoverySummary) {
+    discovery.set(userId, summary)
+  },
+  getDiscovery(userId: string) {
+    return discovery.get(userId) ?? null
   },
 }

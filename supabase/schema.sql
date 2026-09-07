@@ -297,3 +297,33 @@ create policy "own resume files"
 on storage.objects for all
 using (bucket_id = 'resumes' and auth.uid()::text = (storage.foldername(name))[1])
 with check (bucket_id = 'resumes' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- Employer accounts: post jobs on Atelier; approved candidate packets land in their inbox.
+alter table public.profiles add column if not exists role text default 'candidate';
+alter table public.profiles add column if not exists company_name text;
+alter table public.profiles add column if not exists company_website text;
+alter table public.jobs add column if not exists employer_id uuid references public.profiles (id) on delete set null;
+alter table public.applications add column if not exists delivered_to_employer boolean default false;
+
+insert into public.job_sources (id, name, kind, allowed)
+values ('atelier', 'Atelier employers', 'direct', true)
+on conflict (id) do nothing;
+
+drop policy if exists "employers post jobs" on public.jobs;
+create policy "employers post jobs" on public.jobs for insert
+  with check (employer_id = auth.uid());
+drop policy if exists "employers update own jobs" on public.jobs;
+create policy "employers update own jobs" on public.jobs for update
+  using (employer_id = auth.uid()) with check (employer_id = auth.uid());
+drop policy if exists "employers read inbox" on public.applications;
+create policy "employers read inbox" on public.applications for select
+  using (exists (
+    select 1 from public.jobs j
+    where j.id = job_id and j.employer_id = auth.uid()
+  ));
+drop policy if exists "employers update inbox" on public.applications;
+create policy "employers update inbox" on public.applications for update
+  using (exists (
+    select 1 from public.jobs j
+    where j.id = job_id and j.employer_id = auth.uid()
+  ));

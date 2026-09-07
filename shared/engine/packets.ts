@@ -1,5 +1,6 @@
 import type {
   CandidateProfile,
+  CareerInsights,
   FollowUpDraft,
   JobMatch,
   PreparedPacket,
@@ -135,7 +136,7 @@ export function interviewQuestions(match: JobMatch, profile: CandidateProfile): 
 
 export function careerInsights(
   applications: { status: string; title: string }[],
-): { headline: string; rates: { label: string; rate: number }[]; advice: string[] } {
+): CareerInsights {
   const buckets = [
     { label: 'Frontend roles', re: /frontend|react engineer|web engineer/i },
     { label: 'Full Stack roles', re: /full stack/i },

@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/feedback'
 import { useAuth } from '@/lib/auth'
 import { supabaseConfigured } from '@/lib/supabase'
+import { RouterDiagram } from '@/components/ai/RouterDiagram'
 
 interface Settings {
   enabled: boolean
@@ -23,7 +24,13 @@ export function SettingsPage() {
   })
   const health = useQuery({
     queryKey: ['health'],
-    queryFn: () => api<{ supabase: boolean; openai: boolean }>('/api/health'),
+    queryFn: () =>
+      api<{
+        supabase: boolean
+        openai: boolean
+        discovery?: Record<string, boolean>
+        router?: { configured: boolean; luna: string; terra: string; sol: string; traces?: { task: string; lane: string; ok: boolean; ms: number }[] }
+      }>('/api/health'),
   })
   const save = useMutation({
     mutationFn: (body: Settings) =>
@@ -74,7 +81,38 @@ export function SettingsPage() {
         <ul className="mt-3 space-y-1 text-sm">
           <li>Frontend Supabase: {configured || supabaseConfigured ? 'configured' : 'missing .env'}</li>
           <li>API Supabase: {health.data?.supabase ? 'connected' : 'demo memory store'}</li>
-          <li>OpenAI: {health.data?.openai ? 'enabled for resume parse' : 'local parser fallback'}</li>
+          <li>OpenAI: {health.data?.openai ? 'router enabled (Luna / Terra / Sol)' : 'local engines until OPENAI_API_KEY is set'}</li>
+        </ul>
+      </Card>
+      <Card>
+        <h2>AI router</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {health.data?.router?.configured
+            ? `Luna ${health.data.router.luna} · Terra ${health.data.router.terra} · Sol ${health.data.router.sol}`
+            : 'Add OPENAI_API_KEY to .env. Until then, parsing, matching, and writing stay on the local engines.'}
+        </p>
+        <div className="mt-5">
+          <RouterDiagram />
+        </div>
+        {health.data?.router?.traces?.length ? (
+          <ul className="mt-4 space-y-1 text-xs text-muted-foreground">
+            {health.data.router.traces.slice(0, 6).map((t, i) => (
+              <li key={`${t.task}-${i}`}>
+                {t.lane} · {t.task} · {t.ok ? `${t.ms}ms` : 'fallback'}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </Card>
+      <Card>
+        <h2>Job platforms</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Remotive, Remote OK, Arbeitnow, The Muse, Himalayas, Jobicy, We Work Remotely, and Greenhouse career pages are queried automatically. LinkedIn, Indeed, and Glassdoor need a RapidAPI JSearch key. Upwork has no public jobs API — search opens on Upwork itself.
+        </p>
+        <ul className="mt-3 space-y-1 text-sm">
+          <li>LinkedIn / Indeed ingest: {health.data?.discovery?.jsearch ? 'JSearch key present' : 'add RAPIDAPI_KEY to .env'}</li>
+          <li>Adzuna: {health.data?.discovery?.adzuna ? 'connected' : 'optional ADZUNA_APP_ID / ADZUNA_APP_KEY'}</li>
+          <li>USAJOBS: {health.data?.discovery?.usajobs ? 'connected' : 'optional USAJOBS_EMAIL'}</li>
         </ul>
       </Card>
     </div>
@@ -82,35 +120,51 @@ export function SettingsPage() {
 }
 
 export function InterviewPage() {
-  const jobs = useQuery({
-    queryKey: ['jobs'],
-    queryFn: () => api<{ job: { title: string; company: string }; matchedSkills: string[] }[]>('/api/jobs'),
+  const q = useQuery({
+    queryKey: ['interview'],
+    queryFn: () =>
+      api<{
+        job: { title: string; company: string }
+        matchedSkills: string[]
+        questions: string[]
+        coaching: string[]
+        aiLane?: string
+      }>('/api/interview'),
   })
-  const top = jobs.data?.[0]
+  const data = q.data
   return (
     <div className="space-y-6">
       <PageHeader
         kicker="Practice"
         title="Interview agent"
-        description="Questions are generated from your top match. Use them as a rehearsal, not a script."
+        description="GPT-5.6 Sol coaches you against your top match. Use the answers as a rehearsal, not a script."
       />
       <Card>
-        <p className="text-sm text-muted-foreground">
-          Practice against your highest current match. Open an application for role-specific questions.
-        </p>
-        {top ? (
+        {q.isLoading ? (
+          <p className="text-sm text-muted-foreground">Preparing questions…</p>
+        ) : data ? (
           <>
-            <h2 className="mt-4">{top.job.title}</h2>
-            <p>{top.job.company}</p>
+            <p className="eyebrow">{data.aiLane === 'sol' ? 'GPT-5.6 Sol' : 'Local interview engine'}</p>
+            <h2 className="mt-2">{data.job.title}</h2>
+            <p>{data.job.company}</p>
             <ol className="mt-4 list-decimal space-y-2 pl-5">
-              <li>Explain your experience with {top.matchedSkills[0] ?? 'your core stack'}.</li>
-              <li>How would you design a scalable Node.js API?</li>
-              <li>How have you used PostgreSQL?</li>
-              <li>Tell us about an AI agent you built — only if it is on your resume.</li>
+              {data.questions.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
             </ol>
+            {data.coaching.length ? (
+              <>
+                <h2 className="mt-6">How to answer</h2>
+                <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">
+                  {data.coaching.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
           </>
         ) : (
-          <p className="mt-3">Run the job agent first.</p>
+          <p className="text-sm text-muted-foreground">Run the job agent first, then come back to rehearse.</p>
         )}
       </Card>
     </div>
@@ -121,7 +175,13 @@ export function CareerPage() {
   const q = useQuery({
     queryKey: ['career'],
     queryFn: () =>
-      api<{ headline: string; rates: { label: string; rate: number }[]; advice: string[] }>('/api/career'),
+      api<{
+        headline: string
+        rates: { label: string; rate: number }[]
+        advice: string[]
+        strategy?: string
+        aiLane?: string
+      }>('/api/career'),
   })
   const d = q.data
   return (
@@ -129,10 +189,12 @@ export function CareerPage() {
       <PageHeader
         kicker="Improvement"
         title="Career coach"
-        description="Response patterns from roles you actually applied to — not generic advice."
+        description="GPT-5.6 Sol reads response patterns from roles you actually applied to — not generic advice."
       />
       <Card>
-        <p>{d?.headline ?? 'Apply to roles to see response patterns.'}</p>
+        <p className="eyebrow">{d?.aiLane === 'sol' ? 'GPT-5.6 Sol' : 'Local career engine'}</p>
+        <p className="mt-2">{d?.headline ?? 'Apply to roles to see response patterns.'}</p>
+        {d?.strategy ? <p className="mt-3 text-sm leading-relaxed">{d.strategy}</p> : null}
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           {d?.rates.map((r) => (
             <div key={r.label} className="border border-border p-3">

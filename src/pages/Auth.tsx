@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -7,32 +7,32 @@ import { Label } from '@/components/ui/label'
 import { BrandMark } from '@/components/ui/feedback'
 import { useAuth } from '@/lib/auth'
 import { supabase, supabaseConfigured } from '@/lib/supabase'
+import { emptyProfile } from '@shared/types'
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { signInDemo, configured } = useAuth()
+  const { signInDemo, signInDemoEmployer, signInEmail, signInGoogle, configured, destinationFor, user, loading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (!loading && user) navigate(destinationFor(), { replace: true })
+  }, [loading, user, destinationFor, navigate])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
-    if (!supabase) {
-      setError('Add your Supabase keys, or continue in demo mode below.')
-      return
+    setBusy(true)
+    try {
+      const profile = await signInEmail(email, password)
+      navigate(destinationFor(profile))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not sign in.')
+    } finally {
+      setBusy(false)
     }
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password })
-    if (err) setError(err.message)
-    else navigate('/app')
-  }
-
-  async function google() {
-    if (!supabase) return
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    })
   }
 
   return (
@@ -45,11 +45,17 @@ export function LoginPage() {
           <Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </Field>
         {error ? <ErrorText>{error}</ErrorText> : null}
-        <Button className="w-full" type="submit" disabled={!configured}>
-          Sign in with email
+        <Button className="w-full" variant="copper" type="submit" disabled={busy || !configured}>
+          {busy ? 'Signing in…' : 'Sign in with email'}
         </Button>
       </form>
-      <Button variant="outline" className="mt-3 w-full" type="button" onClick={() => void google()} disabled={!configured}>
+      <Button
+        variant="outline"
+        className="mt-3 w-full"
+        type="button"
+        disabled={busy || !configured}
+        onClick={() => void signInGoogle().catch((err) => setError(err instanceof Error ? err.message : 'Google sign-in failed.'))}
+      >
         Continue with Google
       </Button>
       <Divider />
@@ -58,11 +64,20 @@ export function LoginPage() {
         className="w-full"
         type="button"
         onClick={() => {
-          signInDemo()
-          navigate('/onboarding')
+          void signInDemo().then((p) => navigate(destinationFor(p)))
         }}
       >
-        Try the demo without an account
+        Try the demo as a candidate
+      </Button>
+      <Button
+        variant="ghost"
+        className="w-full"
+        type="button"
+        onClick={() => {
+          void signInDemoEmployer().then((p) => navigate(destinationFor(p)))
+        }}
+      >
+        Try the demo as an employer
       </Button>
       {!supabaseConfigured ? (
         <p className="mt-4 text-sm text-muted-foreground">
@@ -78,37 +93,61 @@ export function LoginPage() {
 
 export function RegisterPage() {
   const navigate = useNavigate()
-  const { signInDemo } = useAuth()
+  const [params] = useSearchParams()
+  const { signInDemo, signInDemoEmployer, signUpEmail, signInGoogle, configured, destinationFor, user, loading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [companyName, setCompanyName] = useState('')
+  const [role, setRole] = useState<'candidate' | 'employer'>(params.get('role') === 'employer' ? 'employer' : 'candidate')
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (!loading && user) navigate(destinationFor(), { replace: true })
+  }, [loading, user, destinationFor, navigate])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
-    if (!supabase) {
-      setError('Configure Supabase, or try the demo.')
-      return
+    setBusy(true)
+    try {
+      const profile = await signUpEmail(email, password, {
+        role,
+        companyName: role === 'employer' ? companyName : undefined,
+      })
+      navigate(destinationFor(profile))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create the account.')
+    } finally {
+      setBusy(false)
     }
-    const { error: err } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    })
-    if (err) setError(err.message)
-    else navigate('/verify')
-  }
-
-  async function google() {
-    if (!supabase) return
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    })
   }
 
   return (
-    <AuthFrame title="Create your account" subtitle="Six short questions, then the agent starts matching.">
+    <AuthFrame
+      title={role === 'employer' ? 'Hire on Atelier' : 'Create your account'}
+      subtitle={
+        role === 'employer'
+          ? 'Post jobs. Review packets candidates send you.'
+          : 'Six short questions, then the agent starts matching.'
+      }
+    >
+      <div className="mb-5 grid grid-cols-2 gap-2 rounded-full border border-border p-1">
+        <button
+          type="button"
+          className={`rounded-full py-2 text-sm ${role === 'candidate' ? 'bg-[var(--forest)] text-[var(--paper)]' : ''}`}
+          onClick={() => setRole('candidate')}
+        >
+          I’m looking
+        </button>
+        <button
+          type="button"
+          className={`rounded-full py-2 text-sm ${role === 'employer' ? 'bg-[var(--forest)] text-[var(--paper)]' : ''}`}
+          onClick={() => setRole('employer')}
+        >
+          I’m hiring
+        </button>
+      </div>
       <form className="space-y-4" onSubmit={(e) => void onSubmit(e)}>
         <Field label="Email">
           <Input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -116,12 +155,23 @@ export function RegisterPage() {
         <Field label="Password">
           <Input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
         </Field>
+        {role === 'employer' ? (
+          <Field label="Company name">
+            <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} required />
+          </Field>
+        ) : null}
         {error ? <ErrorText>{error}</ErrorText> : null}
-        <Button className="w-full" type="submit" disabled={!supabaseConfigured}>
-          Register with email
+        <Button className="w-full" variant="copper" type="submit" disabled={busy || !configured}>
+          {busy ? 'Creating account…' : role === 'employer' ? 'Create employer account' : 'Register with email'}
         </Button>
       </form>
-      <Button variant="outline" className="mt-3 w-full" type="button" onClick={() => void google()} disabled={!supabaseConfigured}>
+      <Button
+        variant="outline"
+        className="mt-3 w-full"
+        type="button"
+        disabled={busy || !configured}
+        onClick={() => void signInGoogle().catch((err) => setError(err instanceof Error ? err.message : 'Google sign-in failed.'))}
+      >
         Continue with Google
       </Button>
       <Divider />
@@ -130,11 +180,10 @@ export function RegisterPage() {
         className="w-full"
         type="button"
         onClick={() => {
-          signInDemo()
-          navigate('/onboarding')
+          void (role === 'employer' ? signInDemoEmployer() : signInDemo()).then((p) => navigate(destinationFor(p)))
         }}
       >
-        Skip ahead with a demo profile
+        {role === 'employer' ? 'Skip ahead with a demo employer' : 'Skip ahead with a demo profile'}
       </Button>
       <p className="mt-6 text-sm">
         Already registered? <Link to="/login" className="font-medium text-[var(--copper)]">Sign in</Link>
@@ -144,13 +193,18 @@ export function RegisterPage() {
 }
 
 export function VerifyPage() {
+  const navigate = useNavigate()
+  const { user, loading, destinationFor } = useAuth()
+  useEffect(() => {
+    if (!loading && user) navigate(destinationFor(), { replace: true })
+  }, [loading, user, destinationFor, navigate])
   return (
-    <AuthFrame title="Check your inbox" subtitle="Confirm the link we sent, then you will build your career profile.">
+    <AuthFrame title="You can sign in now" subtitle="Your account is ready. Use the email and password you just chose.">
       <p className="text-sm leading-relaxed text-muted-foreground">
-        After verification you land in onboarding: basics, career, skills, preferences, salary, and locations.
+        Confirmation email is no longer required. After you sign in you will build your career profile.
       </p>
-      <Button className="mt-6" asChild>
-        <Link to="/login">Back to sign in</Link>
+      <Button className="mt-6" variant="copper" asChild>
+        <Link to="/login">Continue to sign in</Link>
       </Button>
     </AuthFrame>
   )
@@ -158,15 +212,67 @@ export function VerifyPage() {
 
 export function CallbackPage() {
   const navigate = useNavigate()
+  const { destinationFor, refreshProfile } = useAuth()
+  const [error, setError] = useState('')
+
   useEffect(() => {
-    const t = window.setTimeout(() => navigate('/app'), 400)
-    return () => window.clearTimeout(t)
-  }, [navigate])
+    let cancelled = false
+    async function finish() {
+      if (!supabase) {
+        navigate('/login', { replace: true })
+        return
+      }
+      const params = new URLSearchParams(window.location.search)
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+      const code = params.get('code')
+      const authError = params.get('error_description') || hash.get('error_description')
+      if (authError) {
+        setError(authError)
+        return
+      }
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+        if (exchangeError && !/already|session/i.test(exchangeError.message)) {
+          setError(exchangeError.message)
+          return
+        }
+      }
+      for (let i = 0; i < 8 && !cancelled; i += 1) {
+        const { data } = await supabase.auth.getSession()
+        if (data.session) {
+          const profile = await refreshProfile().catch(() => emptyProfile())
+          if (!cancelled) navigate(destinationFor(profile), { replace: true })
+          return
+        }
+        await wait(200)
+      }
+      if (!cancelled) navigate('/login', { replace: true })
+    }
+    void finish()
+    return () => {
+      cancelled = true
+    }
+  }, [destinationFor, navigate, refreshProfile])
+
+  if (error) {
+    return (
+      <AuthFrame title="Could not finish sign in" subtitle={error}>
+        <Button variant="copper" asChild>
+          <Link to="/login">Back to sign in</Link>
+        </Button>
+      </AuthFrame>
+    )
+  }
+
   return (
     <AuthFrame title="Signing you in" subtitle="One moment while we restore your session.">
       <div className="h-10 w-10 animate-pulse rounded-full border-2 border-primary/30 border-t-primary" />
     </AuthFrame>
   )
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 function AuthFrame({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {

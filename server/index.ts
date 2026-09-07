@@ -5,21 +5,35 @@ import { cors } from 'hono/cors'
 import { careerInsights, followUps, interviewQuestions, preparePacket } from '../shared/engine/packets'
 import { matchJobs } from '../shared/engine/matcher'
 import { normalizeAndDedupe } from '../shared/engine/normalize'
-import { JOB_CATALOG } from '../shared/jobs'
-import type { CandidateProfile, JobMatch } from '../shared/types'
-import { emptyProfile } from '../shared/types'
-import { DEMO_USER, memory, type StoredApplication } from './memory'
+import { configuredProviders, discoverJobs } from './discover'
+import { coachInterview, enrichMatches, parseJobs, planSearch, strategizeCareer, writePacket } from './agents'
+import { routerStatus } from './ai'
+import { asJob } from '../shared/engine/jobFields'
+import type { CandidateProfile, Currency, DiscoverySummary, EmploymentType, Job, JobMatch, PreparedPacket } from '../shared/types'
+import { displayName, emptyProfile } from '../shared/types'
+import { DEMO_EMPLOYER, DEMO_USER, memory, type StoredApplication } from './memory'
 import { extractFileText, parseResumeSmart } from './resume'
+import { confirmUserEmail, ensureProfileRow, registerUser } from './authUsers'
 import { supabaseAdmin, supabaseAuth } from './supabase'
 
 const app = new Hono()
 const port = Number(process.env.API_PORT ?? 8787)
 
+const corsOrigins = [
+  process.env.APP_URL,
+  process.env.VITE_APP_URL,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+]
+  .filter((value): value is string => Boolean(value))
+  .map((value) => value.replace(/\/$/, ''))
+
 app.use(
   '*',
   cors({
-    origin: process.env.APP_URL ?? 'http://localhost:5173',
+    origin: corsOrigins,
     allowHeaders: ['Authorization', 'Content-Type'],
+    credentials: true,
   }),
 )
 
@@ -31,6 +45,9 @@ async function auth(c: { req: { header: (n: string) => string | undefined } }): 
   if (!token) return null
   if (token === 'demo' || token.startsWith('demo:')) {
     return { id: DEMO_USER, email: 'demo@atelier.local' }
+  }
+  if (token === 'employer') {
+    return { id: DEMO_EMPLOYER, email: 'hiring@atelier.local' }
   }
   if (!supabaseAuth) return null
   const { data } = await supabaseAuth.auth.getUser(token)
@@ -67,28 +84,48 @@ function profileFromRow(row: Record<string, unknown>, email: string): CandidateP
     experience: [],
     onboardingCompleted: Boolean(row.onboarding_completed),
     parsedProfile: parsed,
+    role: row.role === 'employer' ? 'employer' : 'candidate',
+    companyName: String(row.company_name ?? ''),
+    companyWebsite: String(row.company_website ?? ''),
   }
+}
+
+function isEmployerJob(job?: Job | null) {
+  return Boolean(job && (job.source === 'atelier' || job.employerId))
+}
+
+function findMatch(userId: string, jobId: string, profile: CandidateProfile): JobMatch | undefined {
+  const existing = memory.getMatches(userId).find((m) => m.job.id === jobId)
+  if (existing) return existing
+  const job = memory.getJob(jobId)
+  if (!job) return undefined
+  return matchJobs([job], profile)[0]
 }
 
 async function loadProfile(user: AuthUser): Promise<CandidateProfile> {
   if (supabaseAdmin) {
-    const { data } = await supabaseAdmin.from('profiles').select('*').eq('id', user.id).maybeSingle()
-    const { data: skills } = await supabaseAdmin.from('user_skills').select('*').eq('user_id', user.id)
-    const { data: experience } = await supabaseAdmin.from('experiences').select('*').eq('user_id', user.id)
-    if (data) {
-      const p = profileFromRow(data as Record<string, unknown>, user.email)
-      p.skills = (skills ?? []).filter((s) => s.kind === 'core').map((s) => s.name as string)
-      p.aiSkills = (skills ?? []).filter((s) => s.kind === 'ai').map((s) => s.name as string)
-      p.experience = (experience ?? []).map((e) => ({
-        id: e.id as string,
-        title: String(e.title ?? ''),
-        company: String(e.company ?? ''),
-        start: String(e.start_date ?? ''),
-        end: String(e.end_date ?? ''),
-        current: Boolean(e.is_current),
-        bullets: (e.bullets as string[]) ?? [],
-      }))
-      return p
+    try {
+      const { data } = await supabaseAdmin.from('profiles').select('*').eq('id', user.id).maybeSingle()
+      const { data: skills } = await supabaseAdmin.from('user_skills').select('*').eq('user_id', user.id)
+      const { data: experience } = await supabaseAdmin.from('experiences').select('*').eq('user_id', user.id)
+      if (data) {
+        const p = profileFromRow(data as Record<string, unknown>, user.email)
+        p.skills = (skills ?? []).filter((s) => s.kind === 'core').map((s) => s.name as string)
+        p.aiSkills = (skills ?? []).filter((s) => s.kind === 'ai').map((s) => s.name as string)
+        p.experience = (experience ?? []).map((e) => ({
+          id: e.id as string,
+          title: String(e.title ?? ''),
+          company: String(e.company ?? ''),
+          start: String(e.start_date ?? ''),
+          end: String(e.end_date ?? ''),
+          current: Boolean(e.is_current),
+          bullets: (e.bullets as string[]) ?? [],
+        }))
+        return p
+      }
+      await ensureProfileRow(user.id, user.email)
+    } catch (err) {
+      console.warn('loadProfile', err)
     }
   }
   const mem = memory.getProfile(user.id)
@@ -99,7 +136,7 @@ async function loadProfile(user: AuthUser): Promise<CandidateProfile> {
 async function saveProfile(user: AuthUser, profile: CandidateProfile) {
   memory.setProfile(user.id, profile)
   if (!supabaseAdmin) return profile
-  await supabaseAdmin.from('profiles').upsert({
+  const row: Record<string, unknown> = {
     id: user.id,
     first_name: profile.firstName,
     last_name: profile.lastName,
@@ -123,7 +160,18 @@ async function saveProfile(user: AuthUser, profile: CandidateProfile) {
     onboarding_completed: profile.onboardingCompleted,
     resume_text: profile.resumeText,
     parsed_profile: profile.parsedProfile,
-  })
+    role: profile.role ?? 'candidate',
+    company_name: profile.companyName ?? '',
+    company_website: profile.companyWebsite ?? '',
+  }
+  const { error } = await supabaseAdmin.from('profiles').upsert(row)
+  if (error && /role|company_name|company_website/.test(error.message)) {
+    delete row.role
+    delete row.company_name
+    delete row.company_website
+    await supabaseAdmin.from('profiles').upsert(row)
+    console.warn('profiles missing employer columns — run supabase/schema.sql')
+  }
   await supabaseAdmin.from('user_skills').delete().eq('user_id', user.id)
   const skillRows = [
     ...profile.skills.map((name) => ({ user_id: user.id, name, kind: 'core' })),
@@ -136,48 +184,48 @@ async function saveProfile(user: AuthUser, profile: CandidateProfile) {
 async function persistJobs(jobs: ReturnType<typeof normalizeAndDedupe>['jobs']) {
   memory.setJobs(jobs)
   if (!supabaseAdmin) return
-  for (const job of jobs) {
-    await supabaseAdmin.from('jobs').upsert({
-      id: job.id,
-      source: job.source,
-      source_job_id: job.sourceJobId ?? job.id,
-      canonical_key: job.canonicalKey,
-      title: job.title,
-      company: job.company,
-      description: job.description,
-      location: job.location,
-      remote: job.remote,
-      employment_type: job.employmentType,
-      salary_min: job.salaryMin,
-      salary_max: job.salaryMax,
-      currency: job.currency ?? 'USD',
-      skills: job.skills,
-      required_skills: job.requiredSkills ?? job.skills,
-      preferred_skills: job.preferredSkills ?? [],
-      required_experience: job.requiredExperience,
-      seniority: job.seniority,
-      application_url: job.applicationUrl,
-      apply_channel: job.applyChannel,
-      posted_at: job.postedAt,
-    })
-    if (job.sources?.length) {
-      await supabaseAdmin.from('job_listings').delete().eq('job_id', job.id)
-      await supabaseAdmin.from('job_listings').insert(
-        job.sources.map((s) => ({
-          job_id: job.id,
-          source: s.source,
-          source_url: s.url,
-        })),
-      )
+  const rows = jobs.map((job) => ({
+    id: job.id,
+    source: job.source,
+    source_job_id: job.sourceJobId ?? job.id,
+    canonical_key: job.canonicalKey,
+    title: job.title,
+    company: job.company,
+    description: job.description,
+    location: job.location,
+    remote: job.remote,
+    employment_type: job.employmentType,
+    salary_min: job.salaryMin,
+    salary_max: job.salaryMax,
+    currency: job.currency ?? 'USD',
+    skills: job.skills,
+    required_skills: job.requiredSkills ?? job.skills,
+    preferred_skills: job.preferredSkills ?? [],
+    required_experience: job.requiredExperience,
+    seniority: job.seniority,
+    application_url: job.applicationUrl,
+    apply_channel: job.applyChannel,
+    posted_at: job.postedAt,
+    employer_id: job.employerId ?? null,
+  }))
+  try {
+    for (let i = 0; i < rows.length; i += 40) {
+      const { error } = await supabaseAdmin.from('jobs').upsert(rows.slice(i, i + 40))
+      if (error && /employer_id/.test(error.message)) {
+        const stripped = rows.slice(i, i + 40).map(({ employer_id: _e, ...rest }) => rest)
+        await supabaseAdmin.from('jobs').upsert(stripped)
+      }
     }
+  } catch {
+    /* search still works from memory */
   }
 }
 
 async function persistMatches(userId: string, list: JobMatch[]) {
   memory.setMatches(userId, list)
   if (!supabaseAdmin) return
-  for (const m of list) {
-    await supabaseAdmin.from('job_matches').upsert({
+  try {
+    const rows = list.map((m) => ({
       user_id: userId,
       job_id: m.job.id,
       overall_score: m.score,
@@ -195,15 +243,25 @@ async function persistMatches(userId: string, list: JobMatch[]) {
       ai_recommendation: m.recommendation,
       category: m.category,
       status: 'new',
-    }, { onConflict: 'user_id,job_id' })
+    }))
+    for (let i = 0; i < rows.length; i += 40) {
+      await supabaseAdmin.from('job_matches').upsert(rows.slice(i, i + 40), { onConflict: 'user_id,job_id' })
+    }
+  } catch {
+    /* matches still live in memory */
   }
 }
 
 async function runSearch(user: AuthUser, minMatch = 0, maxJobs = 40) {
   const profile = await loadProfile(user)
-  const { jobs, duplicatesRemoved } = normalizeAndDedupe(JOB_CATALOG)
+  const plan = await planSearch(profile)
+  const discovered = await discoverJobs(profile, { query: plan.query })
+  const posted = memory.atelierJobs()
+  const parsedJobs = await parseJobs([...posted, ...discovered.jobs])
+  const { jobs, duplicatesRemoved } = normalizeAndDedupe(parsedJobs)
   await persistJobs(jobs)
-  const all = matchJobs(jobs, profile)
+  const scored = matchJobs(jobs, profile)
+  const all = await enrichMatches(scored, profile)
   const filtered = all.filter((m) => m.score >= minMatch).slice(0, maxJobs)
   await persistMatches(user.id, all)
   const counts = {
@@ -213,6 +271,16 @@ async function runSearch(user: AuthUser, minMatch = 0, maxJobs = 40) {
     possible: all.filter((m) => m.category === 'possible').length,
     poor: all.filter((m) => m.category === 'poor').length,
   }
+  const summary: DiscoverySummary = {
+    query: discovered.query,
+    discovered: discovered.jobs.length,
+    providers: [
+      { name: 'Employers on Atelier', status: 'ok', count: posted.length },
+      ...discovered.providers,
+    ],
+    officialSearch: discovered.officialSearch,
+  }
+  memory.setDiscovery(user.id, summary)
   const high = all.filter((m) => m.score >= 80)
   if (high.length) {
     memory.addNotification({
@@ -238,11 +306,11 @@ async function runSearch(user: AuthUser, minMatch = 0, maxJobs = 40) {
         user_id: user.id,
         agent: 'search',
         status: 'done',
-        stats: { discovered: JOB_CATALOG.length, duplicatesRemoved, scored: all.length, counts },
+        stats: { discovered: discovered.jobs.length, duplicatesRemoved, scored: all.length, counts },
       })
     }
   }
-  return { jobs, duplicatesRemoved, matches: filtered, all, counts }
+  return { jobs, duplicatesRemoved, matches: filtered, all, counts, discovery: summary }
 }
 
 app.get('/api/health', (c) =>
@@ -250,8 +318,58 @@ app.get('/api/health', (c) =>
     ok: true,
     supabase: Boolean(supabaseAdmin),
     openai: Boolean(process.env.OPENAI_API_KEY),
+    discovery: configuredProviders(),
+    router: routerStatus(),
   }),
 )
+
+app.post('/api/auth/register', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    email?: string
+    password?: string
+    role?: string
+    companyName?: string
+  }
+  const email = String(body.email ?? '').trim()
+  const password = String(body.password ?? '')
+  const role = body.role === 'employer' ? 'employer' : 'candidate'
+  const companyName = String(body.companyName ?? '').trim()
+  if (!email || password.length < 8) {
+    return c.json({ error: 'Use a valid email and a password of at least 8 characters.' }, 400)
+  }
+  if (role === 'employer' && !companyName) {
+    return c.json({ error: 'Add your company name to post jobs.' }, 400)
+  }
+  try {
+    const result = await registerUser(email, password, { role, companyName })
+    if (role === 'employer') {
+      memory.setProfile(result.userId, {
+        ...emptyProfile(),
+        email,
+        role: 'employer',
+        companyName,
+        onboardingCompleted: true,
+      })
+    }
+    return c.json({ ok: true, ...result })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not create the account.'
+    const code = (err as { code?: string }).code
+    return c.json({ error: message, code }, code === 'exists' ? 409 : 400)
+  }
+})
+
+app.post('/api/auth/confirm', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string }
+  const email = String(body.email ?? '').trim()
+  if (!email) return c.json({ error: 'Email required' }, 400)
+  try {
+    await confirmUserEmail(email)
+    return c.json({ ok: true })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Could not confirm email' }, 400)
+  }
+})
 
 app.get('/api/profile', async (c) => {
   const user = await auth(c)
@@ -288,6 +406,7 @@ app.post('/api/resume/upload', async (c) => {
     skills: [...new Set([...profile.skills, ...parsed.skills])],
     aiSkills: [...new Set([...profile.aiSkills, ...parsed.ai_skills])],
     industry: profile.industry || parsed.industries[0] || '',
+    desiredTitle: profile.desiredTitle || parsed.headline,
   }
   if (parsed.name && !profile.firstName) {
     const [first, ...rest] = parsed.name.split(' ')
@@ -328,12 +447,19 @@ app.post('/api/agent/search', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { minMatch?: number; maxJobs?: number }
   const result = await runSearch(user, body.minMatch ?? 0, body.maxJobs ?? 50)
   return c.json({
-    discovered: JOB_CATALOG.length,
+    discovered: result.discovery.discovered,
     normalized: result.jobs.length,
     duplicatesRemoved: result.duplicatesRemoved,
     counts: result.counts,
     matches: result.all,
+    discovery: result.discovery,
   })
+})
+
+app.get('/api/agent/discovery', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  return c.json(memory.getDiscovery(user.id))
 })
 
 app.get('/api/jobs', async (c) => {
@@ -352,7 +478,8 @@ app.get('/api/jobs/:id', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const id = c.req.param('id')
-  const match = memory.getMatches(user.id).find((m) => m.job.id === id)
+  const profile = await loadProfile(user)
+  const match = findMatch(user.id, id, profile)
   if (!match) return c.json({ error: 'Not found' }, 404)
   return c.json(match)
 })
@@ -362,17 +489,18 @@ app.post('/api/applications', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const { jobId } = (await c.req.json()) as { jobId: string }
   const profile = await loadProfile(user)
-  const match = memory.getMatches(user.id).find((m) => m.job.id === jobId)
+  const match = findMatch(user.id, jobId, profile)
   if (!match) return c.json({ error: 'Match not found. Run search first.' }, 404)
   const existing = memory.getApplications(user.id).find((a) => a.jobId === jobId && a.status === 'draft')
   if (existing) return c.json(existing)
-  const packet = preparePacket(match, profile)
+  const packet = await writePacket(match, profile, preparePacket(match, profile))
+  const direct = isEmployerJob(match.job)
   const appRow: StoredApplication = {
     id: crypto.randomUUID(),
     userId: user.id,
     jobId,
     status: 'draft',
-    channel: match.job.applyChannel ?? 'Authorized portal',
+    channel: direct ? 'Atelier employer inbox' : (match.job.applyChannel ?? 'Authorized portal'),
     authorized: false,
     packet,
     createdAt: new Date().toISOString(),
@@ -380,11 +508,18 @@ app.post('/api/applications', async (c) => {
       {
         at: new Date().toISOString(),
         label: 'Packet prepared',
-        detail: 'Resume customized, cover letter and answers drafted. Nothing submitted.',
+        detail: direct
+          ? 'Review the packet. When you approve, it is sent to the employer on Atelier.'
+          : packet.aiLane
+            ? 'GPT-5.6 Terra drafted the resume, cover letter, and answers. Nothing submitted.'
+            : 'Resume customized, cover letter and answers drafted. Nothing submitted.',
       },
     ],
     followUps: followUps(match, profile).map((f) => ({ ...f, sent: false })),
     recruiterSent: false,
+    candidateName: displayName(profile),
+    candidateEmail: profile.email || user.email,
+    candidateHeadline: profile.headline || profile.desiredTitle || profile.currentTitle,
   }
   memory.addApplication(appRow)
   if (supabaseAdmin) {
@@ -424,11 +559,13 @@ app.get('/api/applications/:id', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const row = memory.getApplication(user.id, c.req.param('id'))
   if (!row) return c.json({ error: 'Not found' }, 404)
-  const match = memory.getMatches(user.id).find((m) => m.job.id === row.jobId)
+  const profile = await loadProfile(user)
+  const match = findMatch(user.id, row.jobId, profile)
   return c.json({
     ...row,
     match,
-    interview: match ? interviewQuestions(match, await loadProfile(user)) : [],
+    interview: match ? interviewQuestions(match, profile) : [],
+    directToEmployer: isEmployerJob(match?.job),
   })
 })
 
@@ -470,18 +607,35 @@ app.post('/api/applications/:id/approve', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const row = memory.getApplication(user.id, c.req.param('id'))
   if (!row) return c.json({ error: 'Not found' }, 404)
-  const match = memory.getMatches(user.id).find((m) => m.job.id === row.jobId)
+  const profile = await loadProfile(user)
+  const match = findMatch(user.id, row.jobId, profile)
+  const job = match?.job ?? memory.getJob(row.jobId)
+  const direct = isEmployerJob(job)
   row.authorized = true
   row.status = 'submitted'
   row.submittedAt = new Date().toISOString()
+  row.deliveredToEmployer = direct
   row.events.push({
     at: row.submittedAt,
-    label: 'Authorized submission',
-    detail: match?.job.applyChannel?.includes('Open listing')
-      ? 'Materials ready. Open the official job page to submit yourself — no undocumented automation.'
-      : `Submitted through ${row.channel}.`,
+    label: direct ? 'Sent to employer' : 'Authorized submission',
+    detail: direct
+      ? `Packet delivered to ${job?.company ?? 'the employer'} on Atelier.`
+      : match?.job.applyChannel?.includes('Open listing')
+        ? 'Materials ready. Open the official job page to submit yourself — no undocumented automation.'
+        : `Submitted through ${row.channel}.`,
   })
   memory.addApplication(row)
+  if (direct && job?.employerId) {
+    memory.addNotification({
+      id: crypto.randomUUID(),
+      userId: job.employerId,
+      title: `New application: ${job.title}`,
+      body: `${row.candidateName || displayName(profile)} applied for ${job.title}.`,
+      href: `/employer/inbox/${row.id}`,
+      read: false,
+      createdAt: new Date().toISOString(),
+    })
+  }
   if (supabaseAdmin) {
     await supabaseAdmin
       .from('applications')
@@ -489,10 +643,15 @@ app.post('/api/applications/:id/approve', async (c) => {
         authorized: true,
         status: 'submitted',
         submitted_at: row.submittedAt,
+        delivered_to_employer: direct,
       })
       .eq('id', row.id)
   }
-  return c.json({ application: row, openUrl: match?.job.applicationUrl })
+  return c.json({
+    application: row,
+    openUrl: direct ? undefined : match?.job.applicationUrl,
+    deliveredToEmployer: direct,
+  })
 })
 
 app.post('/api/applications/:id/follow-up', async (c) => {
@@ -574,31 +733,212 @@ app.post('/api/agent/settings', async (c) => {
   return c.json(next)
 })
 
+function employerInbox(employerId: string) {
+  const jobIds = new Set(memory.jobsForEmployer(employerId).map((j) => j.id))
+  return memory
+    .allApplications()
+    .filter((a) => jobIds.has(a.jobId) && a.authorized)
+    .map((a) => ({
+      ...a,
+      job: memory.getJob(a.jobId),
+    }))
+}
+
+app.get('/api/employer/jobs', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+  return c.json(memory.jobsForEmployer(user.id))
+})
+
+app.post('/api/employer/jobs', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+  const body = (await c.req.json()) as {
+    title?: string
+    description?: string
+    location?: string
+    remote?: boolean
+    employmentType?: EmploymentType
+    salaryMin?: number
+    salaryMax?: number
+    currency?: Currency
+    skills?: string[] | string
+    requiredExperience?: number
+    seniority?: Job['seniority']
+  }
+  const title = String(body.title ?? '').trim()
+  const description = String(body.description ?? '').trim()
+  if (!title || description.length < 40) {
+    return c.json({ error: 'Add a title and a description of at least 40 characters.' }, 400)
+  }
+  const skills = Array.isArray(body.skills)
+    ? body.skills.map((s) => s.trim()).filter(Boolean)
+    : String(body.skills ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+  const id = `atelier-${crypto.randomUUID()}`
+  const job = asJob({
+    id,
+    source: 'atelier',
+    sourceJobId: id,
+    title,
+    company: profile.companyName || displayName(profile) || 'Employer',
+    description,
+    location: body.location || (body.remote !== false ? 'Remote worldwide' : ''),
+    remote: body.remote !== false,
+    employmentType: body.employmentType ?? 'full-time',
+    salaryMin: body.salaryMin,
+    salaryMax: body.salaryMax,
+    currency: body.currency ?? 'USD',
+    skills,
+    requiredSkills: skills,
+    requiredExperience: body.requiredExperience,
+    seniority: body.seniority,
+    applicationUrl: `/app/jobs/${id}`,
+    applyChannel: 'Atelier — sent to employer',
+    postedAt: new Date().toISOString().slice(0, 10),
+    employerId: user.id,
+  })
+  await persistJobs([job])
+  return c.json(job)
+})
+
+app.get('/api/employer/applications', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+  return c.json(employerInbox(user.id))
+})
+
+app.get('/api/employer/applications/:id', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+  const row = memory.getApplicationById(c.req.param('id'))
+  const job = row ? memory.getJob(row.jobId) : undefined
+  if (!row || job?.employerId !== user.id) return c.json({ error: 'Not found' }, 404)
+  return c.json({ ...row, job })
+})
+
+app.patch('/api/employer/applications/:id', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+  const row = memory.getApplicationById(c.req.param('id'))
+  const job = row ? memory.getJob(row.jobId) : undefined
+  if (!row || job?.employerId !== user.id) return c.json({ error: 'Not found' }, 404)
+  const body = (await c.req.json()) as { status?: string }
+  if (body.status) {
+    row.status = body.status
+    row.events.push({
+      at: new Date().toISOString(),
+      label: body.status.replaceAll('_', ' '),
+      detail: `${job?.company ?? 'Employer'} updated this application.`,
+    })
+    memory.addApplication(row)
+    memory.addNotification({
+      id: crypto.randomUUID(),
+      userId: row.userId,
+      title: `${job?.title ?? 'Application'} is now ${body.status.replaceAll('_', ' ')}`,
+      body: `${job?.company ?? 'The employer'} updated your application.`,
+      href: `/app/applications/${row.id}`,
+      read: false,
+      createdAt: new Date().toISOString(),
+    })
+  }
+  if (supabaseAdmin) {
+    await supabaseAdmin.from('applications').update({ status: row.status }).eq('id', row.id)
+  }
+  return c.json({ ...row, job })
+})
+
 app.get('/api/career', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const apps = memory.getApplications(user.id)
   const matches = memory.getMatches(user.id)
-  const insights = careerInsights(
-    apps.map((a) => ({
-      status: a.status,
-      title: matches.find((m) => m.job.id === a.jobId)?.job.title ?? '',
-    })),
-  )
-  return c.json(insights)
+  const rows = apps.map((a) => ({
+    status: a.status,
+    title: matches.find((m) => m.job.id === a.jobId)?.job.title ?? '',
+  }))
+  const local = careerInsights(rows)
+  return c.json(await strategizeCareer(local, await loadProfile(user), rows))
 })
+
+app.get('/api/interview', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const jobId = c.req.query('jobId')
+  const matches = memory.getMatches(user.id)
+  const match = (jobId ? matches.find((m) => m.job.id === jobId) : matches[0]) ?? null
+  if (!match) return c.json({ error: 'Run the job agent first.' }, 404)
+  const profile = await loadProfile(user)
+  const localQs = interviewQuestions(match, profile)
+  const coached = await coachInterview(match, profile, localQs)
+  return c.json({
+    job: { id: match.job.id, title: match.job.title, company: match.job.company },
+    matchedSkills: match.matchedSkills,
+    ...coached,
+  })
+})
+
+app.get('/api/router', (c) => c.json({ lanes: routerStatus(), diagram: true }))
 
 app.get('/api/setup', (c) =>
   c.json({
     supabase: Boolean(supabaseAdmin),
     openai: Boolean(process.env.OPENAI_API_KEY),
     demo: !supabaseAdmin,
+    router: routerStatus(),
   }),
 )
 
 const seeded = emptyProfile()
 seeded.email = 'demo@atelier.local'
 memory.setProfile(DEMO_USER, seeded)
+
+const hiring = emptyProfile()
+hiring.email = 'hiring@atelier.local'
+hiring.firstName = 'Sam'
+hiring.lastName = 'Chen'
+hiring.role = 'employer'
+hiring.companyName = 'Atelier Labs'
+hiring.companyWebsite = 'https://atelier.local'
+hiring.onboardingCompleted = true
+memory.setProfile(DEMO_EMPLOYER, hiring)
+
+const demoRole = asJob({
+  id: 'atelier-demo-fullstack',
+  source: 'atelier',
+  sourceJobId: 'atelier-demo-fullstack',
+  title: 'Full Stack Engineer',
+  company: 'Atelier Labs',
+  description:
+    'Atelier Labs is hiring a full stack engineer to build product with React, Next.js, TypeScript, Node.js, and PostgreSQL. Remote worldwide. You will ship candidate matching, application packets, and the employer inbox. Experience with AI-assisted product work is a plus.',
+  location: 'Remote worldwide',
+  remote: true,
+  employmentType: 'full-time',
+  salaryMin: 90000,
+  salaryMax: 140000,
+  currency: 'USD',
+  skills: ['React', 'Next.js', 'TypeScript', 'Node.js', 'PostgreSQL'],
+  requiredSkills: ['React', 'TypeScript', 'Node.js'],
+  requiredExperience: 4,
+  seniority: 'senior',
+  applicationUrl: '/app/jobs/atelier-demo-fullstack',
+  applyChannel: 'Atelier — sent to employer',
+  postedAt: new Date().toISOString().slice(0, 10),
+  employerId: DEMO_EMPLOYER,
+})
+memory.setJobs([demoRole])
 
 serve({ fetch: app.fetch, port }, () => {
   console.log(`API http://localhost:${port}  supabase=${Boolean(supabaseAdmin)}`)

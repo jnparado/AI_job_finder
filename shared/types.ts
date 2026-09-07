@@ -54,6 +54,7 @@ export interface Job {
   applyChannel?: string
   postedAt?: string
   canonicalKey?: string
+  employerId?: string
 }
 
 export interface ExperienceEntry {
@@ -104,6 +105,9 @@ export interface CandidateProfile {
   experience: ExperienceEntry[]
   onboardingCompleted: boolean
   parsedProfile?: ParsedResume | null
+  role?: 'candidate' | 'employer'
+  companyName?: string
+  companyWebsite?: string
 }
 
 export interface JobAnalysis {
@@ -136,6 +140,8 @@ export interface JobMatch {
   summary: string
   recommendation: string
   stars: number
+  aiLane?: 'luna' | 'terra' | 'sol'
+  aiNote?: string
 }
 
 export interface ScreeningAnswer {
@@ -149,12 +155,21 @@ export interface PreparedPacket {
   answers: ScreeningAnswer[]
   recruiterMessage: string
   resumeNotes: { confirmed: string[]; unconfirmed: string[] }
+  aiLane?: 'luna' | 'terra' | 'sol'
 }
 
 export interface FollowUpDraft {
   dayOffset: number
   title: string
   body: string
+}
+
+export interface CareerInsights {
+  headline: string
+  rates: { label: string; rate: number }[]
+  advice: string[]
+  strategy?: string
+  aiLane?: 'luna' | 'terra' | 'sol'
 }
 
 export function matchCategory(score: number): MatchCategory {
@@ -202,9 +217,72 @@ export function emptyProfile(): CandidateProfile {
     resumeText: '',
     experience: [],
     onboardingCompleted: false,
+    role: 'candidate',
+    companyName: '',
+    companyWebsite: '',
   }
 }
 
 export function displayName(p: CandidateProfile): string {
   return `${p.firstName} ${p.lastName}`.trim() || p.email || 'Candidate'
+}
+
+export interface DiscoveryProvider {
+  name: string
+  status: 'ok' | 'error' | 'skipped'
+  count: number
+  error?: string
+  note?: string
+}
+
+export interface OfficialBoard {
+  source: string
+  label: string
+  url: string
+}
+
+export interface DiscoveryReport {
+  query: string
+  jobs: Job[]
+  providers: DiscoveryProvider[]
+  officialSearch: OfficialBoard[]
+}
+
+export interface DiscoverySummary {
+  query: string
+  discovered: number
+  providers: DiscoveryProvider[]
+  officialSearch: OfficialBoard[]
+}
+
+export function sourceLabel(source: string): string {
+  const labels: Record<string, string> = {
+    remotive: 'Remotive',
+    remoteok: 'Remote OK',
+    arbeitnow: 'Arbeitnow',
+    themuse: 'The Muse',
+    himalayas: 'Himalayas',
+    jobicy: 'Jobicy',
+    adzuna: 'Adzuna',
+    jsearch: 'JSearch',
+    linkedin: 'LinkedIn',
+    indeed: 'Indeed',
+    upwork: 'Upwork',
+    glassdoor: 'Glassdoor',
+    greenhouse: 'Career page',
+    lever: 'Career page',
+    career_page: 'Career page',
+    feed: 'Job feed',
+    atelier: 'Atelier',
+    wwr: 'We Work Remotely',
+    usajobs: 'USAJOBS',
+    catalog: 'Atelier',
+    ziprecruiter: 'ZipRecruiter',
+    monster: 'Monster',
+    dice: 'Dice',
+    freelancer: 'Freelancer',
+    workingnomads: 'Working Nomads',
+    api: 'API',
+  }
+  return labels[source] ?? source.replace(/[-_]+/g, ' ')
 }

@@ -6,17 +6,19 @@ export function getDemoToken(): string | null {
   return localStorage.getItem(DEMO_KEY)
 }
 
-export function setDemoToken(on: boolean) {
-  if (on) localStorage.setItem(DEMO_KEY, 'demo')
-  else localStorage.removeItem(DEMO_KEY)
+export function setDemoToken(on: boolean | 'demo' | 'employer') {
+  if (!on) localStorage.removeItem(DEMO_KEY)
+  else localStorage.setItem(DEMO_KEY, on === true ? 'demo' : on)
 }
 
 export async function authHeader(): Promise<Record<string, string>> {
-  if (getDemoToken()) return { Authorization: 'Bearer demo' }
+  const token = getDemoToken()
+  if (token === 'employer') return { Authorization: 'Bearer employer' }
+  if (token) return { Authorization: 'Bearer demo' }
   if (!supabase) return {}
   const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  const access = data.session?.access_token
+  return access ? { Authorization: `Bearer ${access}` } : {}
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {

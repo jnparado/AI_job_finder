@@ -11,7 +11,16 @@ import { ApplicationDetailsPage, ApplicationsPage } from '@/pages/Applications'
 import { ResumePage } from '@/pages/Resume'
 import { ProfilePage } from '@/pages/Profile'
 import { CareerPage, InterviewPage, SettingsPage } from '@/pages/Settings'
-import { RequireOnboarding, RequireSession } from '@/pages/guards'
+import { RequireEmployer, RequireOnboarding, RequireSession } from '@/pages/guards'
+import { EmployerShell } from '@/components/layout/EmployerShell'
+import {
+  EmployerApplicationPage,
+  EmployerDashboardPage,
+  EmployerInboxPage,
+  EmployerJobsPage,
+  EmployerPostJobPage,
+  EmployerSetupPage,
+} from '@/pages/Employer'
 
 const queryClient = new QueryClient()
 
@@ -28,6 +37,7 @@ export default function App() {
             <Route path="/auth/callback" element={<CallbackPage />} />
             <Route element={<RequireSession />}>
               <Route path="/onboarding" element={<OnboardingPage />} />
+              <Route path="/employer/setup" element={<EmployerSetupPage />} />
             </Route>
             <Route element={<RequireOnboarding />}>
               <Route path="/app" element={<AppShell />}>
@@ -41,6 +51,15 @@ export default function App() {
                 <Route path="interview" element={<InterviewPage />} />
                 <Route path="career" element={<CareerPage />} />
                 <Route path="settings" element={<SettingsPage />} />
+              </Route>
+            </Route>
+            <Route element={<RequireEmployer />}>
+              <Route path="/employer" element={<EmployerShell />}>
+                <Route index element={<EmployerDashboardPage />} />
+                <Route path="jobs" element={<EmployerJobsPage />} />
+                <Route path="jobs/new" element={<EmployerPostJobPage />} />
+                <Route path="inbox" element={<EmployerInboxPage />} />
+                <Route path="inbox/:id" element={<EmployerApplicationPage />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -12,9 +12,18 @@ interface AuthValue {
   demo: boolean
   profile: CandidateProfile
   configured: boolean
-  refreshProfile: () => Promise<void>
+  refreshProfile: () => Promise<CandidateProfile>
   saveProfile: (patch: Partial<CandidateProfile>) => Promise<CandidateProfile>
-  signInDemo: () => void
+  signInDemo: () => Promise<CandidateProfile>
+  signInDemoEmployer: () => Promise<CandidateProfile>
+  signInEmail: (email: string, password: string) => Promise<CandidateProfile>
+  signUpEmail: (
+    email: string,
+    password: string,
+    extras?: { role?: 'candidate' | 'employer'; companyName?: string },
+  ) => Promise<CandidateProfile>
+  signInGoogle: () => Promise<void>
+  destinationFor: (p?: CandidateProfile) => string
   signOut: () => Promise<void>
 }
 
@@ -29,17 +38,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshProfile = useCallback(async () => {
     const p = await api<CandidateProfile>('/api/profile')
     setProfile(p)
+    return p
   }, [])
+
+  const establish = useCallback(async (next: User | null) => {
+    setUser(next)
+    if (!next) {
+      setProfile(emptyProfile())
+      return emptyProfile()
+    }
+    try {
+      return await refreshProfile()
+    } catch {
+      const fallback = { ...emptyProfile(), email: next.email ?? '' }
+      setProfile(fallback)
+      return fallback
+    }
+  }, [refreshProfile])
 
   useEffect(() => {
     let cancelled = false
     const { data } = supabase
       ? supabase.auth.onAuthStateChange((_event, session) => {
+          if (cancelled) return
           setUser(session?.user ?? null)
           if (session?.user) {
+            setDemoToken(false)
+            setDemo(false)
             void api<CandidateProfile>('/api/profile').then((p) => {
               if (!cancelled) setProfile(p)
-            })
+            }).catch(() => {})
           }
         })
       : { data: { subscription: { unsubscribe() {} } } }
@@ -87,6 +115,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       configured: supabaseConfigured,
       refreshProfile,
+      destinationFor: (p = profile) => {
+        if (p.role === 'employer') return p.companyName || p.onboardingCompleted ? '/employer' : '/employer/setup'
+        return p.onboardingCompleted ? '/app' : '/onboarding'
+      },
       saveProfile: async (patch) => {
         const next = await api<CandidateProfile>('/api/profile', {
           method: 'POST',
@@ -95,10 +127,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(next)
         return next
       },
-      signInDemo: () => {
+      signInDemo: async () => {
         setDemoToken(true)
         setDemo(true)
-        void refreshProfile()
+        return refreshProfile()
+      },
+      signInDemoEmployer: async () => {
+        setDemoToken('employer')
+        setDemo(true)
+        return refreshProfile()
+      },
+      signInEmail: async (email, password) => {
+        if (!supabase) throw new Error('Add your Supabase keys in .env, then restart the app.')
+        setDemoToken(false)
+        setDemo(false)
+        let { data, error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error && /confirm/i.test(error.message)) {
+          await api('/api/auth/confirm', { method: 'POST', body: JSON.stringify({ email }) })
+          const retry = await supabase.auth.signInWithPassword({ email, password })
+          data = retry.data
+          error = retry.error
+        }
+        if (error) throw error
+        if (!data.user) throw new Error('Sign in failed.')
+        return establish(data.user)
+      },
+      signUpEmail: async (email, password, extras) => {
+        if (!supabase) throw new Error('Add your Supabase keys in .env, then restart the app.')
+        setDemoToken(false)
+        setDemo(false)
+        await api('/api/auth/register', {
+          method: 'POST',
+          body: JSON.stringify({ email, password, role: extras?.role, companyName: extras?.companyName }),
+        })
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error || !data.user) throw error ?? new Error('Account created, but sign in failed. Try logging in.')
+        const profile = await establish(data.user)
+        if (extras?.role === 'employer') {
+          const next = await api<CandidateProfile>('/api/profile', {
+            method: 'POST',
+            body: JSON.stringify({
+              role: 'employer',
+              companyName: extras.companyName ?? profile.companyName,
+              onboardingCompleted: true,
+            }),
+          })
+          setProfile(next)
+          return next
+        }
+        return profile
+      },
+      signInGoogle: async () => {
+        if (!supabase) throw new Error('Add your Supabase keys in .env, then restart the app.')
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: `${window.location.origin}/auth/callback` },
+        })
+        if (error) throw error
       },
       signOut: async () => {
         setDemoToken(false)
@@ -108,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await supabase?.auth.signOut()
       },
     }),
-    [loading, user, demo, profile, refreshProfile],
+    [loading, user, demo, profile, refreshProfile, establish],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

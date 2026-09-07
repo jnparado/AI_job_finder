@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Check, Search, FilePen, Send, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/ui/feedback'
+import { RouterDiagram } from '@/components/ai/RouterDiagram'
 
 const FEATURES = [
   { title: 'Search that never sleeps', body: 'Authorized job APIs, career pages, and feeds — not a noisy board.' },
@@ -27,6 +28,9 @@ export function LandingPage() {
           <Button variant="outline" className="border-[#c9c0ae55] text-[var(--paper)]" asChild>
             <Link to="/login">Sign in</Link>
           </Button>
+          <Button variant="outline" className="border-[#c9c0ae55] text-[var(--paper)]" asChild>
+            <Link to="/register?role=employer">Post a job</Link>
+          </Button>
           <Button variant="copper" asChild>
             <Link to="/register">Get started</Link>
           </Button>
@@ -48,7 +52,7 @@ export function LandingPage() {
               <Link to="/register">Get started free</Link>
             </Button>
             <Button variant="outline" size="lg" className="border-[#c9c0ae55] text-[var(--paper)]" asChild>
-              <Link to="/login">I already have an account</Link>
+              <Link to="/register?role=employer">I’m hiring — post a job</Link>
             </Button>
           </div>
         </div>
@@ -71,6 +75,18 @@ export function LandingPage() {
         </div>
       </section>
 
+      <section className="border-t border-[#c9c0ae22] px-5 py-16 sm:px-8">
+        <div className="mx-auto max-w-6xl">
+          <p className="eyebrow text-center text-[#c6a15b]">Model routing</p>
+          <h2 className="mt-3 text-center text-3xl text-[var(--paper)] sm:text-4xl">The right model for each job</h2>
+          <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-relaxed text-[#c9c0ae]">
+            An AI router sends high-volume parsing to Luna, everyday matching and writing to Terra, and hard strategy work to Sol.
+          </p>
+          <div className="mt-10">
+            <RouterDiagram variant="forest" />
+          </div>
+        </div>
+      </section>
       <section className="border-t border-[#c9c0ae22]">
         <ul className="mx-auto grid max-w-6xl gap-px bg-[#c9c0ae22] sm:grid-cols-2 lg:grid-cols-4">
           {FEATURES.map((f) => (

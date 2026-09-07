@@ -22,9 +22,19 @@ export function DashboardPage() {
     queryKey: ['applications'],
     queryFn: () => api<{ id: string; status: string }[]>('/api/applications'),
   })
+  const apply = useMutation({
+    mutationFn: (jobId: string) =>
+      api<{ id: string }>('/api/applications', {
+        method: 'POST',
+        body: JSON.stringify({ jobId }),
+      }),
+    onSuccess: (row) => navigate(`/app/applications/${row.id}`),
+  })
   const search = useMutation({
     mutationFn: () => api('/api/agent/search', { method: 'POST', body: '{}' }),
-    onSuccess: () => void jobs.refetch(),
+    onSuccess: () => {
+      void jobs.refetch()
+    },
   })
 
   const matches = jobs.data ?? []
@@ -46,11 +56,11 @@ export function DashboardPage() {
             ? 'Loading your matches…'
             : recommended.length
               ? `${recommended.length} roles currently clear your 70% bar.`
-              : 'Run the job agent to score authorized listings against your profile.'
+              : 'Run the job agent to pull live listings and score them against your profile.'
         }
         actions={
           <Button variant="copper" onClick={() => search.mutate()} disabled={search.isPending}>
-            {search.isPending ? 'Searching…' : 'Find new jobs'}
+            {search.isPending ? 'Searching platforms…' : 'Find new jobs'}
           </Button>
         }
       />
@@ -78,8 +88,8 @@ export function DashboardPage() {
             <p className="mt-3 max-w-2xl text-sm leading-relaxed">{top.recommendation}</p>
             <div className="mt-5 flex flex-wrap gap-2">
               <Button onClick={() => navigate(`/app/jobs/${top.job.id}`)}>See why it fits</Button>
-              <Button variant="copper" onClick={() => navigate(`/app/jobs/${top.job.id}`)}>
-                Apply with AI
+              <Button variant="copper" onClick={() => apply.mutate(top.job.id)} disabled={apply.isPending}>
+                {apply.isPending ? 'Preparing…' : top.job.employerId ? 'Apply to employer' : 'Apply with AI'}
               </Button>
             </div>
           </div>
@@ -87,7 +97,7 @@ export function DashboardPage() {
       ) : (
         <EmptyState
           title="No matches yet"
-          body="Complete your profile, then let the agent search authorized sources. It will score every role before showing it here."
+          body="Complete your profile, then search Remotive, career pages, and other authorized boards. LinkedIn and Upwork open on their official sites."
           actionLabel="Find jobs now"
           onClick={() => search.mutate()}
         />
@@ -105,7 +115,12 @@ export function DashboardPage() {
           </div>
           <div className="space-y-3">
             {matches.slice(0, 5).map((m) => (
-              <MatchCard key={m.job.id} match={m} />
+              <MatchCard
+                key={m.job.id}
+                match={m}
+                applying={apply.isPending && apply.variables === m.job.id}
+                onApply={() => apply.mutate(m.job.id)}
+              />
             ))}
           </div>
         </section>

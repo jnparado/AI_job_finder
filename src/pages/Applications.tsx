@@ -22,6 +22,7 @@ interface ApplicationRow {
     answers: { question: string; answer: string }[]
     recruiterMessage: string
     resumeNotes: { confirmed: string[]; unconfirmed: string[] }
+    aiLane?: string
   }
   submittedAt?: string
   events: { at: string; label: string; detail: string }[]
@@ -29,6 +30,8 @@ interface ApplicationRow {
   recruiterSent: boolean
   match?: JobMatch
   interview?: string[]
+  deliveredToEmployer?: boolean
+  directToEmployer?: boolean
 }
 
 export function ApplicationsPage() {
@@ -122,10 +125,11 @@ export function ApplicationDetailsPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['application', id] }),
   })
   const approve = useMutation({
-    mutationFn: () => api<{ openUrl?: string }>(`/api/applications/${id}/approve`, { method: 'POST' }),
+    mutationFn: () =>
+      api<{ openUrl?: string; deliveredToEmployer?: boolean }>(`/api/applications/${id}/approve`, { method: 'POST' }),
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: ['application', id] })
-      if (r.openUrl) window.open(r.openUrl, '_blank')
+      if (r.openUrl?.startsWith('http')) window.open(r.openUrl, '_blank')
     },
   })
   const follow = useMutation({
@@ -155,6 +159,9 @@ export function ApplicationDetailsPage() {
         <Badge>{prettyStatus(a.status)}</Badge>
         <h1 className="mt-2 text-3xl sm:text-4xl">{a.match?.job.title ?? 'Application packet'}</h1>
         <p className="mt-1 text-muted-foreground">{a.match?.job.company} · {a.channel}</p>
+        {p.aiLane === 'terra' ? (
+          <p className="mt-2 text-sm text-muted-foreground">Cover letter and answers drafted by GPT-5.6 Terra. Edit anything before you approve.</p>
+        ) : null}
       </div>
 
       {p.resumeNotes.unconfirmed.length ? (
@@ -211,15 +218,21 @@ export function ApplicationDetailsPage() {
         <Card className="space-y-3">
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} />
-            I approve this packet. Submit only through {a.channel}. Do not automate restricted platforms.
+            {a.directToEmployer
+              ? `I approve sending this packet to ${a.match?.job.company ?? 'the employer'} on Atelier.`
+              : `I approve this packet. Submit only through ${a.channel}. Do not automate restricted platforms.`}
           </label>
           <Button variant="copper" disabled={!authorized} onClick={() => approve.mutate()}>
-            Approve and submit
+            {a.directToEmployer ? 'Send to employer' : 'Approve and submit'}
           </Button>
         </Card>
       ) : (
         <Card>
-          <p>Submitted. Track status and send follow-ups only with your approval.</p>
+          <p>
+            {a.deliveredToEmployer
+              ? 'Sent to the employer on Atelier. They can review your packet in their inbox.'
+              : 'Submitted. Track status and send follow-ups only with your approval.'}
+          </p>
           <select
             className="mt-3 h-10 rounded-lg border border-input bg-card px-3 text-sm"
             value={a.status}

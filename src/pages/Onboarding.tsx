@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import type { CareerLevel, Currency, EmploymentType, WorkMode } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/card'
 import { BrandMark } from '@/components/ui/feedback'
+import { CountrySelect } from '@/components/ui/country-select'
 import { useAuth } from '@/lib/auth'
 
 const STEPS = [
@@ -31,6 +32,10 @@ export function OnboardingPage() {
   const [local, setLocal] = useState<Partial<typeof profile>>({})
   const [skillInput, setSkillInput] = useState('')
   const draft = { ...profile, ...local }
+
+  if (profile.role === 'employer') {
+    return <Navigate to="/employer" replace />
+  }
 
   function patch<K extends keyof typeof draft>(key: K, value: (typeof draft)[K]) {
     setLocal((d) => ({ ...d, [key]: value }))
@@ -110,7 +115,10 @@ export function OnboardingPage() {
             <Field label="First name"><Input value={draft.firstName} onChange={(e) => patch('firstName', e.target.value)} /></Field>
             <Field label="Last name"><Input value={draft.lastName} onChange={(e) => patch('lastName', e.target.value)} /></Field>
             <Field label="Email"><Input type="email" value={draft.email} onChange={(e) => patch('email', e.target.value)} /></Field>
-            <Field label="Country"><Input value={draft.country} onChange={(e) => patch('country', e.target.value)} /></Field>
+            <div className="space-y-1.5">
+              <Label>Country</Label>
+              <CountrySelect value={draft.country} onChange={(country) => patch('country', country)} />
+            </div>
             <Field label="City" className="sm:col-span-2"><Input value={draft.city} onChange={(e) => patch('city', e.target.value)} /></Field>
           </Grid>
         </Card>
