@@ -283,31 +283,48 @@ alter table public.notifications enable row level security;
 alter table public.agent_settings enable row level security;
 alter table public.ai_agent_runs enable row level security;
 
+drop policy if exists "own profile" on public.profiles;
 create policy "own profile" on public.profiles for all using (auth.uid() = id) with check (auth.uid() = id);
+drop policy if exists "own skills" on public.user_skills;
 create policy "own skills" on public.user_skills for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own experience" on public.experiences;
 create policy "own experience" on public.experiences for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own education" on public.education;
 create policy "own education" on public.education for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own resumes" on public.resumes;
 create policy "own resumes" on public.resumes for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "read jobs" on public.jobs;
 create policy "read jobs" on public.jobs for select using (auth.role() = 'authenticated');
+drop policy if exists "read sources" on public.job_sources;
 create policy "read sources" on public.job_sources for select using (auth.role() = 'authenticated');
+drop policy if exists "read listings" on public.job_listings;
 create policy "read listings" on public.job_listings for select using (auth.role() = 'authenticated');
+drop policy if exists "own matches" on public.job_matches;
 create policy "own matches" on public.job_matches for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own applications" on public.applications;
 create policy "own applications" on public.applications for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own answers" on public.application_answers;
 create policy "own answers" on public.application_answers for all
   using (exists (select 1 from public.applications a where a.id = application_id and a.user_id = auth.uid()))
   with check (exists (select 1 from public.applications a where a.id = application_id and a.user_id = auth.uid()));
+drop policy if exists "own events" on public.application_events;
 create policy "own events" on public.application_events for all
   using (exists (select 1 from public.applications a where a.id = application_id and a.user_id = auth.uid()))
   with check (exists (select 1 from public.applications a where a.id = application_id and a.user_id = auth.uid()));
+drop policy if exists "own messages" on public.messages;
 create policy "own messages" on public.messages for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own notifications" on public.notifications;
 create policy "own notifications" on public.notifications for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own agent settings" on public.agent_settings;
 create policy "own agent settings" on public.agent_settings for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own agent runs" on public.ai_agent_runs;
 create policy "own agent runs" on public.ai_agent_runs for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 insert into storage.buckets (id, name, public)
 values ('resumes', 'resumes', false)
 on conflict (id) do nothing;
 
+drop policy if exists "own resume files" on storage.objects;
 create policy "own resume files"
 on storage.objects for all
 using (bucket_id = 'resumes' and auth.uid()::text = (storage.foldername(name))[1])
@@ -324,7 +341,7 @@ alter table public.profiles add column if not exists social_links jsonb default 
 alter table public.jobs add column if not exists employer_id uuid references public.profiles (id) on delete set null;
 alter table public.applications add column if not exists delivered_to_employer boolean default false;
 
-insert into public.job_sources (id, name, kind, allowed)
+insert into public.job_sources (id, name, kind, authorized)
 values ('atelier', 'Atelier employers', 'direct', true)
 on conflict (id) do nothing;
 

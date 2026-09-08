@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { BrandMark } from '@/components/ui/feedback'
 import { useAuth } from '@/lib/auth'
 import { rememberIntendedAccount, supabase, takeIntendedAccount, upsertOwnProfile } from '@/lib/supabase'
-import { authHero, brandSrc } from '@/lib/brandAssets'
+import { authHero, brandSrc, localBrandPath } from '@/lib/brandAssets'
 import { emptyProfile } from '@shared/types'
 import { SocialAuth } from '@/components/social/SocialAuth'
 import { api } from '@/lib/api'
@@ -538,7 +538,14 @@ function AuthFrame({
   return (
     <div className="grid min-h-svh bg-[#eef1ee] lg:grid-cols-2">
       <aside className="relative hidden overflow-hidden lg:block">
-        <img src={brandSrc(hero.file)} alt={hero.alt} className="absolute inset-0 size-full object-cover" />
+        <img
+          src={brandSrc(hero.file)}
+          alt={hero.alt}
+          onError={(e) => {
+            e.currentTarget.src = localBrandPath(hero.file)
+          }}
+          className="absolute inset-0 size-full object-cover"
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-[#0a100e] via-[#0a100e88] to-transparent" />
         <div className="relative flex h-full flex-col justify-between p-10 text-[var(--paper)]">
           <Link to="/">

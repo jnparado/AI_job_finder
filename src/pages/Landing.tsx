@@ -2,7 +2,9 @@ import { Link } from 'react-router-dom'
 import { ArrowUpRight, Briefcase, MapPin, Sparkles, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LandingVideo, MarketingShell } from '@/components/layout/MarketingShell'
+import { BrandCarousel } from '@/components/marketing/BrandCarousel'
 import { SocialShare } from '@/components/social/SocialLinks'
+import { CANDIDATE_HERO_SLIDES, EMPLOYER_HERO_SLIDES } from '@/lib/brandAssets'
 
 const SOURCES = ['Remotive', 'Remote OK', 'Arbeitnow', 'We Work Remotely', 'Himalayas', 'Jobicy', 'Atelier']
 
@@ -96,7 +98,7 @@ export function LandingPage() {
         title="Atelier in 20 seconds"
         caption="Matching, approval, and hiring — in twenty seconds."
         src="/ads/atelier-ad-16x9.mp4"
-        poster="/ads/atelier-ad-01-hero.png"
+        poster="/ads/atelier-ad-01-hero.jpg"
       />
 
       <InviteClose />
@@ -141,16 +143,9 @@ export function CandidateLandingPage() {
             </Button>
           </div>
         </div>
-        <div className="relative">
-          <img
-            src="/brand/candidate/candidate-hero.png"
-            alt="Applicant reviewing matched roles by a window"
-            className="aspect-[3/4] w-full rounded-[1.75rem] object-cover shadow-[0_40px_80px_-36px_rgba(0,0,0,0.7)] sm:aspect-[4/5] lg:aspect-[3/4]"
-          />
-          <div className="mt-4 lg:absolute lg:inset-x-6 lg:bottom-6 lg:mt-0">
-            <HeroMatchCard compact />
-          </div>
-        </div>
+        <BrandCarousel folder="candidate" slides={CANDIDATE_HERO_SLIDES}>
+          <HeroMatchCard compact />
+        </BrandCarousel>
       </section>
 
       <StepPanel
@@ -169,17 +164,17 @@ export function CandidateLandingPage() {
           <h2 className="mt-3 max-w-[16ch] text-3xl sm:text-5xl">Match. Prepare. Apply with approval.</h2>
           <div className="mt-10 grid gap-5 md:grid-cols-3">
             <HelpShot
-              src="/brand/candidate/candidate-match.png"
+              src="/brand/candidate/candidate-match.jpg"
               title="Honest scores"
               body="Every listing is weighed against your real skills, title, salary, and location — not invented keywords."
             />
             <HelpShot
-              src="/brand/candidate/candidate-prepare.png"
+              src="/brand/candidate/candidate-prepare.jpg"
               title="A packet you can stand behind"
               body="Cover letter and answers drafted from your profile. You edit. You approve. Then it goes."
             />
             <HelpShot
-              src="/brand/candidate/candidate-track.png"
+              src="/brand/candidate/candidate-track.jpg"
               title="Follow what happens next"
               body="Interviews, follow-ups, and status live in one place after you send."
             />
@@ -190,7 +185,7 @@ export function CandidateLandingPage() {
       <section id="serve" className="px-5 pb-16 sm:px-8">
         <div className="mx-auto grid max-w-6xl items-center gap-10 overflow-hidden rounded-[2rem] border border-[#c9c0ae22] bg-[#0d1b16]/70 lg:grid-cols-2">
           <img
-            src="/brand/candidate/candidate-life.png"
+            src="/brand/candidate/candidate-life.jpg"
             alt="People working quietly in a sunlit loft"
             className="h-full min-h-[280px] w-full object-cover lg:min-h-[420px]"
           />
@@ -220,7 +215,7 @@ export function CandidateLandingPage() {
         title="Built for applicants"
         caption="Match, prepare, approve, then apply — including packets sent to employers on Atelier."
         src="/ads/atelier-ad-candidate.mp4"
-        poster="/ads/atelier-ad-candidate-hero.png"
+        poster="/ads/atelier-ad-candidate-hero.jpg"
       />
       <InviteClose audience="candidate" />
     </MarketingShell>
@@ -261,13 +256,7 @@ export function EmployerLandingPage() {
             </Button>
           </div>
         </div>
-        <div className="relative">
-          <img
-            src="/brand/employer/employer-hero.png"
-            alt="Hiring manager reviewing matches on a tablet"
-            className="aspect-[3/4] w-full rounded-[1.75rem] object-cover shadow-[0_40px_80px_-36px_rgba(0,0,0,0.7)] sm:aspect-[4/5] lg:aspect-[3/4]"
-          />
-        </div>
+        <BrandCarousel folder="employer" slides={EMPLOYER_HERO_SLIDES} />
       </section>
 
       <section id="help" className="px-5 py-16 sm:px-8 sm:py-20">
@@ -276,17 +265,17 @@ export function EmployerLandingPage() {
           <h2 className="mt-3 max-w-[16ch] text-3xl sm:text-5xl">Post once. Meet people who fit.</h2>
           <div className="mt-10 grid gap-5 md:grid-cols-3">
             <HelpShot
-              src="/brand/employer/employer-inbox.png"
+              src="/brand/employer/employer-inbox.jpg"
               title="Approved packets"
               body="Resume, letter, and answers arrive only after the candidate says yes."
             />
             <HelpShot
-              src="/brand/employer/employer-team.png"
+              src="/brand/employer/employer-team.jpg"
               title="A shortlist you can trust"
               body="Every listing is scored against a real profile. You see why they fit."
             />
             <HelpShot
-              src="/brand/employer/employer-interview.png"
+              src="/brand/employer/employer-interview.jpg"
               title="Decide with context"
               body="Move people to interview, offer, or close from one inbox."
             />
@@ -297,7 +286,7 @@ export function EmployerLandingPage() {
       <section id="serve" className="px-5 pb-16 sm:px-8">
         <div className="mx-auto grid max-w-6xl items-center gap-10 overflow-hidden rounded-[2rem] border border-[#c9c0ae22] bg-[#0d1b16]/70 lg:grid-cols-2">
           <img
-            src="/brand/employer/employer-office.png"
+            src="/brand/employer/employer-office.jpg"
             alt="A calm modern office"
             className="h-full min-h-[280px] w-full object-cover lg:min-h-[420px]"
           />
@@ -327,7 +316,7 @@ export function EmployerLandingPage() {
         title="Built for hiring teams"
         caption="Post a role, collect approved packets, and decide who to meet."
         src="/ads/atelier-ad-employer.mp4"
-        poster="/ads/atelier-ad-employer-hero.png"
+        poster="/ads/atelier-ad-employer-hero.jpg"
       />
       <InviteClose audience="employer" />
     </MarketingShell>
@@ -407,7 +396,7 @@ function InviteClose({ audience }: { audience?: 'candidate' | 'employer' }) {
     <section className="px-5 pb-16 sm:px-8 sm:pb-20">
       <div className="mx-auto max-w-6xl overflow-hidden rounded-[2rem] border border-[#c9c0ae22] bg-[#0d1b16]/80 px-6 py-12 text-center sm:px-12 sm:py-16">
         <img
-          src="/brand/atelier-logo.png"
+          src="/brand/atelier-logo.jpg"
           alt=""
           width={72}
           height={72}

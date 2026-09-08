@@ -10,7 +10,7 @@ export function JsonLd() {
         name: 'Atelier',
         alternateName: 'Atelier AI Job Assistant',
         url,
-        logo: `${url}/brand/atelier-logo.png`,
+        logo: `${url}/brand/atelier-logo.jpg`,
         description: 'AI job assistant that matches candidates and employers. Nothing is sent until you approve.',
         sameAs: [
           import.meta.env.VITE_SOCIAL_FACEBOOK,

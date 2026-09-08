@@ -72,7 +72,7 @@ export function BrandMark({ light = false }: { light?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
       <img
-        src="/brand/atelier-logo.png"
+        src="/brand/atelier-logo.jpg"
         alt=""
         width={40}
         height={40}
