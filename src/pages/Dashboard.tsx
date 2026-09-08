@@ -102,7 +102,7 @@ export function DashboardPage() {
             <div className="mt-5 flex flex-wrap gap-2">
               <Button onClick={() => navigate(`/app/jobs/${top.job.id}`)}>See why it fits</Button>
               <Button variant="copper" onClick={() => apply.mutate(top.job.id)} disabled={apply.isPending}>
-                {apply.isPending ? 'Preparing…' : top.job.employerId ? 'Apply to employer' : 'Apply with AI'}
+                {apply.isPending ? 'Preparing…' : top.job.employerId ? 'Send to employer' : 'Prepare & apply'}
               </Button>
             </div>
           </div>
@@ -110,7 +110,7 @@ export function DashboardPage() {
       ) : (
         <EmptyState
           title="No matches yet"
-          body="Complete your profile, then search authorized boards. LinkedIn and Upwork open on their official sites."
+          body="Complete your profile, then search. You can apply to every match — on Atelier we deliver the packet; on LinkedIn or Upwork you apply on their site."
           actionLabel="Find jobs now"
           onClick={() => search.mutate()}
         />

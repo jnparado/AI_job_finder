@@ -1,10 +1,21 @@
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, Briefcase, MapPin, Sparkles, User } from 'lucide-react'
+import { ArrowUpRight, Briefcase, Check, MapPin, Sparkles, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LandingVideo, MarketingShell } from '@/components/layout/MarketingShell'
 import { BrandCarousel } from '@/components/marketing/BrandCarousel'
+import {
+  AloneVsWorkshop,
+  ApplyPaths,
+  CANDIDATE_FAQ,
+  HowWorkshopWorks,
+  MatchScoreBoard,
+  RisingFitFeed,
+  SourceTicker,
+  WorkshopFaq,
+  WorkshopFor,
+} from '@/components/marketing/CandidateStory'
 import { SocialShare } from '@/components/social/SocialLinks'
-import { CANDIDATE_HERO_SLIDES, EMPLOYER_HERO_SLIDES } from '@/lib/brandAssets'
+import { EMPLOYER_HERO_SLIDES } from '@/lib/brandAssets'
 
 const SOURCES = ['Remotive', 'Remote OK', 'Arbeitnow', 'We Work Remotely', 'Himalayas', 'Jobicy', 'Atelier']
 
@@ -109,29 +120,24 @@ export function LandingPage() {
 export function CandidateLandingPage() {
   return (
     <MarketingShell audience="candidate">
-      <section id="platform" className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14 lg:py-20">
+      <section id="platform" className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[1.02fr_0.98fr] lg:gap-12 lg:py-20">
         <div>
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-[#c6a15b]">
-            Atelier · Applicants
+            Your AI job search workshop
           </p>
-          <h1 className="mt-4 text-5xl leading-[1.02] sm:text-6xl lg:text-[4.25rem]">
-            Find the jobs
+          <h1 className="mt-4 text-5xl leading-[1.02] sm:text-6xl lg:text-[4.15rem]">
+            Match first.
             <br />
-            that actually
+            Prepare the packet.
             <br />
-            fit you.
+            You send it.
           </h1>
-          <p className="mt-4 font-serif text-xl text-[#d8d0c0]">Match. Prepare. Approve. Apply.</p>
           <p className="mt-5 max-w-xl text-base leading-relaxed text-[#c9c0ae] sm:text-lg">
-            Atelier searches authorized listings, scores every role against your resume, and prepares the packet. You review. You approve. Then it tracks what happens next.
-          </p>
-          <p className="mt-5 flex items-center gap-2.5 text-sm text-[var(--paper)]">
-            <span className="size-2 shrink-0 rounded-full bg-[#c6a15b]" />
-            Nothing is sent until you say so
+            Atelier finds roles from licensed boards and employers here, scores them against your resume, and drafts the letter. You can apply to every match. If the employer is on Atelier, we deliver the packet after you approve. If the job is on LinkedIn, Upwork, or another site, you apply on their official page — we never auto-submit there.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button variant="copper" size="lg" className="h-12 px-7 text-[0.8rem] font-semibold uppercase tracking-[0.1em]" asChild>
-              <Link to="/register">Get started free</Link>
+              <Link to="/register">Start matching</Link>
             </Button>
             <Button
               variant="outline"
@@ -139,84 +145,145 @@ export function CandidateLandingPage() {
               className="h-12 border-[#c9c0ae66] px-7 text-[0.8rem] font-semibold uppercase tracking-[0.1em] text-[var(--paper)] hover:bg-[#1f3d32]"
               asChild
             >
-              <Link to="/login">I already have an account</Link>
+              <Link to="/login">Log in</Link>
             </Button>
           </div>
+          <ul className="mt-6 flex flex-wrap gap-2 text-xs text-[#d8d0c0]">
+            {['70% recommended bar', 'Authorized boards', 'You approve every send'].map((item) => (
+              <li key={item} className="rounded-full border border-[#c9c0ae33] px-3 py-1.5">
+                {item}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-5 text-sm text-[#c9c0ae]">You apply to the job. We never auto-apply on LinkedIn, Upwork, Indeed, or similar sites.</p>
         </div>
-        <BrandCarousel folder="candidate" slides={CANDIDATE_HERO_SLIDES}>
-          <HeroMatchCard compact />
-        </BrandCarousel>
+        <RisingFitFeed />
       </section>
 
-      <StepPanel
-        steps={[
-          ['Discover', 'Authorized boards and Atelier employer posts'],
-          ['Match', 'Scored against your real resume'],
-          ['Prepare', 'Cover letter and answers, no invented skills'],
-          ['Approve', 'Nothing is sent until you say so'],
-          ['Track', 'Follow-ups and interviews in one place'],
-        ]}
-      />
+      <div className="border-y border-[#c9c0ae18]">
+        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-px sm:grid-cols-3">
+          {[
+            ['Authorized', 'APIs and career pages'],
+            ['0–100', 'Scored against your resume'],
+            ['You send', 'Nothing leaves until you approve'],
+          ].map(([n, label]) => (
+            <div key={label} className="bg-[#0d1b16]/50 px-5 py-6">
+              <div className="font-serif text-2xl text-[var(--paper)] sm:text-3xl">{n}</div>
+              <div className="mt-1 text-xs text-[#c9c0ae] sm:text-sm">{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <SourceTicker />
 
-      <section id="help" className="px-5 py-16 sm:px-8 sm:py-20">
+      <AloneVsWorkshop />
+
+      <section id="how" className="px-5 py-16 sm:px-8 sm:py-20">
         <div className="mx-auto max-w-6xl">
-          <p className="eyebrow text-[#c6a15b]">How we help</p>
-          <h2 className="mt-3 max-w-[16ch] text-3xl sm:text-5xl">Match. Prepare. Apply with approval.</h2>
-          <div className="mt-10 grid gap-5 md:grid-cols-3">
-            <HelpShot
-              src="/brand/candidate/candidate-match.jpg"
-              title="Honest scores"
-              body="Every listing is weighed against your real skills, title, salary, and location — not invented keywords."
-            />
-            <HelpShot
-              src="/brand/candidate/candidate-prepare.jpg"
-              title="A packet you can stand behind"
-              body="Cover letter and answers drafted from your profile. You edit. You approve. Then it goes."
-            />
-            <HelpShot
-              src="/brand/candidate/candidate-track.jpg"
-              title="Follow what happens next"
-              body="Interviews, follow-ups, and status live in one place after you send."
-            />
-          </div>
+          <p className="eyebrow text-[#c6a15b]">How it works</p>
+          <h2 className="mt-3 max-w-[20ch] text-3xl sm:text-5xl">From profile to send in three steps</h2>
+          <HowWorkshopWorks
+            steps={[
+              ['01', 'Complete your profile', 'Answer a short setup and upload your resume so Atelier knows your skills, pay, and place.'],
+              ['02', 'Review scored matches', 'Every role is weighed 0–100 against you. Recommended starts at 70%. Skip the rest.'],
+              ['03', 'Apply your way', 'We draft the packet. On Atelier we deliver it after you approve. On LinkedIn, Upwork, or other sites, you submit on their official page.'],
+            ]}
+          />
         </div>
       </section>
 
-      <section id="serve" className="px-5 pb-16 sm:px-8">
-        <div className="mx-auto grid max-w-6xl items-center gap-10 overflow-hidden rounded-[2rem] border border-[#c9c0ae22] bg-[#0d1b16]/70 lg:grid-cols-2">
-          <img
-            src="/brand/candidate/candidate-life.jpg"
-            alt="People working quietly in a sunlit loft"
-            className="h-full min-h-[280px] w-full object-cover lg:min-h-[420px]"
-          />
+      <section id="matches" className="px-5 pb-16 sm:px-8 sm:pb-20">
+        <div className="mx-auto max-w-6xl">
+          <p className="eyebrow text-[#c6a15b]">Match scoring</p>
+          <h2 className="mt-3 max-w-[16ch] text-3xl sm:text-5xl">Only sit with roles worth your time</h2>
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[#c9c0ae] sm:text-base">
+            Tell us title, salary floor, and must-haves. We score live postings and Atelier employer roles against that profile. Cards below are a sample workshop profile — not a feed of famous logos.
+          </p>
+          <MatchScoreBoard />
+        </div>
+      </section>
+
+      <ApplyPaths />
+
+      <section className="px-5 pb-16 sm:px-8">
+        <div className="mx-auto grid max-w-6xl items-start gap-8 overflow-hidden rounded-[2rem] border border-[#c9c0ae22] bg-[#0d1b16]/70 lg:grid-cols-2">
           <div className="p-8 sm:p-12">
-            <p className="eyebrow text-[#c6a15b]">Who we serve</p>
-            <h2 className="mt-3 text-3xl sm:text-4xl">People looking for a role that fits</h2>
+            <p className="eyebrow text-[#c6a15b]">The letter</p>
+            <h2 className="mt-3 text-3xl sm:text-4xl">Written for that role — in your voice</h2>
             <p className="mt-4 text-sm leading-relaxed text-[#c9c0ae] sm:text-base">
-              Upload a resume, search authorized boards and Atelier employer posts, and apply only when the packet is ready. No scraping. No auto-apply.
+              Atelier drafts from your resume and the posting. You edit. Then you apply — send to an Atelier employer, or paste it on their official listing.
             </p>
             <ul className="mt-6 space-y-2 text-sm text-[var(--paper)]">
-              {['Specialists changing teams', 'People returning to the market', 'Applicants who want a cleaner search'].map((item) => (
+              {['Opening tied to the listing', 'Skills you actually have', 'You apply — we never auto-submit on other sites'].map((item) => (
                 <li key={item} className="flex items-center gap-2.5">
                   <span className="size-2 shrink-0 rounded-full bg-[#c6a15b]" />
                   {item}
                 </li>
               ))}
             </ul>
-            <Button variant="copper" className="mt-8" asChild>
-              <Link to="/register">Create a free account</Link>
+          </div>
+          <div className="border-t border-[#c9c0ae22] bg-[#f7f4ee] p-8 text-[#161c19] sm:p-10 lg:border-t-0 lg:border-l">
+            <p className="text-xs uppercase tracking-[0.14em] text-[#8f4326]">Draft · Northwind Labs</p>
+            <p className="mt-4 font-serif text-lg leading-relaxed">
+              I am writing about the AI Automation Engineer role. I have shipped agent workflows in TypeScript and Python, including retrieval over internal docs — the same shape of problem in your listing.
+            </p>
+            <p className="mt-4 text-sm leading-relaxed text-[#3d4541]">
+              I would rather send a short, true letter than a sprayed template. If this packet looks right, I will send it from the workshop.
+            </p>
+            <p className="mt-6 text-sm font-medium">— Your name, after you approve</p>
+            <Button variant="copper" className="mt-6" asChild>
+              <Link to="/register">Prepare a letter</Link>
             </Button>
           </div>
         </div>
       </section>
 
+      <section id="inbox" className="px-5 pb-16 sm:px-8">
+        <div className="mx-auto max-w-6xl">
+          <p className="eyebrow text-[#c6a15b]">Inbox</p>
+          <h2 className="mt-3 max-w-[16ch] text-3xl sm:text-5xl">Every send, reply, and interview in one place</h2>
+          <div className="mt-10 grid gap-4 sm:grid-cols-3">
+            {[
+              ['12', 'Packets ready'],
+              ['4', 'Sent this week'],
+              ['2', 'Interviews to prep'],
+            ].map(([n, label]) => (
+              <div key={label} className="rounded-[1.5rem] border border-[#c9c0ae22] bg-[#0d1b16]/70 px-6 py-6">
+                <div className="font-serif text-4xl">{n}</div>
+                <div className="mt-1 text-sm text-[#c9c0ae]">{label}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 space-y-3 rounded-[1.5rem] border border-[#c9c0ae22] bg-[#0d1b16]/70 p-5">
+            {[
+              ['Northwind Labs', 'Packet ready · you apply on their listing'],
+              ['Harbor Pay', 'Copied letter · submit on their career page'],
+              ['Atelier Labs', 'Sent to employer inbox'],
+            ].map(([who, status]) => (
+              <Link
+                key={who}
+                to="/register"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-[#13261f] px-4 py-3 transition-colors hover:bg-[#1f3d32]"
+              >
+                <span className="font-medium">{who}</span>
+                <span className="text-sm text-[#c9c0ae]">{status}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <WorkshopFor />
+
       <LandingVideo
         kicker="Candidate film"
-        title="Built for applicants"
-        caption="Match, prepare, approve, then apply — including packets sent to employers on Atelier."
+        title="Match. Prepare. Approve."
+        caption="The workshop searches, scores, and drafts. You decide what leaves."
         src="/ads/atelier-ad-candidate.mp4"
         poster="/ads/atelier-ad-candidate-hero.jpg"
       />
+
+      <WorkshopFaq items={CANDIDATE_FAQ} />
       <InviteClose audience="candidate" />
     </MarketingShell>
   )
@@ -236,7 +303,7 @@ export function EmployerLandingPage() {
             Review real packets.
           </h1>
           <p className="mt-6 max-w-xl text-base leading-relaxed text-[#c9c0ae] sm:text-lg">
-            Atelier helps employers post roles, receive approved applications, and decide who to meet — without a pile of unsolicited resumes.
+            Post a role on Atelier. Candidates who match prepare a packet and send it only after they approve. You meet people who meant to apply — not a pile of unsolicited resumes.
           </p>
           <p className="mt-5 flex items-center gap-2.5 text-sm text-[var(--paper)]">
             <span className="size-2 shrink-0 rounded-full bg-[#c6a15b]" />
@@ -252,17 +319,69 @@ export function EmployerLandingPage() {
               className="h-12 border-[#c9c0ae66] px-7 text-[0.8rem] font-semibold uppercase tracking-[0.1em] text-[var(--paper)] hover:bg-[#1f3d32]"
               asChild
             >
-              <Link to="/candidates">Find talent</Link>
+              <Link to="/">See candidate side</Link>
             </Button>
           </div>
+          <ul className="mt-6 flex flex-wrap gap-2 text-xs text-[#d8d0c0]">
+            {['Approved packets only', 'Match scores on every send', 'One hiring inbox'].map((item) => (
+              <li key={item} className="rounded-full border border-[#c9c0ae33] px-3 py-1.5">
+                {item}
+              </li>
+            ))}
+          </ul>
         </div>
         <BrandCarousel folder="employer" slides={EMPLOYER_HERO_SLIDES} />
       </section>
 
-      <section id="help" className="px-5 py-16 sm:px-8 sm:py-20">
+      <section id="features" className="px-5 py-16 sm:px-8 sm:py-20">
+        <div className="mx-auto max-w-6xl">
+          <p className="eyebrow text-[#c6a15b]">Why teams use the workshop</p>
+          <h2 className="mt-3 max-w-[18ch] text-3xl sm:text-5xl">Post once. Meet people who chose to send.</h2>
+          <div className="mt-10 grid gap-5 lg:grid-cols-2">
+            <div className="rounded-[1.75rem] border border-[#c9c0ae22] bg-[#0d1b16]/50 p-7">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#9a9386]">The usual inbox</p>
+              <ul className="mt-5 space-y-3 text-sm text-[#c9c0ae]">
+                {['Untargeted applications', 'Resumes with no letter', 'No sense of why they applied', 'Chasing people who never meant to talk'].map((item) => (
+                  <li key={item} className="flex gap-3">
+                    <span className="mt-1 size-1.5 shrink-0 rounded-full bg-[#b85c38]" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-[1.75rem] border border-[#c6a15b44] bg-[#1f3d32]/80 p-7">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">On Atelier</p>
+              <ul className="mt-5 space-y-3 text-sm text-[#e7e1d4]">
+                {['Role scored against a real profile', 'Packet arrives only after they approve', 'Letter and answers in one place', 'Move them to interview from the inbox'].map((item) => (
+                  <li key={item} className="flex gap-3">
+                    <Check className="mt-0.5 size-4 shrink-0 text-[#c6a15b]" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="how" className="px-5 pb-16 sm:px-8 sm:pb-20">
+        <div className="mx-auto max-w-6xl">
+          <p className="eyebrow text-[#c6a15b]">How it works</p>
+          <h2 className="mt-3 max-w-[18ch] text-3xl sm:text-5xl">From a listing to a shortlist in three steps</h2>
+          <HowWorkshopWorks
+            steps={[
+              ['01', 'Post the role', 'Write the listing once on Atelier. Candidates whose profiles fit see it in search.'],
+              ['02', 'They approve a packet', 'Matched people prepare a letter and answers. Nothing hits your inbox until they send.'],
+              ['03', 'You decide', 'Review the packet, then move them to interview, offer, or close.'],
+            ]}
+          />
+        </div>
+      </section>
+
+      <section id="help" className="px-5 pb-8 sm:px-8">
         <div className="mx-auto max-w-6xl">
           <p className="eyebrow text-[#c6a15b]">How we help</p>
-          <h2 className="mt-3 max-w-[16ch] text-3xl sm:text-5xl">Post once. Meet people who fit.</h2>
+          <h2 className="mt-3 max-w-[16ch] text-3xl sm:text-5xl">From a listing to a shortlist you can trust</h2>
           <div className="mt-10 grid gap-5 md:grid-cols-3">
             <HelpShot
               src="/brand/employer/employer-inbox.jpg"
@@ -283,7 +402,30 @@ export function EmployerLandingPage() {
         </div>
       </section>
 
-      <section id="serve" className="px-5 pb-16 sm:px-8">
+      <section id="inbox" className="px-5 py-16 sm:px-8">
+        <div className="mx-auto max-w-6xl overflow-hidden rounded-[2rem] border border-[#c9c0ae22] bg-[#0d1b16]/70 p-8 sm:p-12">
+          <p className="eyebrow text-[#c6a15b]">Inbox</p>
+          <h2 className="mt-3 text-3xl sm:text-4xl">Packets, not cold resumes</h2>
+          <div className="mt-8 space-y-3">
+            {[
+              ['Full Stack Engineer', '94 match · packet approved'],
+              ['AI Automation Engineer', '91 match · letter attached'],
+              ['React Engineer', '88 match · ready to review'],
+            ].map(([title, meta]) => (
+              <Link
+                key={title}
+                to="/register?role=employer"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-[#13261f] px-5 py-4 transition-colors hover:bg-[#1f3d32]"
+              >
+                <span className="font-serif text-xl">{title}</span>
+                <span className="text-sm text-[#c9c0ae]">{meta}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="serve" className="px-5 pb-8 sm:px-8">
         <div className="mx-auto grid max-w-6xl items-center gap-10 overflow-hidden rounded-[2rem] border border-[#c9c0ae22] bg-[#0d1b16]/70 lg:grid-cols-2">
           <img
             src="/brand/employer/employer-office.jpg"
@@ -296,14 +438,6 @@ export function EmployerLandingPage() {
             <p className="mt-4 text-sm leading-relaxed text-[#c9c0ae] sm:text-base">
               Publish a role on Atelier. Candidates who match see it in search. When they approve a packet, it lands in your inbox — ready to review.
             </p>
-            <ul className="mt-6 space-y-2 text-sm text-[var(--paper)]">
-              {['Growing product teams', 'Studios hiring specialists', 'Founders filling the next seat'].map((item) => (
-                <li key={item} className="flex items-center gap-2.5">
-                  <span className="size-2 shrink-0 rounded-full bg-[#c6a15b]" />
-                  {item}
-                </li>
-              ))}
-            </ul>
             <Button variant="paper" className="mt-8" asChild>
               <Link to="/register?role=employer">Create an employer account</Link>
             </Button>
@@ -318,6 +452,30 @@ export function EmployerLandingPage() {
         src="/ads/atelier-ad-employer.mp4"
         poster="/ads/atelier-ad-employer-hero.jpg"
       />
+      <WorkshopFaq
+        items={[
+          {
+            q: 'Do you auto-apply candidates from LinkedIn or Upwork?',
+            a: 'No. Candidates can apply to those jobs themselves on the official page. Atelier only delivers a packet to your inbox when they match your Atelier listing and approve send.',
+          },
+          {
+            q: 'Do candidates auto-apply to my role?',
+            a: 'No. They match, prepare a packet, and send it only after they approve. You will not get a spray of unreviewed applications from Atelier.',
+          },
+          {
+            q: 'Where does the listing appear?',
+            a: 'On Atelier search for candidates whose profile fits. We do not post it to LinkedIn or Indeed for you.',
+          },
+          {
+            q: 'What is in a packet?',
+            a: 'A tailored resume draft, a letter, and answers they approved. You see why they scored against the role.',
+          },
+          {
+            q: 'Is there a fee to post?',
+            a: 'You can post and review packets from an employer account. Billing, if you add it later, lives in Settings — not as a surprise checkout on this page.',
+          },
+        ]}
+      />
       <InviteClose audience="employer" />
     </MarketingShell>
   )
@@ -325,13 +483,13 @@ export function EmployerLandingPage() {
 
 function HelpShot({ src, title, body }: { src: string; title: string; body: string }) {
   return (
-    <article className="overflow-hidden rounded-[1.5rem] border border-[#c9c0ae22] bg-[#0d1b16]/70">
+    <Link to="/register?role=employer" className="overflow-hidden rounded-[1.5rem] border border-[#c9c0ae22] bg-[#0d1b16]/70 transition-colors hover:border-[#c6a15b66]">
       <img src={src} alt="" className="aspect-[4/3] w-full object-cover" />
       <div className="p-5">
         <h3 className="text-xl">{title}</h3>
         <p className="mt-2 text-sm leading-relaxed text-[#c9c0ae]">{body}</p>
       </div>
-    </article>
+    </Link>
   )
 }
 
@@ -369,26 +527,6 @@ function AudienceCard({
   )
 }
 
-function StepPanel({ steps }: { steps: [string, string][] }) {
-  return (
-    <section className="px-5 pb-4 sm:px-8">
-      <ol
-        className={`mx-auto grid max-w-6xl gap-px overflow-hidden rounded-[1.75rem] border border-[#c9c0ae22] bg-[#c9c0ae22] sm:grid-cols-2 ${
-          steps.length === 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'
-        }`}
-      >
-        {steps.map(([title, body], i) => (
-          <li key={title} className="bg-[#0d1b16] p-5 sm:p-6">
-            <div className="text-[0.68rem] uppercase tracking-[0.14em] text-[#c6a15b]">Step {i + 1}</div>
-            <div className="mt-2 font-serif text-xl">{title}</div>
-            <p className="mt-2 text-sm leading-relaxed text-[#c9c0ae]">{body}</p>
-          </li>
-        ))}
-      </ol>
-    </section>
-  )
-}
-
 function InviteClose({ audience }: { audience?: 'candidate' | 'employer' }) {
   const candidate = audience !== 'employer'
   const employer = audience !== 'candidate'
@@ -416,7 +554,7 @@ function InviteClose({ audience }: { audience?: 'candidate' | 'employer' }) {
           {audience === 'employer'
             ? 'Create an account and publish your first listing. Matched candidates send a packet only after they approve it.'
             : audience === 'candidate'
-              ? 'Create an account, upload a resume, and we score live listings against you. Nothing is sent until you say so.'
+              ? 'Create an account, upload a resume, and we score live listings against you. Apply to any match — we deliver packets only to Atelier employers; other sites you submit yourself.'
               : 'Candidates match and apply with approval. Employers post a role and review real packets. No card required to begin.'}
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -485,14 +623,15 @@ function HeroMatchCard({ compact }: { compact?: boolean }) {
             Scored against your real profile — Next.js, Node, and Postgres. No invented skills.
           </p>
         )}
-        <div
+        <Link
+          to="/register"
           className={`flex items-center justify-center gap-2 rounded-full bg-[var(--copper)] text-sm font-medium text-[var(--paper)] ${
             compact ? 'mt-4 h-10' : 'mt-6 h-11'
           }`}
         >
-          Apply
+          Send to employer
           <ArrowUpRight className="size-4" />
-        </div>
+        </Link>
       </div>
     </div>
   )

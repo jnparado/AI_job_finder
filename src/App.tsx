@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/lib/auth'
 import { AppShell } from '@/components/layout/AppShell'
+import { ScrollToHash } from '@/components/layout/ScrollToHash'
 import { CandidateLandingPage, EmployerLandingPage } from '@/pages/Landing'
 import { AboutPage, PrivacyPage, SupportPage, TermsPage } from '@/pages/Legal'
 import { CallbackPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyPage } from '@/pages/Auth'
@@ -37,10 +38,11 @@ export default function App() {
         <GoogleTags />
         <JsonLd />
         <BrowserRouter>
+          <ScrollToHash />
           <Routes>
-            <Route path="/" element={<EmployerLandingPage />} />
-            <Route path="/candidates" element={<CandidateLandingPage />} />
-            <Route path="/employers" element={<Navigate to="/" replace />} />
+            <Route path="/" element={<CandidateLandingPage />} />
+            <Route path="/candidates" element={<Navigate to="/" replace />} />
+            <Route path="/employers" element={<EmployerLandingPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/terms" element={<TermsPage />} />

@@ -19,7 +19,7 @@ export function MarketingShell({
       <div className="h-0.5 bg-[#c6a15b]" />
       <header className="sticky top-0 z-30 border-b border-[#c9c0ae14] bg-[var(--forest)]/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-8">
-          <Link to="/" className="shrink-0">
+          <Link to={hiring ? '/employers' : '/'} className="shrink-0">
             <BrandMark light />
           </Link>
 
@@ -28,16 +28,6 @@ export function MarketingShell({
               <Link
                 to="/"
                 className={`rounded-full px-3 py-1.5 ${
-                  hiring
-                    ? 'bg-[var(--paper)] !text-[#13261f]'
-                    : '!text-[#d8d0c0] hover:!text-[var(--paper)]'
-                }`}
-              >
-                Employers
-              </Link>
-              <Link
-                to="/candidates"
-                className={`rounded-full px-3 py-1.5 ${
                   !hiring
                     ? 'bg-[var(--paper)] !text-[#13261f]'
                     : '!text-[#d8d0c0] hover:!text-[var(--paper)]'
@@ -45,11 +35,22 @@ export function MarketingShell({
               >
                 Candidates
               </Link>
+              <Link
+                to="/employers"
+                className={`rounded-full px-3 py-1.5 ${
+                  hiring
+                    ? 'bg-[var(--paper)] !text-[#13261f]'
+                    : '!text-[#d8d0c0] hover:!text-[var(--paper)]'
+                }`}
+              >
+                Employers
+              </Link>
             </div>
           ) : (
             <nav className="order-3 flex w-full items-center justify-center gap-1 text-sm sm:order-0 sm:w-auto">
               <NavLink
-                to="/candidates"
+                to="/"
+                end
                 className={({ isActive }) =>
                   `rounded-full px-3 py-1.5 transition-colors ${isActive ? 'bg-[#1f3d32] text-white' : 'text-[#d8d0c0] hover:bg-[#1f3d32]/70'}`
                 }
@@ -57,8 +58,7 @@ export function MarketingShell({
                 Candidates
               </NavLink>
               <NavLink
-                to="/"
-                end
+                to="/employers"
                 className={({ isActive }) =>
                   `rounded-full px-3 py-1.5 transition-colors ${isActive ? 'bg-[#1f3d32] text-white' : 'text-[#d8d0c0] hover:bg-[#1f3d32]/70'}`
                 }
@@ -69,28 +69,27 @@ export function MarketingShell({
           )}
 
           {audience ? (
-            <nav className="hidden items-center gap-5 text-sm text-[#d8d0c0] lg:flex">
-              <a href="#platform" className="hover:text-[var(--paper)]">
-                Platform
-              </a>
-              <a href="#help" className="hover:text-[var(--paper)]">
-                How we help
-              </a>
-              <a href="#serve" className="hover:text-[var(--paper)]">
-                Who we serve
-              </a>
-            </nav>
+            <>
+              <nav className="hidden items-center gap-5 text-sm text-[#d8d0c0] lg:flex">
+                <HashNav hiring={hiring} />
+              </nav>
+            </>
           ) : null}
 
           <div className="flex shrink-0 gap-2">
             <Button variant="outline" className="border-[#c9c0ae55] text-[var(--paper)] hover:bg-[#1f3d32]" asChild>
-              <Link to={hiring ? '/login?role=employer' : '/login'}>{hiring ? 'Login' : 'Sign in'}</Link>
+              <Link to={hiring ? '/login?role=employer' : '/login'}>Log in</Link>
             </Button>
             <Button variant={hiring ? 'paper' : 'copper'} asChild>
-              <Link to={registerTo}>{hiring ? 'Signup' : audience === 'candidate' ? 'Get started' : 'Get started'}</Link>
+              <Link to={registerTo}>Sign up</Link>
             </Button>
           </div>
         </div>
+        {audience ? (
+          <nav className="flex gap-5 overflow-x-auto border-t border-[#c9c0ae14] px-5 py-2.5 text-sm text-[#d8d0c0] sm:px-8 lg:hidden">
+            <HashNav hiring={hiring} />
+          </nav>
+        ) : null}
       </header>
       {children}
       <MarketingFooter />
@@ -98,12 +97,37 @@ export function MarketingShell({
   )
 }
 
+function HashNav({ hiring }: { hiring: boolean }) {
+  const links = hiring
+    ? [
+        ['Features', '/employers#features'],
+        ['How it works', '/employers#how'],
+        ['Inbox', '/employers#inbox'],
+        ['FAQ', '/employers#faq'],
+      ]
+    : [
+        ['Features', '/#features'],
+        ['How it works', '/#how'],
+        ['Matches', '/#matches'],
+        ['FAQ', '/#faq'],
+      ]
+  return (
+    <>
+      {links.map(([label, to]) => (
+        <Link key={label} to={to} className="shrink-0 hover:text-[var(--paper)]">
+          {label}
+        </Link>
+      ))}
+    </>
+  )
+}
+
 const FOOTER_COLS: { title: string; links: { to: string; label: string }[] }[] = [
   {
     title: 'Product',
     links: [
-      { to: '/candidates', label: 'Candidates' },
-      { to: '/', label: 'Employers' },
+      { to: '/', label: 'Candidates' },
+      { to: '/employers', label: 'Employers' },
       { to: '/register', label: 'Get started' },
       { to: '/login', label: 'Sign in' },
     ],
@@ -112,18 +136,18 @@ const FOOTER_COLS: { title: string; links: { to: string; label: string }[] }[] =
     title: 'Applicants',
     links: [
       { to: '/register', label: 'Find a job' },
-      { to: '/candidates#help', label: 'How we help' },
-      { to: '/candidates#serve', label: 'Who we serve' },
-      { to: '/login', label: 'I have an account' },
+      { to: '/#how', label: 'How it works' },
+      { to: '/#matches', label: 'Match scores' },
+      { to: '/#faq', label: 'FAQ' },
     ],
   },
   {
     title: 'Employers',
     links: [
       { to: '/register?role=employer', label: 'Post a role' },
-      { to: '/#help', label: 'How we help' },
-      { to: '/#serve', label: 'Who we serve' },
-      { to: '/register?role=employer', label: 'Review packets' },
+      { to: '/employers#how', label: 'How it works' },
+      { to: '/employers#inbox', label: 'Inbox' },
+      { to: '/employers#faq', label: 'FAQ' },
     ],
   },
   {

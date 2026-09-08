@@ -32,11 +32,11 @@ export function AboutPage() {
           Get started free
         </Link>
         {' · '}
-        <Link to="/candidates" className="text-[#c6a15b] hover:text-[var(--paper)]">
+        <Link to="/" className="text-[#c6a15b] hover:text-[var(--paper)]">
           Candidates
         </Link>
         {' · '}
-        <Link to="/" className="text-[#c6a15b] hover:text-[var(--paper)]">
+        <Link to="/employers" className="text-[#c6a15b] hover:text-[var(--paper)]">
           Employers
         </Link>
       </p>
@@ -226,14 +226,14 @@ export function SupportPage() {
       <ul className="list-disc space-y-2 pl-5">
         <li>
           Applicants:{' '}
-          <Link to="/candidates" className="text-[#c6a15b] hover:text-[var(--paper)]">
+          <Link to="/#how" className="text-[#c6a15b] hover:text-[var(--paper)]">
             how Atelier works
           </Link>
           , then sign in to your dashboard.
         </li>
         <li>
           Employers:{' '}
-          <Link to="/" className="text-[#c6a15b] hover:text-[var(--paper)]">
+          <Link to="/employers" className="text-[#c6a15b] hover:text-[var(--paper)]">
             posting and packets
           </Link>
           .

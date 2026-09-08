@@ -29,7 +29,7 @@ interface InboxRow {
 }
 
 export function EmployerSetupPage() {
-  const { profile, saveProfile, destinationFor } = useAuth()
+  const { profile, saveProfile } = useAuth()
   const navigate = useNavigate()
   const [companyName, setCompanyName] = useState(profile.companyName ?? '')
   const [companyWebsite, setCompanyWebsite] = useState(profile.companyWebsite ?? '')
@@ -38,7 +38,7 @@ export function EmployerSetupPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
-    const next = await saveProfile({
+    await saveProfile({
       role: 'employer',
       companyName: companyName.trim(),
       companyWebsite: companyWebsite.trim(),
@@ -46,7 +46,7 @@ export function EmployerSetupPage() {
       lastName,
       onboardingCompleted: true,
     })
-    navigate(destinationFor(next), { replace: true })
+    navigate('/employer/jobs/new', { replace: true })
   }
 
   return (
@@ -177,11 +177,13 @@ export function EmployerDashboardPage() {
           {roles.length ? (
             <ul className="mt-4 space-y-3">
               {roles.slice(0, 4).map((job) => (
-                <li key={job.id} className="rounded-2xl border border-border px-4 py-3">
-                  <div className="font-medium">{job.title}</div>
-                  <p className="text-sm text-muted-foreground">
-                    {job.location || 'Remote'} · {moneyBand(job.salaryMin, job.salaryMax, job.currency)}
-                  </p>
+                <li key={job.id}>
+                  <Link to="/employer/jobs" className="block rounded-2xl border border-border px-4 py-3 hover:border-primary">
+                    <div className="font-medium">{job.title}</div>
+                    <p className="text-sm text-muted-foreground">
+                      {job.location || 'Remote'} · {moneyBand(job.salaryMin, job.salaryMax, job.currency)}
+                    </p>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -268,7 +270,9 @@ export function EmployerJobsPage() {
 }
 
 export function EmployerPostJobPage() {
+  const { profile } = useAuth()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [location, setLocation] = useState('Remote worldwide')
@@ -279,6 +283,8 @@ export function EmployerPostJobPage() {
   const [currency, setCurrency] = useState<Currency>('USD')
   const [skills, setSkills] = useState('React, TypeScript, Node.js')
   const [error, setError] = useState('')
+  const company = profile.companyName || 'Your company'
+  const ready = title.trim().length > 2 && description.trim().length >= 40
 
   const post = useMutation({
     mutationFn: () =>
@@ -296,7 +302,10 @@ export function EmployerPostJobPage() {
           skills,
         }),
       }),
-    onSuccess: () => navigate('/employer/jobs'),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['employer-jobs'] })
+      navigate('/employer/jobs')
+    },
     onError: (err) => setError(err instanceof Error ? err.message : 'Could not post the job.'),
   })
 
@@ -305,23 +314,40 @@ export function EmployerPostJobPage() {
       <Link to="/employer/jobs" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> All posts
       </Link>
-      <PageHeader kicker="New role" title="Post a job" description="Candidates who match will see this in Jobs. Approving their packet sends it here." />
+      <PageHeader
+        kicker="New role"
+        title="Post a job"
+        description={`Listed as ${company}. Candidates who match will see this in Jobs. When they approve a packet, it lands in your inbox.`}
+      />
       <Card>
         <form
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault()
             setError('')
+            if (!ready) {
+              setError('Add a title and at least 40 characters of description.')
+              return
+            }
             post.mutate()
           }}
         >
           <label className="block space-y-1.5">
             <Label>Job title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Full Stack Engineer" required />
           </label>
           <label className="block space-y-1.5">
             <Label>Description</Label>
-            <Textarea className="min-h-40" value={description} onChange={(e) => setDescription(e.target.value)} required />
+            <Textarea
+              className="min-h-40"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What the role does, the stack, and who should apply."
+              required
+            />
+            <p className={`text-xs ${description.trim().length >= 40 ? 'text-muted-foreground' : 'text-[#8f4326]'}`}>
+              {description.trim().length}/40 characters minimum
+            </p>
           </label>
           <label className="block space-y-1.5">
             <Label>Skills (comma separated)</Label>
@@ -372,7 +398,7 @@ export function EmployerPostJobPage() {
             </label>
           </div>
           {error ? <p className="text-sm text-[#8f4326]">{error}</p> : null}
-          <Button variant="copper" type="submit" disabled={post.isPending}>
+          <Button variant="copper" type="submit" disabled={post.isPending || !ready}>
             {post.isPending ? 'Publishing…' : 'Publish job'}
           </Button>
         </form>

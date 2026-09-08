@@ -95,11 +95,17 @@ export function LoginPage() {
           </Link>
         </div>
         {error ? <ErrorText>{error}</ErrorText> : null}
+        {!configured ? (
+          <ErrorText>
+            Auth is not connected in this build. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then restart npm run
+            dev. On the live site, add the same keys in Vercel → Environment Variables.
+          </ErrorText>
+        ) : null}
         <div className="grid grid-cols-2 gap-3">
-          <Button variant="outline" type="button" className="rounded-xl" onClick={() => navigate(hiring ? '/' : '/candidates')}>
+          <Button variant="outline" type="button" className="rounded-xl" onClick={() => navigate(hiring ? '/employers' : '/')}>
             Cancel
           </Button>
-          <Button variant="copper" type="submit" className="rounded-xl" disabled={busy || !configured}>
+          <Button variant="copper" type="submit" className="rounded-xl" disabled={busy}>
             {busy ? 'Signing in…' : 'Log In'}
           </Button>
         </div>
@@ -145,7 +151,7 @@ export function RegisterPage() {
         role,
         companyName: role === 'employer' ? companyName : undefined,
       })
-      navigate(destinationFor(profile))
+      navigate(role === 'employer' ? '/employer/jobs/new' : destinationFor(profile))
     } catch (err) {
       if (err instanceof Error && (err as Error & { code?: string }).code === 'confirm') {
         navigate('/verify')
@@ -192,11 +198,16 @@ export function RegisterPage() {
           </Field>
         ) : null}
         {error ? <ErrorText>{error}</ErrorText> : null}
+        {!configured ? (
+          <ErrorText>
+            Auth is not connected in this build. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then restart the app.
+          </ErrorText>
+        ) : null}
         <div className="grid grid-cols-2 gap-3">
-          <Button variant="outline" type="button" className="rounded-xl" onClick={() => navigate(role === 'employer' ? '/' : '/candidates')}>
+          <Button variant="outline" type="button" className="rounded-xl" onClick={() => navigate(role === 'employer' ? '/employers' : '/')}>
             Cancel
           </Button>
-          <Button variant="copper" type="submit" className="rounded-xl" disabled={busy || !configured}>
+          <Button variant="copper" type="submit" className="rounded-xl" disabled={busy}>
             {busy ? 'Creating…' : 'Sign Up'}
           </Button>
         </div>
@@ -216,7 +227,7 @@ export function ForgotPasswordPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const hiring = params.get('role') === 'employer'
-  const { resetPassword, configured } = useAuth()
+  const { resetPassword } = useAuth()
   const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_KEY) ?? '')
   const [error, setError] = useState('')
   const [sent, setSent] = useState(false)
@@ -257,7 +268,7 @@ export function ForgotPasswordPage() {
             <Button variant="outline" type="button" className="rounded-xl" onClick={() => navigate(hiring ? '/login?role=employer' : '/login')}>
               Cancel
             </Button>
-            <Button variant="copper" type="submit" className="rounded-xl" disabled={busy || !configured}>
+            <Button variant="copper" type="submit" className="rounded-xl" disabled={busy}>
               {busy ? 'Sending…' : 'Send link'}
             </Button>
           </div>
@@ -548,7 +559,7 @@ function AuthFrame({
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#0a100e] via-[#0a100e88] to-transparent" />
         <div className="relative flex h-full flex-col justify-between p-10 text-[var(--paper)]">
-          <Link to="/">
+          <Link to={hiring ? '/employers' : '/'}>
             <BrandMark light />
           </Link>
           <div>
@@ -568,7 +579,7 @@ function AuthFrame({
       </aside>
       <div className="grid place-items-center px-4 py-10">
         <Card className="w-full max-w-md p-6 sm:p-8">
-          <Link to="/" className="mb-6 inline-flex lg:hidden">
+          <Link to={hiring ? '/employers' : '/'} className="mb-6 inline-flex lg:hidden">
             <BrandMark />
           </Link>
           <h1 className="text-3xl">{heading}</h1>

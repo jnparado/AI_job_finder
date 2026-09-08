@@ -4,11 +4,11 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { careerInsights, followUps, interviewQuestions, preparePacket } from '../shared/engine/packets'
 import { matchJobs } from '../shared/engine/matcher'
-import { normalizeAndDedupe } from '../shared/engine/normalize'
+import { canonicalKey, normalizeAndDedupe } from '../shared/engine/normalize'
 import { configuredProviders, discoverJobs } from './discover'
 import { coachInterview, enrichMatches, parseJobs, planSearch, strategizeCareer, writePacket } from './agents'
 import { routerStatus } from './ai'
-import { asJob } from '../shared/engine/jobFields'
+import { asJob, inferSeniority } from '../shared/engine/jobFields'
 import type { CandidateProfile, Currency, DiscoverySummary, EmploymentType, Job, JobMatch, PreparedPacket } from '../shared/types'
 import { displayName, emptyProfile, type SocialIdentity } from '../shared/types'
 import { DEMO_EMPLOYER, DEMO_USER, memory, type StoredApplication } from './memory'
@@ -269,11 +269,59 @@ async function persistJobs(jobs: ReturnType<typeof normalizeAndDedupe>['jobs']) 
       if (error && /employer_id/.test(error.message)) {
         const stripped = rows.slice(i, i + 40).map(({ employer_id: _e, ...rest }) => rest)
         await supabaseAdmin.from('jobs').upsert(stripped)
+      } else if (error) {
+        console.warn('persistJobs', error.message)
       }
     }
-  } catch {
-    /* search still works from memory */
+  } catch (err) {
+    console.warn('persistJobs', err)
   }
+}
+
+function jobFromRow(row: Record<string, unknown>): Job {
+  const id = String(row.id ?? '')
+  return asJob({
+    id,
+    source: String(row.source ?? 'atelier'),
+    sourceJobId: String(row.source_job_id ?? id),
+    title: String(row.title ?? ''),
+    company: String(row.company ?? ''),
+    description: String(row.description ?? ''),
+    location: row.location ? String(row.location) : undefined,
+    remote: Boolean(row.remote),
+    employmentType: (row.employment_type as EmploymentType) || 'full-time',
+    salaryMin: row.salary_min != null ? Number(row.salary_min) : undefined,
+    salaryMax: row.salary_max != null ? Number(row.salary_max) : undefined,
+    currency: (row.currency as Currency) || 'USD',
+    skills: Array.isArray(row.skills) ? row.skills.map(String) : [],
+    requiredSkills: Array.isArray(row.required_skills) ? row.required_skills.map(String) : undefined,
+    requiredExperience: row.required_experience != null ? Number(row.required_experience) : undefined,
+    seniority: row.seniority as Job['seniority'],
+    applicationUrl: String(row.application_url ?? `/app/jobs/${id}`),
+    applyChannel: row.apply_channel ? String(row.apply_channel) : 'Atelier — sent to employer',
+    postedAt: row.posted_at ? String(row.posted_at).slice(0, 10) : undefined,
+    canonicalKey: row.canonical_key ? String(row.canonical_key) : undefined,
+    employerId: row.employer_id ? String(row.employer_id) : undefined,
+  })
+}
+
+async function loadEmployerJobs(employerId: string): Promise<Job[]> {
+  const local = memory.jobsForEmployer(employerId)
+  if (!supabaseAdmin) return local
+  const { data, error } = await supabaseAdmin
+    .from('jobs')
+    .select('*')
+    .eq('employer_id', employerId)
+    .order('created_at', { ascending: false })
+  if (error || !data) {
+    if (error) console.warn('loadEmployerJobs', error.message)
+    return local
+  }
+  const fromDb = data.map((row) => jobFromRow(row as Record<string, unknown>))
+  memory.setJobs(fromDb)
+  const byId = new Map(fromDb.map((job) => [job.id, job]))
+  for (const job of local) if (!byId.has(job.id)) byId.set(job.id, job)
+  return [...byId.values()]
 }
 
 async function persistMatches(userId: string, list: JobMatch[]) {
@@ -839,7 +887,7 @@ app.get('/api/employer/jobs', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const profile = await loadProfile(user)
   if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
-  return c.json(memory.jobsForEmployer(user.id))
+  return c.json(await loadEmployerJobs(user.id))
 })
 
 app.post('/api/employer/jobs', async (c) => {
@@ -847,6 +895,9 @@ app.post('/api/employer/jobs', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const profile = await loadProfile(user)
   if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+  if (!profile.companyName?.trim()) {
+    return c.json({ error: 'Add your company name in setup before posting a job.' }, 400)
+  }
   const body = (await c.req.json()) as {
     title?: string
     description?: string
@@ -888,11 +939,12 @@ app.post('/api/employer/jobs', async (c) => {
     skills,
     requiredSkills: skills,
     requiredExperience: body.requiredExperience,
-    seniority: body.seniority,
+    seniority: body.seniority ?? inferSeniority(title, description),
     applicationUrl: `/app/jobs/${id}`,
     applyChannel: 'Atelier — sent to employer',
     postedAt: new Date().toISOString().slice(0, 10),
     employerId: user.id,
+    canonicalKey: canonicalKey({ company: profile.companyName || displayName(profile) || 'Employer', title }),
   })
   await persistJobs([job])
   return c.json(job)

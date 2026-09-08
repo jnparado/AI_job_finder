@@ -67,7 +67,7 @@ export function ApplicationsPage() {
       {list.length === 0 ? (
         <EmptyState
           title="Nothing in flight"
-          body="Open a recommended job and choose Apply with AI. You will review the packet before anything is sent."
+          body="Open a recommended job and prepare a packet. On Atelier we send it after you approve. On other sites, you apply on the official listing."
           actionLabel="Browse matches"
           to="/app/jobs"
         />

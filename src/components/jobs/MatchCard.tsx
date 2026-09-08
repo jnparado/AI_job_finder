@@ -44,7 +44,7 @@ export function MatchCard({
       </Link>
       {onApply ? (
         <Button variant="copper" size="sm" className="shrink-0 self-start sm:self-center" disabled={applying} onClick={onApply}>
-          {applying ? 'Preparing…' : atelier ? 'Apply' : 'Apply with AI'}
+          {applying ? 'Preparing…' : atelier ? 'Send to employer' : 'Prepare & apply'}
         </Button>
       ) : null}
     </div>

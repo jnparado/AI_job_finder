@@ -341,8 +341,8 @@ export function JobDetailsPage() {
             {apply.isPending
               ? 'Preparing…'
               : atelier
-                ? 'Apply to employer'
-                : `Prepare packet for ${sourceLabel(m.job.source)}`}
+                ? 'Send to employer'
+                : `Prepare packet · apply on ${sourceLabel(m.job.source)}`}
           </Button>
           {m.job.applicationUrl?.startsWith('http') ? (
             <Button variant="outline" asChild>
