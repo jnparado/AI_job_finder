@@ -1,3 +1,8 @@
 {
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/((?!api/|sitemap.xml$|robots.txt$|googled5f79ee15542f52d.html$).*)",
+      "destination": "/index.html"
+    }
+  ]
 }
