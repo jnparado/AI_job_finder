@@ -54,6 +54,7 @@ export function inferCurrency(raw?: string): Currency {
   if (t === 'CAD') return 'CAD'
   if (t === 'AUD') return 'AUD'
   if (t === 'PHP') return 'PHP'
+  if (t === 'CHF') return 'CHF'
   return 'USD'
 }
 

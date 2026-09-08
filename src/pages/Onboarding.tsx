@@ -23,7 +23,7 @@ const LEVELS: CareerLevel[] = ['junior', 'mid', 'senior', 'lead', 'manager', 'ex
 const MODES: WorkMode[] = ['remote', 'hybrid', 'onsite']
 const TYPES: EmploymentType[] = ['full-time', 'part-time', 'contract', 'freelance']
 const LOCS = ['Remote worldwide', 'Philippines', 'USA', 'Canada', 'Australia', 'Europe']
-const CURRENCIES: Currency[] = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'PHP']
+const CURRENCIES: Currency[] = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'PHP', 'CHF']
 
 export function OnboardingPage() {
   const { profile, saveProfile } = useAuth()

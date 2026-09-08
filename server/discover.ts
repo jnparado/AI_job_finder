@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { JOB_CATALOG } from '../shared/jobs'
 import { asJob, inferCurrency, inferEmployment, inferSeniority, parseSalary, postedAt } from '../shared/engine/jobFields'
-import type { CandidateProfile, DiscoveryProvider, DiscoveryReport, Job, OfficialBoard } from '../shared/types'
+import type { CandidateProfile, DiscoveryProvider, DiscoveryReport, Job, MarketSalary, OfficialBoard } from '../shared/types'
 
 export type { DiscoveryProvider, DiscoveryReport, OfficialBoard }
 
@@ -56,10 +56,12 @@ export function configuredProviders() {
     catalog: true,
     jsearch: Boolean(process.env.RAPIDAPI_KEY),
     jobsApi: Boolean(process.env.RAPIDAPI_KEY),
+    jobsSearch: Boolean(process.env.RAPIDAPI_KEY),
     adzuna: Boolean(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY),
     usajobs: Boolean(process.env.USAJOBS_EMAIL),
     linkedin: Boolean(process.env.RAPIDAPI_KEY),
     indeed: Boolean(process.env.RAPIDAPI_KEY),
+    xing: Boolean(process.env.RAPIDAPI_KEY),
     upwork: false,
   }
 }
@@ -91,7 +93,9 @@ function publisherSource(publisher: string): string {
   if (p.includes('linkedin')) return 'linkedin'
   if (p.includes('indeed')) return 'indeed'
   if (p.includes('glassdoor')) return 'glassdoor'
-  if (p.includes('ziprecruiter')) return 'ziprecruiter'
+  if (p.includes('ziprecruiter') || p.includes('zip_recruiter')) return 'ziprecruiter'
+  if (p.includes('naukri')) return 'naukri'
+  if (p.includes('bayt')) return 'bayt'
   if (p.includes('monster')) return 'monster'
   if (p.includes('dice')) return 'dice'
   return p.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'jsearch'
@@ -284,13 +288,63 @@ function jobsApiCountry(profile: CandidateProfile): string {
   if (/\b(uk|united kingdom|britain|england)\b/.test(t)) return 'gb'
   if (/\bcanada\b/.test(t)) return 'ca'
   if (/\baustralia\b/.test(t)) return 'au'
-  if (/\bswitzerland\b/.test(t)) return 'ch'
-  if (/\bgermany\b/.test(t)) return 'de'
+  if (/\b(switzerland|schweiz)\b/.test(t)) return 'ch'
+  if (/\b(germany|deutschland)\b/.test(t)) return 'de'
+  if (/\b(austria|österreich|osterreich)\b/.test(t)) return 'at'
   if (/\bfrance\b/.test(t)) return 'fr'
   if (/\bnetherlands\b/.test(t)) return 'nl'
   if (/\bphilippines?\b/.test(t)) return 'ph'
   if (/\bsingapore\b/.test(t)) return 'sg'
+  if (/\bindia\b/.test(t)) return 'in'
   return 'us'
+}
+
+function jobsApiXingLocation(profile: CandidateProfile): string {
+  const code = jobsApiCountry(profile)
+  const city = profile.city.trim()
+  if (city) {
+    const de: Record<string, string> = { zurich: 'Zürich', zürich: 'Zürich', munich: 'München', cologne: 'Köln', vienna: 'Wien' }
+    return de[city.toLowerCase()] || city
+  }
+  if (code === 'ch') return 'Schweiz'
+  if (code === 'de') return 'Deutschland'
+  if (code === 'at') return 'Österreich'
+  return profile.remoteWorldwide ? 'Remote' : 'Deutschland'
+}
+
+function jobsApiExperience(profile: CandidateProfile): string {
+  const map: Record<CandidateProfile['careerLevel'], string> = {
+    junior: 'intern;entry;associate',
+    mid: 'associate;midSenior',
+    senior: 'midSenior',
+    lead: 'midSenior;director',
+    manager: 'director',
+    executive: 'director',
+  }
+  return map[profile.careerLevel] || 'associate;midSenior'
+}
+
+function jobsApiXingCareer(profile: CandidateProfile): string {
+  const map: Record<CandidateProfile['careerLevel'], string> = {
+    junior: 'entry',
+    mid: 'professional',
+    senior: 'professional',
+    lead: 'manager',
+    manager: 'manager',
+    executive: 'executive;seniorExecutive',
+  }
+  return map[profile.careerLevel] || 'professional'
+}
+
+function salaryFrom(value: unknown): { min?: number; max?: number; currency?: string } {
+  const rec = asRecord(value)
+  if (!rec) return {}
+  return { min: num(rec.minimum ?? rec.min), max: num(rec.maximum ?? rec.max), currency: str(rec.currency) }
+}
+
+async function jobsApiDetail(path: string, id: string): Promise<Record<string, unknown>> {
+  const detail = asRecord(await fetchJson(`https://${JOBS_API_HOST}${path}?id=${encodeURIComponent(id)}`, jobsApiHeaders()))
+  return asRecord(detail?.data) ?? {}
 }
 
 function jobsApiEmployment(profile: CandidateProfile): string {
@@ -328,8 +382,7 @@ async function fromJobsApiBing(query: string, profile: CandidateProfile): Promis
       const id = str(j.id)
       if (!id) return j
       try {
-        const detail = asRecord(await fetchJson(`https://${JOBS_API_HOST}/v2/bing/get?id=${encodeURIComponent(id)}`, jobsApiHeaders()))
-        return { ...j, ...(asRecord(detail?.data) ?? {}) }
+        return { ...j, ...(await jobsApiDetail('/v2/bing/get', id)) }
       } catch {
         return j
       }
@@ -365,8 +418,21 @@ async function fromJobsApiIndeed(query: string, profile: CandidateProfile): Prom
   })
   const json = asRecord(await fetchJson(`https://${JOBS_API_HOST}/v2/indeed/search?${params}`, jobsApiHeaders()))
   const rows = Array.isArray(json?.data) ? json.data : []
-  return rows.slice(0, PER_SOURCE).map((row) => {
-    const j = asRecord(row) ?? {}
+  const listed = rows.slice(0, PER_SOURCE)
+  const details = await Promise.all(
+    listed.slice(0, 12).map(async (row) => {
+      const j = asRecord(row) ?? {}
+      const id = str(j.id)
+      if (!id || str(j.applyUrl)) return j
+      try {
+        return { ...j, ...(await jobsApiDetail('/v2/indeed/get', id)) }
+      } catch {
+        return j
+      }
+    }),
+  )
+  const rest = listed.slice(12).map((row) => asRecord(row) ?? {})
+  return [...details, ...rest].map((j) => {
     const company = asRecord(j.company)
     const loc = asRecord(j.location)
     const url = str(j.applyUrl)
@@ -396,6 +462,7 @@ async function fromJobsApiLinkedIn(query: string, profile: CandidateProfile): Pr
     location: profile.remoteWorldwide ? 'Worldwide' : jobsApiLocation(profile),
     datePosted: 'week',
     employmentTypes: jobsApiEmployment(profile),
+    experienceLevels: jobsApiExperience(profile),
     workplaceTypes: jobsApiWorkplace(profile),
   })
   const json = asRecord(await fetchJson(`https://${JOBS_API_HOST}/v2/linkedin/search?${params}`, jobsApiHeaders()))
@@ -417,6 +484,78 @@ async function fromJobsApiLinkedIn(query: string, profile: CandidateProfile): Pr
       postedAt: postedAt(j.datePosted || j.postedTimeAgo),
     })
   }).filter((j) => j.title && j.applicationUrl)
+}
+
+async function fromJobsApiXing(query: string, profile: CandidateProfile): Promise<Job[]> {
+  if (!process.env.RAPIDAPI_KEY) return []
+  const params = new URLSearchParams({
+    query,
+    location: jobsApiXingLocation(profile),
+    datePosted: 'week',
+    employmentTypes: jobsApiEmployment(profile),
+    careerLevels: jobsApiXingCareer(profile),
+    remoteOptions: jobsApiWorkplace(profile),
+  })
+  if (profile.salaryMin > 0) params.set('minimumSalary', String(Math.round(profile.salaryMin)))
+  const json = asRecord(await fetchJson(`https://${JOBS_API_HOST}/v2/xing/search?${params}`, jobsApiHeaders()))
+  const rows = Array.isArray(json?.data) ? json.data : []
+  const listed = rows.slice(0, PER_SOURCE)
+  const details = await Promise.all(
+    listed.slice(0, 12).map(async (row) => {
+      const j = asRecord(row) ?? {}
+      const id = str(j.id)
+      if (!id) return j
+      try {
+        return { ...j, ...(await jobsApiDetail('/v2/xing/get', id)) }
+      } catch {
+        return j
+      }
+    }),
+  )
+  return details.map((j) => {
+    const url = str(j.applyUrl || j.url)
+    const pay = salaryFrom(j.salary)
+    const remoteOpts = Array.isArray(j.remoteOptions) ? j.remoteOptions.map(str).join(' ') : str(j.remoteOptions)
+    return asJob({
+      id: idFor('xing', str(j.id) || url),
+      source: 'xing',
+      sourceJobId: str(j.id),
+      title: str(j.title),
+      company: str(j.company),
+      description: str(j.description),
+      location: str(j.location) || jobsApiXingLocation(profile),
+      remote: /remote/i.test(`${j.location ?? ''} ${remoteOpts}`),
+      employmentType: inferEmployment(str(j.employmentType)),
+      salaryMin: pay.min,
+      salaryMax: pay.max,
+      currency: pay.currency ? inferCurrency(pay.currency) : undefined,
+      applicationUrl: url,
+      applyChannel: 'Xing listing',
+      postedAt: postedAt(j.dateUpdated || j.datePosted),
+    })
+  }).filter((j) => j.title && j.applicationUrl)
+}
+
+async function fromJobsApiSalary(query: string, profile: CandidateProfile): Promise<MarketSalary | null> {
+  if (!process.env.RAPIDAPI_KEY) return null
+  const title = profile.desiredTitle || profile.currentTitle || query
+  const params = new URLSearchParams({
+    query: title,
+    countryCode: jobsApiCountry(profile),
+  })
+  const json = asRecord(await fetchJson(`https://${JOBS_API_HOST}/v2/salary/range?${params}`, jobsApiHeaders()))
+  const data = asRecord(json?.data)
+  const yearly = asRecord(data?.yearlySalary)
+  if (!data || !yearly) return null
+  return {
+    title,
+    country: str(data.country) || profile.country,
+    countryCode: str(data.countryCode) || jobsApiCountry(profile),
+    currency: str(data.currency) || profile.currency,
+    yearlyMin: num(yearly.min),
+    yearlyMedian: num(yearly.median ?? yearly.mean),
+    yearlyMax: num(yearly.max),
+  }
 }
 
 function jsearchEmployment(profile: CandidateProfile): string {
@@ -475,6 +614,113 @@ async function fromJSearch(query: string, profile: CandidateProfile): Promise<Jo
       applicationUrl: url,
       applyChannel: `${publisher} listing`,
       postedAt: postedAt(j.job_posted_at_datetime_utc),
+    })
+  }).filter((j) => j.title && j.applicationUrl)
+}
+
+const JOBS_SEARCH_HOST = 'jobs-search-api.p.rapidapi.com'
+
+function jobsSearchJobType(profile: CandidateProfile): string {
+  if (profile.employmentTypes.includes('full-time')) return 'fulltime'
+  if (profile.employmentTypes.includes('part-time')) return 'parttime'
+  if (profile.employmentTypes.includes('contract') || profile.employmentTypes.includes('freelance')) return 'contract'
+  return 'fulltime'
+}
+
+function jobsSearchCountry(profile: CandidateProfile): string {
+  const map: Record<string, string> = {
+    us: 'USA',
+    gb: 'UK',
+    ca: 'Canada',
+    au: 'Australia',
+    de: 'Germany',
+    fr: 'France',
+    nl: 'Netherlands',
+    ph: 'Philippines',
+    sg: 'Singapore',
+    ch: 'Switzerland',
+    at: 'Austria',
+    in: 'India',
+  }
+  return map[jobsApiCountry(profile)] || 'USA'
+}
+
+function jobsSearchSites(profile: CandidateProfile): string[] {
+  const sites = ['indeed', 'linkedin', 'zip_recruiter', 'glassdoor']
+  const t = `${profile.country} ${profile.locations.join(' ')}`.toLowerCase()
+  if (jobsApiCountry(profile) === 'in' || /\bindia\b/.test(t)) sites.push('naukri')
+  if (/\b(uae|dubai|saudi|qatar|egypt|bahrain|kuwait|oman|bayt)\b/.test(t)) sites.push('bayt')
+  return sites
+}
+
+function jobsSearchRows(json: unknown): unknown[] {
+  if (Array.isArray(json)) return json
+  const rec = asRecord(json)
+  if (!rec) return []
+  for (const key of ['jobs', 'data', 'results', 'job_results']) {
+    if (Array.isArray(rec[key])) return rec[key] as unknown[]
+  }
+  const nested = asRecord(rec.data) ?? asRecord(rec.jobs)
+  if (nested) {
+    for (const key of ['jobs', 'data', 'results']) {
+      if (Array.isArray(nested[key])) return nested[key] as unknown[]
+    }
+  }
+  return []
+}
+
+async function fromJobsSearchApi(query: string, profile: CandidateProfile): Promise<Job[]> {
+  const key = process.env.RAPIDAPI_KEY
+  if (!key) return []
+  const remote = profile.workModes.includes('remote') || profile.remoteWorldwide
+  const res = await fetch(`https://${JOBS_SEARCH_HOST}/getjobs`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-RapidAPI-Key': key,
+      'X-RapidAPI-Host': JOBS_SEARCH_HOST,
+    },
+    body: JSON.stringify({
+      search_term: query,
+      location: remote && !profile.city ? 'remote' : jobsApiLocation(profile),
+      country_indeed: jobsSearchCountry(profile),
+      results_wanted: 15,
+      site_name: jobsSearchSites(profile),
+      distance: 50,
+      job_type: jobsSearchJobType(profile),
+      is_remote: remote,
+      linkedin_fetch_description: false,
+      hours_old: 168,
+    }),
+    signal: AbortSignal.timeout(45_000),
+  })
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  const rows = jobsSearchRows(await res.json())
+  return rows.slice(0, PER_SOURCE).map((row) => {
+    const j = asRecord(row) ?? {}
+    const site = str(j.site || j.site_name || j.source)
+    const source = publisherSource(site)
+    const url = str(j.job_url_direct || j.job_url || j.url || j.apply_url)
+    const locRec = asRecord(j.location)
+    const loc = locRec ? str(locRec.display || locRec.location) : str(j.location)
+    const pay = parseSalary(str(j.salary || j.compensation))
+    return asJob({
+      id: idFor(source === 'jsearch' ? 'jobs-search' : source, str(j.id || j.job_id) || url),
+      source: source === 'jsearch' ? 'jobs-search' : source,
+      sourceJobId: str(j.id || j.job_id),
+      title: str(j.title || j.job_title),
+      company: str(j.company || j.company_name),
+      description: str(j.description || j.job_description),
+      location: loc || jobsApiLocation(profile),
+      remote: Boolean(j.is_remote) || /remote/i.test(loc),
+      employmentType: inferEmployment(str(j.job_type || j.employment_type)),
+      salaryMin: num(j.min_amount ?? j.min_salary) ?? pay.min,
+      salaryMax: num(j.max_amount ?? j.max_salary) ?? pay.max,
+      currency: inferCurrency(str(j.currency || j.salary_currency)),
+      applicationUrl: url,
+      applyChannel: `${site || 'Jobs Search'} listing`,
+      postedAt: postedAt(j.date_posted || j.date || j.posted_at),
     })
   }).filter((j) => j.title && j.applicationUrl)
 }
@@ -690,11 +936,14 @@ export async function discoverJobs(
     runProvider('We Work Remotely', () => fromWeWorkRemotely()),
     runProvider('Career pages (Greenhouse)', () => fromGreenhouse(profile)),
   ]
+  const salaryTask = process.env.RAPIDAPI_KEY ? fromJobsApiSalary(query, profile).catch(() => null) : Promise.resolve(null)
   if (process.env.RAPIDAPI_KEY) {
     tasks.push(runProvider('Google for Jobs (JSearch)', () => fromJSearch(query, profile)))
     tasks.push(runProvider('Bing Jobs (Jobs API)', () => fromJobsApiBing(query, profile)))
     tasks.push(runProvider('Indeed (Jobs API)', () => fromJobsApiIndeed(query, profile)))
     tasks.push(runProvider('LinkedIn (Jobs API)', () => fromJobsApiLinkedIn(query, profile)))
+    tasks.push(runProvider('Xing (Jobs API)', () => fromJobsApiXing(query, profile)))
+    tasks.push(runProvider('Jobs Search API', () => fromJobsSearchApi(query, profile)))
   }
   if (process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY) {
     tasks.push(runProvider('Adzuna', () => fromAdzuna(query, profile)))
@@ -703,18 +952,26 @@ export async function discoverJobs(
     tasks.push(runProvider('USAJOBS', () => fromUsaJobs(query)))
   }
 
-  const settled = await Promise.all(tasks)
+  const [settled, marketSalary] = await Promise.all([Promise.all(tasks), salaryTask])
   const jobs = [...catalog, ...settled.flatMap((s) => s.jobs)]
   const providers: DiscoveryProvider[] = [
     { name: 'Atelier catalog', status: 'ok', count: catalog.length, note: 'Seeded roles for matching demos' },
     ...settled.map((s) => s.result),
   ]
+  if (marketSalary) {
+    providers.push({
+      name: 'Market salary (Jobs API)',
+      status: 'ok',
+      count: 1,
+      note: `${marketSalary.currency} ${Math.round(marketSalary.yearlyMedian ?? 0).toLocaleString()} median in ${marketSalary.country}`,
+    })
+  }
   if (!process.env.RAPIDAPI_KEY) {
     providers.push({
-      name: 'LinkedIn / Indeed / Glassdoor',
+      name: 'LinkedIn / Indeed / Glassdoor / Xing',
       status: 'skipped',
       count: 0,
-      note: 'Add RAPIDAPI_KEY and subscribe to JSearch and/or Jobs API (jobs-api14) on RapidAPI. Until then, open the official search links.',
+      note: 'Add RAPIDAPI_KEY and subscribe to JSearch, Jobs API (jobs-api14), and/or JOBS SEARCH API on RapidAPI. Until then, open the official search links.',
     })
   }
   if (!process.env.ADZUNA_APP_ID || !process.env.ADZUNA_APP_KEY) {
@@ -745,5 +1002,6 @@ export async function discoverJobs(
     jobs: jobs.filter((j) => j.title && j.company && j.applicationUrl),
     providers,
     officialSearch: officialSearchUrls(query),
+    marketSalary: marketSalary ?? undefined,
   }
 }

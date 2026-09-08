@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>/</loc></url>
-  <url><loc>/candidates</loc></url>
-  <url><loc>/employers</loc></url>
-  <url><loc>/about</loc></url>
-  <url><loc>/privacy</loc></url>
-  <url><loc>/terms</loc></url>
-  <url><loc>/support</loc></url>
-  <url><loc>/login</loc></url>
-  <url><loc>/register</loc></url>
+  <url><loc>https://ai-job-finder-ecru.vercel.app/</loc></url>
+  <url><loc>https://ai-job-finder-ecru.vercel.app/candidates</loc></url>
+  <url><loc>https://ai-job-finder-ecru.vercel.app/about</loc></url>
+  <url><loc>https://ai-job-finder-ecru.vercel.app/privacy</loc></url>
+  <url><loc>https://ai-job-finder-ecru.vercel.app/terms</loc></url>
+  <url><loc>https://ai-job-finder-ecru.vercel.app/support</loc></url>
+  <url><loc>https://ai-job-finder-ecru.vercel.app/login</loc></url>
+  <url><loc>https://ai-job-finder-ecru.vercel.app/register</loc></url>
 </urlset>

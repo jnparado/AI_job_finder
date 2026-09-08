@@ -8,7 +8,7 @@ export type CareerLevel =
 
 export type WorkMode = 'remote' | 'hybrid' | 'onsite'
 export type EmploymentType = 'full-time' | 'part-time' | 'contract' | 'freelance'
-export type Currency = 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'PHP'
+export type Currency = 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'PHP' | 'CHF'
 
 export type MatchCategory =
   | 'excellent'
@@ -257,11 +257,22 @@ export interface OfficialBoard {
   url: string
 }
 
+export interface MarketSalary {
+  title: string
+  country: string
+  countryCode: string
+  currency: string
+  yearlyMin?: number
+  yearlyMedian?: number
+  yearlyMax?: number
+}
+
 export interface DiscoveryReport {
   query: string
   jobs: Job[]
   providers: DiscoveryProvider[]
   officialSearch: OfficialBoard[]
+  marketSalary?: MarketSalary
 }
 
 export interface DiscoverySummary {
@@ -269,6 +280,7 @@ export interface DiscoverySummary {
   discovered: number
   providers: DiscoveryProvider[]
   officialSearch: OfficialBoard[]
+  marketSalary?: MarketSalary
 }
 
 export function sourceLabel(source: string): string {
@@ -282,6 +294,7 @@ export function sourceLabel(source: string): string {
     adzuna: 'Adzuna',
     jsearch: 'JSearch',
     bing: 'Bing Jobs',
+    xing: 'Xing',
     linkedin: 'LinkedIn',
     indeed: 'Indeed',
     upwork: 'Upwork',
@@ -295,6 +308,9 @@ export function sourceLabel(source: string): string {
     usajobs: 'USAJOBS',
     catalog: 'Atelier',
     ziprecruiter: 'ZipRecruiter',
+    naukri: 'Naukri',
+    bayt: 'Bayt',
+    'jobs-search': 'Jobs Search',
     monster: 'Monster',
     dice: 'Dice',
     freelancer: 'Freelancer',

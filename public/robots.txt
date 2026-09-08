@@ -3,4 +3,4 @@ Allow: /
 Disallow: /app
 Disallow: /employer
 Disallow: /onboarding
-Sitemap: /sitemap.xml
+Sitemap: https://ai-job-finder-ecru.vercel.app/sitemap.xml

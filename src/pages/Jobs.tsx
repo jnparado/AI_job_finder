@@ -5,7 +5,7 @@ import { ArrowLeft, Check, CircleAlert, ExternalLink, Search } from 'lucide-reac
 import type { DiscoverySummary, JobMatch, MatchCategory } from '@shared/types'
 import { categoryLabel, sourceLabel } from '@shared/types'
 import { api } from '@/lib/api'
-import { moneyBand } from '@/lib/utils'
+import { money, moneyBand } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, Badge } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/feedback'
@@ -90,6 +90,14 @@ export function JobsPage() {
           <JobStat n={strong} label="Strong" />
           <JobStat n={live.length || sources.length} label="Sources" />
         </div>
+        {report?.marketSalary?.yearlyMedian ? (
+          <p className="border-t border-[#c9c0ae22] px-6 py-3 text-sm text-[#d8d0c0] sm:px-8">
+            Market range for {report.marketSalary.title} in {report.marketSalary.country}:{' '}
+            {money(report.marketSalary.yearlyMin, report.marketSalary.currency)}–
+            {money(report.marketSalary.yearlyMax, report.marketSalary.currency)}{' '}
+            (median {money(report.marketSalary.yearlyMedian, report.marketSalary.currency)})
+          </p>
+        ) : null}
         {report?.officialSearch?.length ? (
           <div className="flex flex-wrap items-center gap-2 px-6 py-4 sm:px-8">
             <span className="mr-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-[#c6a15b]">

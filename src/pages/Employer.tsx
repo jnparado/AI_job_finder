@@ -361,7 +361,7 @@ export function EmployerPostJobPage() {
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value as Currency)}
               >
-                {['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'PHP'].map((c) => (
+                {['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'PHP', 'CHF'].map((c) => (
                   <option key={c}>{c}</option>
                 ))}
               </select>

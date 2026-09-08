@@ -334,6 +334,7 @@ async function runSearch(user: AuthUser, minMatch = 0, maxJobs = 40) {
       ...discovered.providers,
     ],
     officialSearch: discovered.officialSearch,
+    marketSalary: discovered.marketSalary,
   }
   memory.setDiscovery(user.id, summary)
   const high = all.filter((m) => m.score >= 80)
