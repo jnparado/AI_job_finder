@@ -281,6 +281,7 @@ export function sourceLabel(source: string): string {
     jobicy: 'Jobicy',
     adzuna: 'Adzuna',
     jsearch: 'JSearch',
+    bing: 'Bing Jobs',
     linkedin: 'LinkedIn',
     indeed: 'Indeed',
     upwork: 'Upwork',

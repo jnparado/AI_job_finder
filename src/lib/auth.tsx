@@ -6,7 +6,7 @@ import { emptyProfile } from '@shared/types'
 import { api, getDemoToken, setDemoToken } from './api'
 import { identityFromUser } from './identity'
 import { oauthOptions } from './social'
-import { supabase, supabaseConfigured } from './supabase'
+import { supabase, supabaseConfigured, upsertOwnProfile } from './supabase'
 
 interface AuthValue {
   loading: boolean
@@ -26,6 +26,8 @@ interface AuthValue {
   ) => Promise<CandidateProfile>
   signInGoogle: () => Promise<void>
   signInSocial: (provider: Provider) => Promise<void>
+  resetPassword: (email: string) => Promise<void>
+  updatePassword: (password: string) => Promise<void>
   destinationFor: (p?: CandidateProfile) => string
   signOut: () => Promise<void>
 }
@@ -163,13 +165,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!supabase) throw new Error('Add your Supabase keys in .env, then restart the app.')
         setDemoToken(false)
         setDemo(false)
-        let { data, error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error && /confirm/i.test(error.message)) {
-          await api('/api/auth/confirm', { method: 'POST', body: JSON.stringify({ email }) })
-          const retry = await supabase.auth.signInWithPassword({ email, password })
-          data = retry.data
-          error = retry.error
-        }
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
+        })
         if (error) throw error
         if (!data.user) throw new Error('Sign in failed.')
         return establish(data.user)
@@ -178,24 +177,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!supabase) throw new Error('Add your Supabase keys in .env, then restart the app.')
         setDemoToken(false)
         setDemo(false)
-        await api('/api/auth/register', {
-          method: 'POST',
-          body: JSON.stringify({ email, password, role: extras?.role, companyName: extras?.companyName }),
+        const role = extras?.role === 'employer' ? 'employer' : 'candidate'
+        const companyName = extras?.companyName?.trim() ?? ''
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim().toLowerCase(),
+          password,
+          options: {
+            data: { role, company_name: companyName },
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
         })
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error || !data.user) throw error ?? new Error('Account created, but sign in failed. Try logging in.')
-        const profile = await establish(data.user)
-        if (extras?.role === 'employer') {
-          const next = await api<CandidateProfile>('/api/profile', {
-            method: 'POST',
-            body: JSON.stringify({
-              role: 'employer',
-              companyName: extras.companyName ?? profile.companyName,
-              onboardingCompleted: true,
-            }),
+        if (error) throw error
+        if (data.user && !data.session && (data.user.identities?.length ?? 0) === 0) {
+          throw new Error('That email is already registered. Sign in instead.')
+        }
+        let user = data.session?.user ?? data.user ?? null
+        if (!data.session && user) {
+          const retry = await supabase.auth.signInWithPassword({
+            email: email.trim().toLowerCase(),
+            password,
           })
-          setProfile(next)
-          return next
+          if (retry.error && /confirm|not confirmed/i.test(retry.error.message)) {
+            const pending = new Error('Check your email to confirm the account, then sign in.')
+            ;(pending as Error & { code: string }).code = 'confirm'
+            throw pending
+          }
+          if (retry.error) throw retry.error
+          user = retry.data.user
+        }
+        if (!user) throw new Error('Account created, but sign in failed. Try logging in.')
+        await upsertOwnProfile({ id: user.id, email: user.email ?? email, role, companyName })
+        const profile = await establish(user)
+        if (role === 'employer') {
+          try {
+            const next = await api<CandidateProfile>('/api/profile', {
+              method: 'POST',
+              body: JSON.stringify({
+                role: 'employer',
+                companyName: companyName || profile.companyName,
+                onboardingCompleted: true,
+              }),
+            })
+            setProfile(next)
+            return next
+          } catch {
+            const next = {
+              ...profile,
+              role: 'employer' as const,
+              companyName: companyName || profile.companyName,
+              onboardingCompleted: true,
+            }
+            setProfile(next)
+            return next
+          }
         }
         return profile
       },
@@ -207,6 +241,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         if (error) throw error
         if (data.url) window.location.assign(data.url)
+      },
+      resetPassword: async (email) => {
+        if (!supabase) throw new Error('Add your Supabase keys in .env, then restart the app.')
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+          redirectTo: `${window.location.origin}/auth/reset`,
+        })
+        if (error) throw error
+      },
+      updatePassword: async (password) => {
+        if (!supabase) throw new Error('Add your Supabase keys in .env, then restart the app.')
+        const { error } = await supabase.auth.updateUser({ password })
+        if (error) throw error
       },
       signInGoogle: async () => {
         if (!supabase) throw new Error('Add your Supabase keys in .env, then restart the app.')

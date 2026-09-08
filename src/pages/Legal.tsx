@@ -33,7 +33,7 @@ export function AboutPage() {
           Candidates
         </Link>
         {' · '}
-        <Link to="/employers" className="text-[#c6a15b] hover:text-[var(--paper)]">
+        <Link to="/" className="text-[#c6a15b] hover:text-[var(--paper)]">
           Employers
         </Link>
       </p>
@@ -89,7 +89,7 @@ export function SupportPage() {
         </li>
         <li>
           Employers:{' '}
-          <Link to="/employers" className="text-[#c6a15b] hover:text-[var(--paper)]">
+          <Link to="/" className="text-[#c6a15b] hover:text-[var(--paper)]">
             posting and packets
           </Link>
           .

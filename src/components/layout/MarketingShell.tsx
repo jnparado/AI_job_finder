@@ -26,7 +26,7 @@ export function MarketingShell({
           {audience ? (
             <div className="flex items-center rounded-full border border-[#c9c0ae33] p-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em]">
               <Link
-                to="/employers"
+                to="/"
                 className={`rounded-full px-3 py-1.5 ${
                   hiring
                     ? 'bg-[var(--paper)] !text-[#13261f]'
@@ -57,7 +57,8 @@ export function MarketingShell({
                 Candidates
               </NavLink>
               <NavLink
-                to="/employers"
+                to="/"
+                end
                 className={({ isActive }) =>
                   `rounded-full px-3 py-1.5 transition-colors ${isActive ? 'bg-[#1f3d32] text-white' : 'text-[#d8d0c0] hover:bg-[#1f3d32]/70'}`
                 }
@@ -83,7 +84,7 @@ export function MarketingShell({
 
           <div className="flex shrink-0 gap-2">
             <Button variant="outline" className="border-[#c9c0ae55] text-[var(--paper)] hover:bg-[#1f3d32]" asChild>
-              <Link to="/login">{hiring ? 'Login' : 'Sign in'}</Link>
+              <Link to={hiring ? '/login?role=employer' : '/login'}>{hiring ? 'Login' : 'Sign in'}</Link>
             </Button>
             <Button variant={hiring ? 'paper' : 'copper'} asChild>
               <Link to={registerTo}>{hiring ? 'Signup' : audience === 'candidate' ? 'Get started' : 'Get started'}</Link>
@@ -102,7 +103,7 @@ const FOOTER_COLS: { title: string; links: { to: string; label: string }[] }[] =
     title: 'Product',
     links: [
       { to: '/candidates', label: 'Candidates' },
-      { to: '/employers', label: 'Employers' },
+      { to: '/', label: 'Employers' },
       { to: '/register', label: 'Get started' },
       { to: '/login', label: 'Sign in' },
     ],
@@ -120,8 +121,8 @@ const FOOTER_COLS: { title: string; links: { to: string; label: string }[] }[] =
     title: 'Employers',
     links: [
       { to: '/register?role=employer', label: 'Post a role' },
-      { to: '/employers#help', label: 'How we help' },
-      { to: '/employers#serve', label: 'Who we serve' },
+      { to: '/#help', label: 'How we help' },
+      { to: '/#serve', label: 'Who we serve' },
       { to: '/register?role=employer', label: 'Review packets' },
     ],
   },

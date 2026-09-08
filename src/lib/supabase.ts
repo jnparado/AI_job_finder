@@ -17,3 +17,39 @@ export const supabase: SupabaseClient | null = supabaseConfigured
       },
     })
   : null
+
+const INTENDED_ROLE_KEY = 'atelier-intended-role'
+const INTENDED_COMPANY_KEY = 'atelier-intended-company'
+
+export function rememberIntendedAccount(role: 'candidate' | 'employer', companyName = '') {
+  sessionStorage.setItem(INTENDED_ROLE_KEY, role)
+  if (role === 'employer' && companyName) sessionStorage.setItem(INTENDED_COMPANY_KEY, companyName)
+  else sessionStorage.removeItem(INTENDED_COMPANY_KEY)
+}
+
+export function takeIntendedAccount(): { role: 'candidate' | 'employer'; companyName: string } {
+  const role = sessionStorage.getItem(INTENDED_ROLE_KEY) === 'employer' ? 'employer' : 'candidate'
+  const companyName = sessionStorage.getItem(INTENDED_COMPANY_KEY) ?? ''
+  sessionStorage.removeItem(INTENDED_ROLE_KEY)
+  sessionStorage.removeItem(INTENDED_COMPANY_KEY)
+  return { role, companyName }
+}
+
+export async function upsertOwnProfile(input: {
+  id: string
+  email: string
+  role?: 'candidate' | 'employer'
+  companyName?: string
+}) {
+  if (!supabase) return
+  const role = input.role === 'employer' ? 'employer' : 'candidate'
+  const row: Record<string, unknown> = {
+    id: input.id,
+    email: input.email,
+    role,
+    company_name: input.companyName ?? '',
+  }
+  if (role === 'employer') row.onboarding_completed = Boolean(input.companyName)
+  const { error } = await supabase.from('profiles').upsert(row, { onConflict: 'id' })
+  if (error) console.warn('upsertOwnProfile', error.message)
+}

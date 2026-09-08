@@ -127,10 +127,11 @@ export function SettingsPage() {
       <Card>
         <h2>Job platforms</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Remotive, Remote OK, Arbeitnow, The Muse, Himalayas, Jobicy, We Work Remotely, and Greenhouse career pages are queried automatically. LinkedIn, Indeed, and Glassdoor need a RapidAPI JSearch key. Upwork has no public jobs API — search opens on Upwork itself.
+          Remotive, Remote OK, Arbeitnow, The Muse, Himalayas, Jobicy, We Work Remotely, and Greenhouse career pages are queried automatically. Google for Jobs comes from JSearch. Bing, Indeed, and LinkedIn come from the RapidAPI Jobs API. Both use RAPIDAPI_KEY. Upwork has no public jobs API — search opens on Upwork itself.
         </p>
         <ul className="mt-3 space-y-1 text-sm">
-          <li>LinkedIn / Indeed ingest: {health.data?.discovery?.jsearch ? 'JSearch key present' : 'add RAPIDAPI_KEY to .env'}</li>
+          <li>Google for Jobs (JSearch): {health.data?.discovery?.jsearch ? 'key present' : 'add RAPIDAPI_KEY and subscribe to JSearch'}</li>
+          <li>Bing / Indeed / LinkedIn: {health.data?.discovery?.jobsApi ? 'Jobs API key present' : 'add RAPIDAPI_KEY and subscribe to jobs-api14'}</li>
           <li>Adzuna: {health.data?.discovery?.adzuna ? 'connected' : 'optional ADZUNA_APP_ID / ADZUNA_APP_KEY'}</li>
           <li>USAJOBS: {health.data?.discovery?.usajobs ? 'connected' : 'optional USAJOBS_EMAIL'}</li>
         </ul>

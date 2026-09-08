@@ -55,6 +55,7 @@ export function configuredProviders() {
     greenhouse: true,
     catalog: true,
     jsearch: Boolean(process.env.RAPIDAPI_KEY),
+    jobsApi: Boolean(process.env.RAPIDAPI_KEY),
     adzuna: Boolean(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY),
     usajobs: Boolean(process.env.USAJOBS_EMAIL),
     linkedin: Boolean(process.env.RAPIDAPI_KEY),
@@ -264,13 +265,189 @@ async function fromJobicy(query: string): Promise<Job[]> {
   }).filter((j) => j.title && j.applicationUrl)
 }
 
+const JOBS_API_HOST = 'jobs-api14.p.rapidapi.com'
+
+function jobsApiHeaders(): Record<string, string> {
+  return {
+    'X-RapidAPI-Key': process.env.RAPIDAPI_KEY ?? '',
+    'X-RapidAPI-Host': JOBS_API_HOST,
+    'Content-Type': 'application/json',
+  }
+}
+
+function jobsApiLocation(profile: CandidateProfile): string {
+  return profile.city || profile.locations[0] || profile.country || 'United States'
+}
+
+function jobsApiCountry(profile: CandidateProfile): string {
+  const t = `${profile.country} ${profile.locations.join(' ')}`.toLowerCase()
+  if (/\b(uk|united kingdom|britain|england)\b/.test(t)) return 'gb'
+  if (/\bcanada\b/.test(t)) return 'ca'
+  if (/\baustralia\b/.test(t)) return 'au'
+  if (/\bswitzerland\b/.test(t)) return 'ch'
+  if (/\bgermany\b/.test(t)) return 'de'
+  if (/\bfrance\b/.test(t)) return 'fr'
+  if (/\bnetherlands\b/.test(t)) return 'nl'
+  if (/\bphilippines?\b/.test(t)) return 'ph'
+  if (/\bsingapore\b/.test(t)) return 'sg'
+  return 'us'
+}
+
+function jobsApiEmployment(profile: CandidateProfile): string {
+  const map: Record<string, string> = {
+    'full-time': 'fulltime',
+    'part-time': 'parttime',
+    contract: 'contractor',
+    freelance: 'contractor',
+  }
+  const types = profile.employmentTypes.map((t) => map[t]).filter(Boolean)
+  return [...new Set(types)].join(';') || 'contractor;fulltime;parttime;temporary'
+}
+
+function jobsApiWorkplace(profile: CandidateProfile): string {
+  const map: Record<string, string> = { remote: 'remote', hybrid: 'hybrid', onsite: 'onSite' }
+  const types = profile.workModes.map((m) => map[m]).filter(Boolean)
+  return [...new Set(types)].join(';') || 'remote;hybrid;onSite'
+}
+
+async function fromJobsApiBing(query: string, profile: CandidateProfile): Promise<Job[]> {
+  if (!process.env.RAPIDAPI_KEY) return []
+  const params = new URLSearchParams({
+    query,
+    location: jobsApiLocation(profile),
+    employmentTypes: jobsApiEmployment(profile),
+    remoteOnly: String(profile.workModes.includes('remote') && profile.workModes.length === 1),
+    datePosted: 'week',
+  })
+  const json = asRecord(await fetchJson(`https://${JOBS_API_HOST}/v2/bing/search?${params}`, jobsApiHeaders()))
+  const rows = Array.isArray(json?.data) ? json.data : []
+  const listed = rows.slice(0, 20)
+  const details = await Promise.all(
+    listed.slice(0, 12).map(async (row) => {
+      const j = asRecord(row) ?? {}
+      const id = str(j.id)
+      if (!id) return j
+      try {
+        const detail = asRecord(await fetchJson(`https://${JOBS_API_HOST}/v2/bing/get?id=${encodeURIComponent(id)}`, jobsApiHeaders()))
+        return { ...j, ...(asRecord(detail?.data) ?? {}) }
+      } catch {
+        return j
+      }
+    }),
+  )
+  return details.map((j) => {
+    const url = str(j.applyUrl || j.url || j.jobUrl)
+    const provider = str(j.jobProvider || j.provider)
+    return asJob({
+      id: idFor('bing', str(j.id) || url),
+      source: publisherSource(provider) === 'jsearch' ? 'bing' : publisherSource(provider),
+      sourceJobId: str(j.id),
+      title: str(j.title),
+      company: str(j.company || j.companyName),
+      description: str(j.description),
+      location: str(j.location) || jobsApiLocation(profile),
+      remote: /remote/i.test(str(j.location)) || Boolean(j.remote),
+      employmentType: inferEmployment(str(j.employmentType)),
+      applicationUrl: url,
+      applyChannel: `${provider || 'Bing Jobs'} listing`,
+      postedAt: postedAt(j.postedTimeAgo || j.datePosted),
+    })
+  }).filter((j) => j.title && j.applicationUrl)
+}
+
+async function fromJobsApiIndeed(query: string, profile: CandidateProfile): Promise<Job[]> {
+  if (!process.env.RAPIDAPI_KEY) return []
+  const params = new URLSearchParams({
+    query,
+    location: jobsApiLocation(profile),
+    countryCode: jobsApiCountry(profile),
+    sortType: 'relevance',
+  })
+  const json = asRecord(await fetchJson(`https://${JOBS_API_HOST}/v2/indeed/search?${params}`, jobsApiHeaders()))
+  const rows = Array.isArray(json?.data) ? json.data : []
+  return rows.slice(0, PER_SOURCE).map((row) => {
+    const j = asRecord(row) ?? {}
+    const company = asRecord(j.company)
+    const loc = asRecord(j.location)
+    const url = str(j.applyUrl)
+    return asJob({
+      id: idFor('indeed', str(j.id) || url),
+      source: 'indeed',
+      sourceJobId: str(j.id),
+      title: str(j.title),
+      company: str(company?.name || j.company),
+      description: str(j.description),
+      location: str(loc?.location || j.location) || jobsApiLocation(profile),
+      remote: /remote/i.test(`${loc?.location ?? ''} ${j.description ?? ''}`),
+      applicationUrl: url,
+      applyChannel: 'Indeed listing',
+      postedAt:
+        typeof j.datePublishedTimestamp === 'number' && j.datePublishedTimestamp > 0
+          ? postedAt(j.datePublishedTimestamp)
+          : undefined,
+    })
+  }).filter((j) => j.title && j.applicationUrl)
+}
+
+async function fromJobsApiLinkedIn(query: string, profile: CandidateProfile): Promise<Job[]> {
+  if (!process.env.RAPIDAPI_KEY) return []
+  const params = new URLSearchParams({
+    query,
+    location: profile.remoteWorldwide ? 'Worldwide' : jobsApiLocation(profile),
+    datePosted: 'week',
+    employmentTypes: jobsApiEmployment(profile),
+    workplaceTypes: jobsApiWorkplace(profile),
+  })
+  const json = asRecord(await fetchJson(`https://${JOBS_API_HOST}/v2/linkedin/search?${params}`, jobsApiHeaders()))
+  const rows = Array.isArray(json?.data) ? json.data : []
+  return rows.slice(0, PER_SOURCE).map((row) => {
+    const j = asRecord(row) ?? {}
+    const url = str(j.linkedinUrl || j.applyUrl)
+    return asJob({
+      id: idFor('linkedin', str(j.id) || url),
+      source: 'linkedin',
+      sourceJobId: str(j.id),
+      title: str(j.title),
+      company: str(j.companyName || j.company),
+      description: str(j.description),
+      location: str(j.location) || jobsApiLocation(profile),
+      remote: /remote/i.test(str(j.location)) || profile.workModes.includes('remote'),
+      applicationUrl: url,
+      applyChannel: 'LinkedIn listing',
+      postedAt: postedAt(j.datePosted || j.postedTimeAgo),
+    })
+  }).filter((j) => j.title && j.applicationUrl)
+}
+
+function jsearchEmployment(profile: CandidateProfile): string {
+  const map: Record<string, string> = {
+    'full-time': 'FULLTIME',
+    'part-time': 'PARTTIME',
+    contract: 'CONTRACTOR',
+    freelance: 'CONTRACTOR',
+  }
+  const types = profile.employmentTypes.map((t) => map[t]).filter(Boolean)
+  return [...new Set(types)].join(',') || 'FULLTIME,CONTRACTOR,PARTTIME,INTERN'
+}
+
 async function fromJSearch(query: string, profile: CandidateProfile): Promise<Job[]> {
   const key = process.env.RAPIDAPI_KEY
   if (!key) return []
   const remote = profile.workModes.includes('remote') || profile.remoteWorldwide
-  const q = encodeURIComponent(remote ? `${query} remote` : query)
+  const where = profile.city || profile.country
+  const phrase = [query, remote ? 'remote' : '', where && !remote ? `in ${where}` : ''].filter(Boolean).join(' ')
+  const params = new URLSearchParams({
+    query: phrase,
+    page: '1',
+    num_pages: '1',
+    date_posted: 'month',
+    country: jobsApiCountry(profile),
+  })
+  if (remote) params.set('remote_jobs_only', 'true')
+  const types = jsearchEmployment(profile)
+  if (types) params.set('employment_types', types)
   const json = asRecord(
-    await fetchJson(`https://jsearch.p.rapidapi.com/search?query=${q}&page=1&num_pages=1&date_posted=month`, {
+    await fetchJson(`https://jsearch.p.rapidapi.com/search?${params}`, {
       'X-RapidAPI-Key': key,
       'X-RapidAPI-Host': 'jsearch.p.rapidapi.com',
     }),
@@ -514,7 +691,10 @@ export async function discoverJobs(
     runProvider('Career pages (Greenhouse)', () => fromGreenhouse(profile)),
   ]
   if (process.env.RAPIDAPI_KEY) {
-    tasks.push(runProvider('LinkedIn / Indeed (JSearch)', () => fromJSearch(query, profile)))
+    tasks.push(runProvider('Google for Jobs (JSearch)', () => fromJSearch(query, profile)))
+    tasks.push(runProvider('Bing Jobs (Jobs API)', () => fromJobsApiBing(query, profile)))
+    tasks.push(runProvider('Indeed (Jobs API)', () => fromJobsApiIndeed(query, profile)))
+    tasks.push(runProvider('LinkedIn (Jobs API)', () => fromJobsApiLinkedIn(query, profile)))
   }
   if (process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY) {
     tasks.push(runProvider('Adzuna', () => fromAdzuna(query, profile)))
@@ -534,7 +714,7 @@ export async function discoverJobs(
       name: 'LinkedIn / Indeed / Glassdoor',
       status: 'skipped',
       count: 0,
-      note: 'Add RAPIDAPI_KEY (JSearch) to ingest licensed listings. Until then, open the official search links.',
+      note: 'Add RAPIDAPI_KEY and subscribe to JSearch and/or Jobs API (jobs-api14) on RapidAPI. Until then, open the official search links.',
     })
   }
   if (!process.env.ADZUNA_APP_ID || !process.env.ADZUNA_APP_KEY) {

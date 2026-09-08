@@ -2,9 +2,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/lib/auth'
 import { AppShell } from '@/components/layout/AppShell'
-import { CandidateLandingPage, EmployerLandingPage, LandingPage } from '@/pages/Landing'
+import { CandidateLandingPage, EmployerLandingPage } from '@/pages/Landing'
 import { AboutPage, PrivacyPage, SupportPage, TermsPage } from '@/pages/Legal'
-import { CallbackPage, LoginPage, RegisterPage, VerifyPage } from '@/pages/Auth'
+import { CallbackPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyPage } from '@/pages/Auth'
 import { OnboardingPage } from '@/pages/Onboarding'
 import { DashboardPage } from '@/pages/Dashboard'
 import { JobDetailsPage, JobsPage } from '@/pages/Jobs'
@@ -38,16 +38,20 @@ export default function App() {
         <JsonLd />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
+            <Route path="/" element={<EmployerLandingPage />} />
             <Route path="/candidates" element={<CandidateLandingPage />} />
-            <Route path="/employers" element={<EmployerLandingPage />} />
+            <Route path="/employers" element={<Navigate to="/" replace />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/support" element={<SupportPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/login/employer" element={<Navigate to="/login?role=employer" replace />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/register/employer" element={<Navigate to="/register?role=employer" replace />} />
             <Route path="/verify" element={<VerifyPage />} />
+            <Route path="/forgot" element={<ForgotPasswordPage />} />
+            <Route path="/auth/reset" element={<ResetPasswordPage />} />
             <Route path="/auth/callback" element={<CallbackPage />} />
             <Route element={<RequireSession />}>
               <Route path="/onboarding" element={<OnboardingPage />} />

@@ -1,8 +1,8 @@
 import { Mail, MessageCircle, Send, Share2 } from 'lucide-react'
-import type { ReactElement, SVGProps } from 'react'
+import type { ComponentType, SVGProps } from 'react'
 import { publicAppUrl, shareNative, shareTargets, socialProfiles } from '@/lib/social'
 
-type Icon = (props: { className?: string }) => ReactElement
+type Icon = ComponentType<{ className?: string }>
 
 function Brand({ d, className }: { d: string; className?: string }) {
   return (
