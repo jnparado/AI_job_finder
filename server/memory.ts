@@ -1,5 +1,5 @@
 import type { Subscription } from '../shared/billing'
-import type { CandidateProfile, DiscoverySummary, Job, JobMatch, PreparedPacket } from '../shared/types'
+import type { CandidateProfile, DiscoverySummary, Job, JobMatch, PreparedPacket, ThreadMessage } from '../shared/types'
 import { emptyProfile } from '../shared/types'
 
 export const DEMO_USER = '00000000-0000-0000-0000-000000000001'
@@ -49,6 +49,7 @@ const settings = new Map<string, AgentSettings>()
 const jobs = new Map<string, Job>()
 const discovery = new Map<string, DiscoverySummary>()
 const subscriptions = new Map<string, Subscription>()
+const threadMessages = new Map<string, ThreadMessage[]>()
 
 export const memory = {
   getProfile(userId: string) {
@@ -98,6 +99,32 @@ export const memory = {
   },
   atelierJobs() {
     return [...jobs.values()].filter((job) => job.source === 'atelier' || Boolean(job.employerId))
+  },
+  getMessages(applicationId: string) {
+    return [...(threadMessages.get(applicationId) ?? [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  },
+  setMessages(applicationId: string, list: ThreadMessage[]) {
+    const byId = new Map<string, ThreadMessage>()
+    for (const msg of list) byId.set(msg.id, msg)
+    threadMessages.set(
+      applicationId,
+      [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    )
+  },
+  addMessage(msg: ThreadMessage) {
+    const list = memory.getMessages(msg.applicationId)
+    if (list.some((m) => m.id === msg.id)) return msg
+    memory.setMessages(msg.applicationId, [...list, msg])
+    return msg
+  },
+  markRead(applicationId: string, userId: string) {
+    const now = new Date().toISOString()
+    memory.setMessages(
+      applicationId,
+      memory.getMessages(applicationId).map((m) =>
+        m.senderId === userId || m.readAt ? m : { ...m, readAt: now },
+      ),
+    )
   },
   addNotification(n: StoredNotification) {
     const list = notifications.get(n.userId) ?? []

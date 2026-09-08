@@ -10,6 +10,7 @@ import { OnboardingPage } from '@/pages/Onboarding'
 import { DashboardPage } from '@/pages/Dashboard'
 import { JobDetailsPage, JobsPage } from '@/pages/Jobs'
 import { ApplicationDetailsPage, ApplicationsPage } from '@/pages/Applications'
+import { CandidateMessagesPage, CandidateThreadPage, EmployerMessagesPage, EmployerThreadPage } from '@/pages/Messages'
 import { ResumePage } from '@/pages/Resume'
 import { ProfilePage } from '@/pages/Profile'
 import { CareerPage, InterviewPage, SettingsPage } from '@/pages/Settings'
@@ -66,6 +67,8 @@ export default function App() {
                 <Route path="jobs/:id" element={<JobDetailsPage />} />
                 <Route path="applications" element={<ApplicationsPage />} />
                 <Route path="applications/:id" element={<ApplicationDetailsPage />} />
+                <Route path="messages" element={<CandidateMessagesPage />} />
+                <Route path="messages/:id" element={<CandidateThreadPage />} />
                 <Route path="resume" element={<ResumePage />} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="interview" element={<InterviewPage />} />
@@ -81,6 +84,8 @@ export default function App() {
                 <Route path="jobs/new" element={<EmployerPostJobPage />} />
                 <Route path="inbox" element={<EmployerInboxPage />} />
                 <Route path="inbox/:id" element={<EmployerApplicationPage />} />
+                <Route path="messages" element={<EmployerMessagesPage />} />
+                <Route path="messages/:id" element={<EmployerThreadPage />} />
                 <Route path="billing" element={<BillingPage />} />
               </Route>
             </Route>

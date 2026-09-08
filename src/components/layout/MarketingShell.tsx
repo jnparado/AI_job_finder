@@ -268,3 +268,66 @@ export function LandingVideo({
     </section>
   )
 }
+
+export function SocialAdKit({ audience }: { audience: 'candidate' | 'employer' }) {
+  const vertical =
+    audience === 'employer' ? '/ads/atelier-ad-shorts-employer.mp4' : '/ads/atelier-ad-shorts-candidate.mp4'
+  const poster =
+    audience === 'employer' ? '/ads/atelier-ad-v-hire-01.png' : '/ads/atelier-ad-v-cand-01.png'
+  const wide = audience === 'employer' ? '/ads/atelier-ad-employer.mp4' : '/ads/atelier-ad-candidate.mp4'
+  const feed45 =
+    audience === 'employer' ? '/ads/atelier-ad-feed-4x5-employer.mp4' : '/ads/atelier-ad-feed-4x5-candidate.mp4'
+  const cuts = [
+    { href: vertical, label: 'Reels, Shorts, TikTok, Stories', note: '9:16 · 15s' },
+    { href: feed45, label: 'Facebook / Instagram feed', note: '4:5 · 15s' },
+    { href: '/ads/atelier-ad-feed-square.mp4', label: 'Feed square', note: '1:1 · 15s' },
+    { href: wide, label: 'YouTube / LinkedIn in-stream', note: '16:9' },
+    { href: '/ads/atelier-ad-bumper-6s.mp4', label: 'YouTube bumper', note: '16:9 · 6s' },
+  ]
+
+  return (
+    <section className="px-5 pb-16 sm:px-8 sm:pb-20">
+      <div className="mx-auto grid max-w-6xl items-start gap-10 lg:grid-cols-[0.42fr_1.58fr]">
+        <div className="mx-auto w-full max-w-[22rem]">
+          <div className="overflow-hidden rounded-[1.75rem] border border-[#c9c0ae28] bg-[#0d1b16]">
+            <video
+              className="aspect-[9/16] w-full"
+              controls
+              playsInline
+              preload="metadata"
+              poster={poster}
+              src={vertical}
+            />
+          </div>
+        </div>
+        <div>
+          <p className="eyebrow text-[#c6a15b]">Social ads</p>
+          <h2 className="mt-3 max-w-[16ch] text-3xl sm:text-4xl">Cuts ready for Facebook, YouTube, and Reels</h2>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-[#c9c0ae] sm:text-base">
+            Same story as the film, sized for each placement. Download the MP4, paste the caption from the copy sheet, and point the ad to sign-up. Swap the quiet tone bed for licensed music before you spend.
+          </p>
+          <ul className="mt-8 space-y-3">
+            {cuts.map((cut) => (
+              <li key={cut.href}>
+                <a
+                  href={cut.href}
+                  download
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#c9c0ae22] bg-[#0d1b16]/70 px-4 py-3 transition-colors hover:border-[#c6a15b55]"
+                >
+                  <span>
+                    <span className="block font-medium">{cut.label}</span>
+                    <span className="text-sm text-[#c9c0ae]">{cut.note}</span>
+                  </span>
+                  <span className="text-sm text-[var(--copper)]">Download</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+          <a href="/ads/social-copy.txt" className="mt-4 inline-block text-sm text-[#c6a15b] hover:text-[var(--paper)]">
+            Ad captions (Meta, YouTube, LinkedIn)
+          </a>
+        </div>
+      </div>
+    </section>
+  )
+}

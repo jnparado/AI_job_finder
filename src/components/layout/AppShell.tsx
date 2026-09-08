@@ -9,6 +9,7 @@ import {
   LineChart,
   Menu,
   MessageSquare,
+  MessagesSquare,
   ScrollText,
   CreditCard,
   Settings,
@@ -35,6 +36,7 @@ const GROUPS: { label: string; items: { to: string; label: string; icon: LucideI
     label: 'Apply',
     items: [
       { to: '/app/applications', label: 'Applications', icon: FileText },
+      { to: '/app/messages', label: 'Messages', icon: MessagesSquare },
       { to: '/app/resume', label: 'Resume', icon: ScrollText },
     ],
   },

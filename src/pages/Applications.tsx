@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, Badge } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/card'
 import { EmptyState, PageHeader } from '@/components/ui/feedback'
+import { ThreadPanel } from '@/components/messages/ThreadPanel'
 
 interface ApplicationRow {
   id: string
@@ -174,6 +175,11 @@ export function ApplicationDetailsPage() {
         {p.aiLane === 'terra' ? (
           <p className="mt-2 text-sm text-muted-foreground">Cover letter and answers drafted by GPT-5.6 Terra. Edit anything before you approve.</p>
         ) : null}
+        {a.deliveredToEmployer ? (
+          <Link to={`/app/messages/${a.id}`} className="mt-2 inline-block text-sm text-[var(--copper)]">
+            Open messages
+          </Link>
+        ) : null}
       </div>
 
       {p.resumeNotes.unconfirmed.length ? (
@@ -269,7 +275,7 @@ export function ApplicationDetailsPage() {
         <Card>
           <p>
             {a.deliveredToEmployer
-              ? 'Sent to the employer on Atelier. They can review your packet in their inbox.'
+              ? 'Sent to the employer on Atelier. They can review your packet and message you here.'
               : external
                 ? `Packet is ready. Finish the application on ${platform}, then update the status here.`
                 : 'Submitted. Track status and send follow-ups only with your approval.'}
@@ -293,6 +299,8 @@ export function ApplicationDetailsPage() {
           </select>
         </Card>
       )}
+
+      {a.directToEmployer || a.deliveredToEmployer ? <ThreadPanel applicationId={a.id} /> : null}
 
       <section className="space-y-3">
         <h2>Follow-up AI</h2>

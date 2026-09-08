@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, Briefcase, Check, MapPin, Sparkles, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { LandingVideo, MarketingShell } from '@/components/layout/MarketingShell'
+import { LandingVideo, MarketingShell, SocialAdKit } from '@/components/layout/MarketingShell'
 import { BrandCarousel } from '@/components/marketing/BrandCarousel'
 import {
   AloneVsWorkshop,
@@ -258,7 +258,7 @@ export function CandidateLandingPage() {
             {[
               ['Northwind Labs', 'Packet ready · you apply on their listing'],
               ['Harbor Pay', 'Copied letter · submit on their career page'],
-              ['Atelier Labs', 'Sent to employer inbox'],
+              ['Atelier Labs', 'Sent · message the employer'],
             ].map(([who, status]) => (
               <Link
                 key={who}
@@ -282,6 +282,7 @@ export function CandidateLandingPage() {
         src="/ads/atelier-ad-candidate.mp4"
         poster="/ads/atelier-ad-candidate-hero.jpg"
       />
+      <SocialAdKit audience="candidate" />
 
       <WorkshopFaq items={CANDIDATE_FAQ} />
       <InviteClose audience="candidate" />
@@ -323,7 +324,7 @@ export function EmployerLandingPage() {
             </Button>
           </div>
           <ul className="mt-6 flex flex-wrap gap-2 text-xs text-[#d8d0c0]">
-            {['Approved packets only', 'Match scores on every send', 'One hiring inbox'].map((item) => (
+            {['Approved packets only', 'Message candidates in-app', 'One hiring inbox'].map((item) => (
               <li key={item} className="rounded-full border border-[#c9c0ae33] px-3 py-1.5">
                 {item}
               </li>
@@ -352,7 +353,7 @@ export function EmployerLandingPage() {
             <div className="rounded-[1.75rem] border border-[#c6a15b44] bg-[#1f3d32]/80 p-7">
               <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">On Atelier</p>
               <ul className="mt-5 space-y-3 text-sm text-[#e7e1d4]">
-                {['Role scored against a real profile', 'Packet arrives only after they approve', 'Letter and answers in one place', 'Move them to interview from the inbox'].map((item) => (
+                {['Role scored against a real profile', 'Packet arrives only after they approve', 'Letter and answers in one place', 'Message them, then move to interview'].map((item) => (
                   <li key={item} className="flex gap-3">
                     <Check className="mt-0.5 size-4 shrink-0 text-[#c6a15b]" />
                     {item}
@@ -372,7 +373,7 @@ export function EmployerLandingPage() {
             steps={[
               ['01', 'Post the role', 'Write the listing once on Atelier. Candidates whose profiles fit see it in search.'],
               ['02', 'They approve a packet', 'Matched people prepare a letter and answers. Nothing hits your inbox until they send.'],
-              ['03', 'You decide', 'Review the packet, then move them to interview, offer, or close.'],
+              ['03', 'You decide', 'Review the packet, message the candidate, then move them to interview, offer, or close.'],
             ]}
           />
         </div>
@@ -396,7 +397,7 @@ export function EmployerLandingPage() {
             <HelpShot
               src="/brand/employer/employer-interview.jpg"
               title="Decide with context"
-              body="Move people to interview, offer, or close from one inbox."
+              body="Message them, then move to interview, offer, or close from one inbox."
             />
           </div>
         </div>
@@ -452,6 +453,7 @@ export function EmployerLandingPage() {
         src="/ads/atelier-ad-employer.mp4"
         poster="/ads/atelier-ad-employer-hero.jpg"
       />
+      <SocialAdKit audience="employer" />
       <WorkshopFaq
         items={[
           {
@@ -469,6 +471,10 @@ export function EmployerLandingPage() {
           {
             q: 'What is in a packet?',
             a: 'A tailored resume draft, a letter, and answers they approved. You see why they scored against the role.',
+          },
+          {
+            q: 'Can I message candidates?',
+            a: 'Yes. Once a packet is in your inbox, you can write to that candidate on Atelier and they can reply. This is only for people who applied to your Atelier listing — not LinkedIn or Upwork applicants.',
           },
           {
             q: 'Is there a fee to post?',

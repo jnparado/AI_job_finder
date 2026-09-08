@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Inbox, Plus } from 'lucide-react'
+import { ArrowLeft, Inbox, MessagesSquare, Plus } from 'lucide-react'
 import type { Currency, EmploymentType, Job } from '@shared/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -11,6 +11,7 @@ import { Card, Badge, Textarea } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { EmptyState, PageHeader } from '@/components/ui/feedback'
+import { ThreadPanel } from '@/components/messages/ThreadPanel'
 
 interface InboxRow {
   id: string
@@ -109,7 +110,7 @@ export function EmployerDashboardPage() {
                 {greeting()}, {company}
               </h1>
               <p className="mt-2 max-w-xl text-sm text-[#d8d0c0]">
-                Post roles on Atelier. When a candidate approves a packet, it lands in your inbox.
+                Post roles on Atelier. When a candidate approves a packet, it lands in your inbox. You can message them from there.
               </p>
             </div>
           </div>
@@ -146,6 +147,12 @@ export function EmployerDashboardPage() {
                 <Link to={`/employer/inbox/${latest.id}`}>
                   <Inbox className="size-4" />
                   Review packet
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link to={`/employer/messages/${latest.id}`}>
+                  <MessagesSquare className="size-4" />
+                  Message
                 </Link>
               </Button>
               <Button variant="outline" asChild>
@@ -414,7 +421,7 @@ export function EmployerInboxPage() {
   })
   return (
     <div className="space-y-6">
-      <PageHeader kicker="Candidates" title="Inbox" description="Packets candidates approved are delivered here. External board jobs still apply on their official sites." />
+      <PageHeader kicker="Candidates" title="Inbox" description="Packets candidates approved are delivered here. Message them from the packet or Messages. External board jobs still apply on their official sites." />
       {inbox.data?.length ? (
         <div className="space-y-3">
           {inbox.data.map((a) => (
@@ -427,7 +434,7 @@ export function EmployerInboxPage() {
                     {a.job?.title} · {a.candidateHeadline}
                   </p>
                 </div>
-                <span className="text-sm text-[var(--copper)]">Review packet</span>
+                <span className="text-sm text-[var(--copper)]">Review · message</span>
               </Card>
             </Link>
           ))}
@@ -471,6 +478,10 @@ export function EmployerApplicationPage() {
           {a.job?.title} · {a.candidateEmail}
         </p>
         {a.candidateHeadline ? <p className="mt-1 text-sm">{a.candidateHeadline}</p> : null}
+        <Link to={`/employer/messages/${a.id}`} className="mt-2 inline-flex items-center gap-1 text-sm text-[var(--copper)]">
+          <MessagesSquare className="size-3.5" />
+          Open messages
+        </Link>
       </div>
       <div className="flex flex-wrap gap-2">
         {(['letter', 'resume', 'answers'] as const).map((t) => (
@@ -509,6 +520,7 @@ export function EmployerApplicationPage() {
           ))}
         </select>
       </Card>
+      <ThreadPanel applicationId={a.id} />
     </div>
   )
 }

@@ -516,6 +516,10 @@ export const CANDIDATE_FAQ = [
     a: 'Only when the employer posted the role on Atelier and you approve send. Then the packet lands in their inbox. That is the only place Atelier delivers an application for you.',
   },
   {
+    q: 'Can I message an employer?',
+    a: 'Yes, after you send a packet to an Atelier employer. They can write back from their inbox. Jobs on LinkedIn, Indeed, or Upwork stay on those sites — we do not open a chat there.',
+  },
+  {
     q: 'Can I still apply to jobs that are not on Atelier?',
     a: 'Yes. Match, prepare, and copy the letter. Then apply on the official URL. We track it in your workshop so replies and interviews stay in one place.',
   },

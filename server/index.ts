@@ -9,7 +9,18 @@ import { configuredProviders, discoverJobs } from './discover'
 import { coachInterview, enrichMatches, parseJobs, planSearch, strategizeCareer, writePacket } from './agents'
 import { routerStatus } from './ai'
 import { asJob, inferSeniority } from '../shared/engine/jobFields'
-import type { CandidateProfile, Currency, DiscoverySummary, EmploymentType, Job, JobMatch, PreparedPacket } from '../shared/types'
+import type {
+  CandidateProfile,
+  Currency,
+  DiscoverySummary,
+  EmploymentType,
+  Job,
+  JobMatch,
+  MessageThreadPayload,
+  MessageThreadSummary,
+  PreparedPacket,
+  ThreadMessage,
+} from '../shared/types'
 import { displayName, emptyProfile, type SocialIdentity } from '../shared/types'
 import { DEMO_EMPLOYER, DEMO_USER, memory, type StoredApplication } from './memory'
 import { extractFileText, parseResumeSmart } from './resume'
@@ -139,6 +150,182 @@ function profileFromRow(row: Record<string, unknown>, email: string): CandidateP
 
 function isEmployerJob(job?: Job | null) {
   return Boolean(job && (job.source === 'atelier' || job.employerId))
+}
+
+function threadEligible(app: StoredApplication, job?: Job | null) {
+  return Boolean(app.authorized && (app.deliveredToEmployer || isEmployerJob(job)))
+}
+
+function msgFromRow(row: Record<string, unknown>): ThreadMessage {
+  return {
+    id: String(row.id),
+    applicationId: String(row.application_id),
+    senderId: String(row.sender_id),
+    senderRole: row.sender_role === 'employer' ? 'employer' : 'candidate',
+    body: String(row.body ?? ''),
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+    readAt: row.read_at ? String(row.read_at) : undefined,
+  }
+}
+
+async function notifyUser(userId: string, title: string, body: string, href?: string) {
+  const n = {
+    id: crypto.randomUUID(),
+    userId,
+    title,
+    body,
+    href,
+    read: false,
+    createdAt: new Date().toISOString(),
+  }
+  memory.addNotification(n)
+  if (!supabaseAdmin) return
+  const { error } = await supabaseAdmin.from('notifications').insert({
+    id: n.id,
+    user_id: userId,
+    title,
+    body,
+    href,
+    read: false,
+  })
+  if (error) console.warn('notifyUser', error.message)
+}
+
+async function persistThreadMessage(msg: ThreadMessage) {
+  memory.addMessage(msg)
+  if (!supabaseAdmin) return
+  const { error } = await supabaseAdmin.from('thread_messages').insert({
+    id: msg.id,
+    application_id: msg.applicationId,
+    sender_id: msg.senderId,
+    sender_role: msg.senderRole,
+    body: msg.body,
+    created_at: msg.createdAt,
+    read_at: msg.readAt ?? null,
+  })
+  if (error) console.warn('persistThreadMessage', error.message)
+}
+
+async function loadThreadMessages(applicationId: string): Promise<ThreadMessage[]> {
+  const local = memory.getMessages(applicationId)
+  if (!supabaseAdmin) return local
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('thread_messages')
+      .select('*')
+      .eq('application_id', applicationId)
+      .order('created_at', { ascending: true })
+    if (error) {
+      console.warn('loadThreadMessages', error.message)
+      return local
+    }
+    if (!data?.length) return local
+    const mapped = data.map((row) => msgFromRow(row as Record<string, unknown>))
+    const ids = new Set(mapped.map((m) => m.id))
+    memory.setMessages(applicationId, [...mapped, ...local.filter((m) => !ids.has(m.id))])
+    return memory.getMessages(applicationId)
+  } catch (err) {
+    console.warn('loadThreadMessages', err)
+    return local
+  }
+}
+
+async function hydrateThreads(applicationIds: string[]) {
+  const ids = [...new Set(applicationIds)].filter(Boolean)
+  if (!supabaseAdmin || !ids.length) return
+  try {
+    const { data, error } = await supabaseAdmin.from('thread_messages').select('*').in('application_id', ids)
+    if (error) {
+      console.warn('hydrateThreads', error.message)
+      return
+    }
+    const grouped = new Map<string, ThreadMessage[]>()
+    for (const row of data ?? []) {
+      const msg = msgFromRow(row as Record<string, unknown>)
+      const list = grouped.get(msg.applicationId) ?? []
+      list.push(msg)
+      grouped.set(msg.applicationId, list)
+    }
+    for (const [applicationId, list] of grouped) {
+      const local = memory.getMessages(applicationId)
+      const idsInDb = new Set(list.map((m) => m.id))
+      memory.setMessages(applicationId, [...list, ...local.filter((m) => !idsInDb.has(m.id))])
+    }
+  } catch (err) {
+    console.warn('hydrateThreads', err)
+  }
+}
+
+async function markThreadRead(applicationId: string, userId: string) {
+  memory.markRead(applicationId, userId)
+  if (!supabaseAdmin) return
+  const { error } = await supabaseAdmin
+    .from('thread_messages')
+    .update({ read_at: new Date().toISOString() })
+    .eq('application_id', applicationId)
+    .neq('sender_id', userId)
+    .is('read_at', null)
+  if (error) console.warn('markThreadRead', error.message)
+}
+
+async function threadContext(user: AuthUser, applicationId: string) {
+  const app = await hydrateApplication(applicationId)
+  if (!app) return null
+  const job = memory.getJob(app.jobId) ?? (await ensureJob(app.jobId))
+  const profile = await loadProfile(user)
+  const isCandidate = app.userId === user.id
+  const isEmployer = profile.role === 'employer' && job?.employerId === user.id
+  if (!isCandidate && !isEmployer) return null
+  const viewerRole = isEmployer ? ('employer' as const) : ('candidate' as const)
+  const canMessage = threadEligible(app, job)
+  return { app, job, profile, viewerRole, canMessage }
+}
+
+function threadPayload(
+  ctx: NonNullable<Awaited<ReturnType<typeof threadContext>>>,
+  messages: ThreadMessage[],
+): MessageThreadPayload {
+  const employerName = ctx.job?.company || 'Employer'
+  const candidateName = ctx.app.candidateName || ctx.app.candidateEmail || 'Candidate'
+  return {
+    applicationId: ctx.app.id,
+    canMessage: ctx.canMessage,
+    closedReason: ctx.canMessage
+      ? undefined
+      : ctx.viewerRole === 'candidate'
+        ? 'Send the packet to this Atelier employer to open messages.'
+        : 'Messages open after the candidate sends their packet.',
+    jobTitle: ctx.job?.title ?? 'Role',
+    company: employerName,
+    otherName: ctx.viewerRole === 'employer' ? candidateName : employerName,
+    otherHeadline: ctx.viewerRole === 'employer' ? ctx.app.candidateHeadline : ctx.job?.location,
+    viewerRole: ctx.viewerRole,
+    packetHref: ctx.viewerRole === 'employer' ? `/employer/inbox/${ctx.app.id}` : `/app/applications/${ctx.app.id}`,
+    messages,
+  }
+}
+
+function threadSummary(
+  userId: string,
+  viewerRole: 'candidate' | 'employer',
+  app: StoredApplication,
+  job?: Job,
+): MessageThreadSummary {
+  const msgs = memory.getMessages(app.id)
+  const last = msgs[msgs.length - 1]
+  const employerName = job?.company || 'Employer'
+  const candidateName = app.candidateName || app.candidateEmail || 'Candidate'
+  return {
+    applicationId: app.id,
+    jobTitle: job?.title ?? 'Role',
+    company: employerName,
+    otherName: viewerRole === 'employer' ? candidateName : employerName,
+    otherHeadline: viewerRole === 'employer' ? app.candidateHeadline : job?.location,
+    lastBody: last?.body,
+    lastAt: last?.createdAt,
+    unreadCount: msgs.filter((m) => m.senderId !== userId && !m.readAt).length,
+    href: viewerRole === 'employer' ? `/employer/messages/${app.id}` : `/app/messages/${app.id}`,
+  }
 }
 
 function findMatch(userId: string, jobId: string, profile: CandidateProfile): JobMatch | undefined {
@@ -322,6 +509,107 @@ async function loadEmployerJobs(employerId: string): Promise<Job[]> {
   const byId = new Map(fromDb.map((job) => [job.id, job]))
   for (const job of local) if (!byId.has(job.id)) byId.set(job.id, job)
   return [...byId.values()]
+}
+
+function applicationFromRow(
+  row: Record<string, unknown>,
+  extras?: {
+    answers?: { question: string; answer: string }[]
+    candidateName?: string
+    candidateEmail?: string
+    candidateHeadline?: string
+  },
+): StoredApplication {
+  const name = extras?.candidateName?.trim()
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    jobId: String(row.job_id),
+    status: String(row.status ?? 'draft'),
+    channel: String(row.channel ?? ''),
+    authorized: Boolean(row.authorized),
+    deliveredToEmployer: Boolean(row.delivered_to_employer),
+    packet: {
+      tailoredResume: String(row.tailored_resume ?? ''),
+      coverLetter: String(row.cover_letter ?? ''),
+      answers: extras?.answers ?? [],
+      recruiterMessage: String(row.recruiter_message ?? ''),
+      resumeNotes: { confirmed: [], unconfirmed: [] },
+    },
+    submittedAt: row.submitted_at ? String(row.submitted_at) : undefined,
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+    events: [],
+    followUps: [],
+    recruiterSent: false,
+    candidateName: name || extras?.candidateEmail,
+    candidateEmail: extras?.candidateEmail,
+    candidateHeadline: extras?.candidateHeadline,
+  }
+}
+
+async function ensureJob(jobId: string) {
+  const existing = memory.getJob(jobId)
+  if (existing) return existing
+  if (!supabaseAdmin) return undefined
+  const { data } = await supabaseAdmin.from('jobs').select('*').eq('id', jobId).maybeSingle()
+  if (!data) return undefined
+  const job = jobFromRow(data as Record<string, unknown>)
+  memory.setJobs([job])
+  return job
+}
+
+async function hydrateApplication(id: string): Promise<StoredApplication | undefined> {
+  const existing = memory.getApplicationById(id)
+  if (existing) {
+    await ensureJob(existing.jobId)
+    return existing
+  }
+  if (!supabaseAdmin) return undefined
+  const { data, error } = await supabaseAdmin.from('applications').select('*').eq('id', id).maybeSingle()
+  if (error) console.warn('hydrateApplication', error.message)
+  if (!data) return undefined
+  const { data: answers } = await supabaseAdmin.from('application_answers').select('question, answer').eq('application_id', id)
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('first_name, last_name, email, headline')
+    .eq('id', data.user_id)
+    .maybeSingle()
+  const app = applicationFromRow(data as Record<string, unknown>, {
+    answers: (answers ?? []).map((a) => ({ question: String(a.question ?? ''), answer: String(a.answer ?? '') })),
+    candidateName: profile ? `${String(profile.first_name ?? '')} ${String(profile.last_name ?? '')}`.trim() : undefined,
+    candidateEmail: profile?.email ? String(profile.email) : undefined,
+    candidateHeadline: profile?.headline ? String(profile.headline) : undefined,
+  })
+  memory.addApplication(app)
+  await ensureJob(app.jobId)
+  return app
+}
+
+async function hydrateApplications(filter: { userId?: string; jobIds?: string[] }) {
+  if (!supabaseAdmin) return
+  if (filter.jobIds && !filter.jobIds.length) return
+  let q = supabaseAdmin.from('applications').select('*')
+  if (filter.userId) q = q.eq('user_id', filter.userId)
+  if (filter.jobIds?.length) q = q.in('job_id', filter.jobIds)
+  const { data, error } = await q
+  if (error) {
+    console.warn('hydrateApplications', error.message)
+    return
+  }
+  for (const row of data ?? []) {
+    const id = String(row.id ?? '')
+    if (!id || memory.getApplicationById(id)) {
+      if (row.job_id) await ensureJob(String(row.job_id))
+      continue
+    }
+    await hydrateApplication(id)
+  }
+}
+
+async function prepareEmployerInbox(employerId: string) {
+  const jobs = await loadEmployerJobs(employerId)
+  await hydrateApplications({ jobIds: jobs.map((job) => job.id) })
+  return employerInbox(employerId)
 }
 
 async function persistMatches(userId: string, list: JobMatch[]) {
@@ -689,13 +977,16 @@ app.post('/api/applications', async (c) => {
 app.get('/api/applications', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  await hydrateApplications({ userId: user.id })
   return c.json(memory.getApplications(user.id))
 })
 
 app.get('/api/applications/:id', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
-  const row = memory.getApplication(user.id, c.req.param('id'))
+  const id = c.req.param('id')
+  await hydrateApplication(id)
+  const row = memory.getApplication(user.id, id)
   if (!row) return c.json({ error: 'Not found' }, 404)
   const profile = await loadProfile(user)
   const match = findMatch(user.id, row.jobId, profile)
@@ -764,15 +1055,12 @@ app.post('/api/applications/:id/approve', async (c) => {
   })
   memory.addApplication(row)
   if (direct && job?.employerId) {
-    memory.addNotification({
-      id: crypto.randomUUID(),
-      userId: job.employerId,
-      title: `New application: ${job.title}`,
-      body: `${row.candidateName || displayName(profile)} applied for ${job.title}.`,
-      href: `/employer/inbox/${row.id}`,
-      read: false,
-      createdAt: new Date().toISOString(),
-    })
+    await notifyUser(
+      job.employerId,
+      `New application: ${job.title}`,
+      `${row.candidateName || displayName(profile)} applied for ${job.title}.`,
+      `/employer/inbox/${row.id}`,
+    )
   }
   if (supabaseAdmin) {
     await supabaseAdmin
@@ -955,7 +1243,73 @@ app.get('/api/employer/applications', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const profile = await loadProfile(user)
   if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
-  return c.json(employerInbox(user.id))
+  return c.json(await prepareEmployerInbox(user.id))
+})
+
+app.get('/api/messages', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role === 'employer') {
+    const inbox = await prepareEmployerInbox(user.id)
+    await hydrateThreads(inbox.map((a) => a.id))
+    return c.json(inbox.map((a) => threadSummary(user.id, 'employer', a, a.job)))
+  }
+  await hydrateApplications({ userId: user.id })
+  const apps = memory
+    .getApplications(user.id)
+    .filter((a) => threadEligible(a, memory.getJob(a.jobId)))
+  await hydrateThreads(apps.map((a) => a.id))
+  return c.json(apps.map((a) => threadSummary(user.id, 'candidate', a, memory.getJob(a.jobId))))
+})
+
+app.get('/api/applications/:id/messages', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const ctx = await threadContext(user, c.req.param('id'))
+  if (!ctx) return c.json({ error: 'Not found' }, 404)
+  await loadThreadMessages(ctx.app.id)
+  await markThreadRead(ctx.app.id, user.id)
+  return c.json(threadPayload(ctx, memory.getMessages(ctx.app.id)))
+})
+
+app.post('/api/applications/:id/messages', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const ctx = await threadContext(user, c.req.param('id'))
+  if (!ctx) return c.json({ error: 'Not found' }, 404)
+  if (!ctx.canMessage) {
+    return c.json({ error: ctx.viewerRole === 'candidate' ? 'Send the packet before messaging this employer.' : 'Wait until the candidate sends their packet.' }, 403)
+  }
+  const body = String(((await c.req.json().catch(() => ({}))) as { body?: string }).body ?? '').trim()
+  if (!body) return c.json({ error: 'Write a message first.' }, 400)
+  if (body.length > 4000) return c.json({ error: 'Keep messages under 4,000 characters.' }, 400)
+  const msg: ThreadMessage = {
+    id: crypto.randomUUID(),
+    applicationId: ctx.app.id,
+    senderId: user.id,
+    senderRole: ctx.viewerRole,
+    body,
+    createdAt: new Date().toISOString(),
+  }
+  await persistThreadMessage(msg)
+  const recipientId = ctx.viewerRole === 'employer' ? ctx.app.userId : ctx.job?.employerId
+  if (recipientId) {
+    const preview = body.length > 140 ? `${body.slice(0, 137)}…` : body
+    await notifyUser(
+      recipientId,
+      ctx.viewerRole === 'employer' ? `${ctx.job?.company ?? 'Employer'} sent a message` : `${ctx.app.candidateName || 'A candidate'} sent a message`,
+      preview,
+      ctx.viewerRole === 'employer' ? `/app/messages/${ctx.app.id}` : `/employer/messages/${ctx.app.id}`,
+    )
+  }
+  ctx.app.events.push({
+    at: msg.createdAt,
+    label: 'Message',
+    detail: ctx.viewerRole === 'employer' ? 'Employer sent a message on Atelier.' : 'You sent a message to the employer.',
+  })
+  memory.addApplication(ctx.app)
+  return c.json(threadPayload(ctx, memory.getMessages(ctx.app.id)))
 })
 
 app.get('/api/employer/applications/:id', async (c) => {
@@ -963,8 +1317,8 @@ app.get('/api/employer/applications/:id', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const profile = await loadProfile(user)
   if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
-  const row = memory.getApplicationById(c.req.param('id'))
-  const job = row ? memory.getJob(row.jobId) : undefined
+  const row = await hydrateApplication(c.req.param('id'))
+  const job = row ? memory.getJob(row.jobId) ?? (await ensureJob(row.jobId)) : undefined
   if (!row || job?.employerId !== user.id) return c.json({ error: 'Not found' }, 404)
   return c.json({ ...row, job })
 })
@@ -986,15 +1340,12 @@ app.patch('/api/employer/applications/:id', async (c) => {
       detail: `${job?.company ?? 'Employer'} updated this application.`,
     })
     memory.addApplication(row)
-    memory.addNotification({
-      id: crypto.randomUUID(),
-      userId: row.userId,
-      title: `${job?.title ?? 'Application'} is now ${body.status.replaceAll('_', ' ')}`,
-      body: `${job?.company ?? 'The employer'} updated your application.`,
-      href: `/app/applications/${row.id}`,
-      read: false,
-      createdAt: new Date().toISOString(),
-    })
+    await notifyUser(
+      row.userId,
+      `${job?.title ?? 'Application'} is now ${body.status.replaceAll('_', ' ')}`,
+      `${job?.company ?? 'The employer'} updated your application.`,
+      `/app/applications/${row.id}`,
+    )
   }
   if (supabaseAdmin) {
     await supabaseAdmin.from('applications').update({ status: row.status }).eq('id', row.id)
@@ -1201,6 +1552,9 @@ app.get('/api/setup', (c) =>
 
 const seeded = emptyProfile()
 seeded.email = 'demo@atelier.local'
+seeded.firstName = 'Jordan'
+seeded.lastName = 'Reyes'
+seeded.headline = 'Full stack engineer'
 memory.setProfile(DEMO_USER, seeded)
 
 const hiring = emptyProfile()
@@ -1237,6 +1591,48 @@ const demoRole = asJob({
   employerId: DEMO_EMPLOYER,
 })
 memory.setJobs([demoRole])
+
+const demoAppId = 'a0000000-0000-4000-8000-000000000001'
+memory.addApplication({
+  id: demoAppId,
+  userId: DEMO_USER,
+  jobId: demoRole.id,
+  status: 'submitted',
+  channel: 'Atelier employer inbox',
+  authorized: true,
+  deliveredToEmployer: true,
+  submittedAt: new Date().toISOString(),
+  createdAt: new Date().toISOString(),
+  packet: {
+    tailoredResume:
+      'Jordan Reyes\nFull Stack Engineer\n\nReact, TypeScript, Node.js, PostgreSQL.\nBuilt matching, packets, and hiring inboxes.',
+    coverLetter:
+      'I am applying for Full Stack Engineer at Atelier Labs. I want to ship candidate matching and employer inboxes with care — packets leave only after the candidate approves.',
+    answers: [{ question: 'Why this role?', answer: 'I want to help people apply without spraying templates at every board.' }],
+    recruiterMessage: '',
+    resumeNotes: { confirmed: ['React', 'TypeScript', 'Node.js'], unconfirmed: [] },
+  },
+  events: [
+    {
+      at: new Date().toISOString(),
+      label: 'Sent to employer',
+      detail: 'Packet delivered to Atelier Labs on Atelier.',
+    },
+  ],
+  followUps: [],
+  recruiterSent: false,
+  candidateName: 'Jordan Reyes',
+  candidateEmail: 'demo@atelier.local',
+  candidateHeadline: 'Full stack engineer',
+})
+memory.addMessage({
+  id: 'a0000000-0000-4000-8000-000000000011',
+  applicationId: demoAppId,
+  senderId: DEMO_USER,
+  senderRole: 'candidate',
+  body: 'Hi Sam — I sent my packet for the Full Stack role. Happy to walk through the matching and packet work whenever you have time.',
+  createdAt: new Date().toISOString(),
+})
 
 const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, () => {
   console.log(`API http://127.0.0.1:${port}  supabase=${Boolean(supabaseAdmin)}`)

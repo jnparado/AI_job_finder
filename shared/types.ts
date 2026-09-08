@@ -283,6 +283,43 @@ export interface DiscoverySummary {
   marketSalary?: MarketSalary
 }
 
+export type ThreadSenderRole = 'candidate' | 'employer'
+
+export interface ThreadMessage {
+  id: string
+  applicationId: string
+  senderId: string
+  senderRole: ThreadSenderRole
+  body: string
+  createdAt: string
+  readAt?: string
+}
+
+export interface MessageThreadSummary {
+  applicationId: string
+  jobTitle: string
+  company: string
+  otherName: string
+  otherHeadline?: string
+  lastBody?: string
+  lastAt?: string
+  unreadCount: number
+  href: string
+}
+
+export interface MessageThreadPayload {
+  applicationId: string
+  canMessage: boolean
+  closedReason?: string
+  jobTitle: string
+  company: string
+  otherName: string
+  otherHeadline?: string
+  viewerRole: ThreadSenderRole
+  packetHref: string
+  messages: ThreadMessage[]
+}
+
 export function sourceLabel(source: string): string {
   const labels: Record<string, string> = {
     remotive: 'Remotive',
