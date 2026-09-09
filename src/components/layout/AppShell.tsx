@@ -3,19 +3,19 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bell,
-  ChevronRight,
+  CircleHelp,
   CreditCard,
   FileText,
   Home,
   LineChart,
   LogOut,
-  Menu,
+  MessageSquare,
   MessagesSquare,
+  MoreVertical,
   ScrollText,
   Search,
   Settings,
   User,
-  X,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
@@ -24,186 +24,183 @@ import { displayName } from '@shared/types'
 import { initials } from '@/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 
-type NavItem = {
-  to: string
-  label: string
-  icon: LucideIcon
-  end?: boolean
-  badge?: 'notes'
-  chevron?: boolean
-  gapBefore?: boolean
-}
-
-const NAV: NavItem[] = [
-  { to: '/app/jobs', label: 'Search', icon: Search },
+const PRIMARY: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
+  { to: '/app/jobs', label: 'Matches', icon: Search },
   { to: '/app', label: 'Home', icon: Home, end: true },
-  { to: '/app/alerts', label: 'Alerts', icon: Bell, badge: 'notes' },
-  { to: '/app/resume', label: 'Resume', icon: ScrollText, chevron: true, gapBefore: true },
-  { to: '/app/applications', label: 'Packets', icon: FileText, chevron: true },
-  { to: '/app/billing', label: 'Plan', icon: CreditCard, chevron: true },
-  { to: '/app/messages', label: 'Messages', icon: MessagesSquare },
+  { to: '/app/applications', label: 'Packets', icon: FileText },
+  { to: '/app/messages', label: 'Inbox', icon: MessagesSquare },
+  { to: '/app/resume', label: 'Resume', icon: ScrollText },
+  { to: '/app/profile', label: 'Profile', icon: User },
   { to: '/app/career', label: 'Coach', icon: LineChart },
 ]
 
-function SidebarContent({
-  onNavigate,
-  noteCount,
-  notes,
-  name,
-  email,
-  avatarUrl,
-  onSignOut,
-}: {
-  onNavigate: (path: string) => void
-  noteCount: number
-  notes: { title: string; body?: string; href?: string }[]
-  name: string
-  email: string
-  avatarUrl?: string
-  onSignOut: () => void
-}) {
-  const [menu, setMenu] = useState(false)
-  const [alerts, setAlerts] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
+interface Note {
+  title: string
+  body?: string
+  href?: string
+}
+
+export function AppShell() {
+  const { profile, signOut } = useAuth()
+  const navigate = useNavigate()
+  const name = displayName(profile)
+  const notes = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api<Note[]>('/api/notifications'),
+  })
+  const noteCount = notes.data?.length ?? 0
+  const [bellOpen, setBellOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const bellRef = useRef<HTMLDivElement>(null)
+  const moreRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (!menuRef.current?.contains(e.target as Node)) {
-        setMenu(false)
-        setAlerts(false)
-      }
+      if (!bellRef.current?.contains(e.target as Node)) setBellOpen(false)
+      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false)
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
 
   return (
-    <div className="flex h-full min-h-0 flex-col text-[var(--forest)]" ref={menuRef}>
-      <Link
-        to="/"
-        className="mb-5 px-1 font-serif text-lg leading-none text-[var(--forest)]"
-        onClick={() => onNavigate('/')}
-      >
-        Atelier
-      </Link>
-
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => {
-            setAlerts(false)
-            setMenu((v) => !v)
-          }}
-          className="flex w-full items-center gap-3 rounded-2xl px-1 py-1 text-left hover:bg-[#e7ece8]"
-        >
-          {avatarUrl ? (
-            <img src={avatarUrl} alt="" className="size-10 rounded-full object-cover" />
-          ) : (
-            <span className="grid size-10 place-items-center rounded-full bg-[var(--forest)] font-serif text-sm text-[var(--paper)]">
-              {initials(name)}
-            </span>
-          )}
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold">{name}</span>
-            <span className="block text-xs text-muted-foreground">Candidate</span>
-          </span>
-          <ChevronRight className={`size-4 shrink-0 text-muted-foreground transition ${menu ? 'rotate-90' : ''}`} />
-        </button>
-        {menu ? (
-          <div className="absolute left-0 right-0 z-30 mt-2 overflow-hidden rounded-2xl border border-border bg-white shadow-lg">
-            <div className="border-b border-border px-4 py-3">
-              <p className="truncate text-sm font-medium">{name}</p>
-              <p className="truncate text-xs text-muted-foreground">{email}</p>
+    <div className="min-h-svh bg-[var(--paper)]">
+      <header className="sticky top-0 z-40 border-b border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)]">
+        <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-3 py-2.5 sm:gap-5 sm:px-5">
+          <div className="flex min-w-0 shrink-0 items-center gap-3">
+            <Link to="/app" className="shrink-0" aria-label="Atelier home">
+              <BrandMark light compact />
+            </Link>
+            <div className="hidden items-center gap-2.5 rounded-xl border border-[#c9c0ae33] px-2.5 py-1.5 sm:flex">
+              {profile.avatarUrl ? (
+                <img src={profile.avatarUrl} alt="" className="size-8 rounded-lg object-cover" />
+              ) : (
+                <span className="grid size-8 place-items-center rounded-lg bg-[#1f3d32] font-serif text-sm">
+                  {initials(name)}
+                </span>
+              )}
+              <span className="min-w-0">
+                <span className="block max-w-[9rem] truncate text-sm font-medium leading-tight">{name}</span>
+                <span className="block text-[0.65rem] uppercase tracking-[0.12em] text-[#c6a15b]">Candidate</span>
+              </span>
             </div>
-            <div className="p-1.5">
-              <MenuLink to="/app/profile" icon={User} label="Your studio" onClick={() => { setMenu(false); onNavigate('/app/profile') }} />
-              <MenuLink to="/app/resume" icon={ScrollText} label="Resume" onClick={() => { setMenu(false); onNavigate('/app/resume') }} />
-              <MenuLink to="/app/settings" icon={Settings} label="Settings" onClick={() => { setMenu(false); onNavigate('/app/settings') }} />
+          </div>
+
+          <nav className="flex min-w-0 flex-1 items-stretch justify-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {PRIMARY.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `flex min-w-[4.25rem] flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[0.7rem] transition-colors sm:min-w-[4.75rem] ${
+                    isActive
+                      ? 'text-[var(--paper)]'
+                      : 'text-[#c9c0ae] hover:bg-[#1f3d32]/80 hover:text-[var(--paper)]'
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <item.icon className="size-[1.15rem] stroke-[1.6]" />
+                    <span className="leading-none">{item.label}</span>
+                    <span
+                      className={`mt-0.5 h-0.5 w-7 rounded-full ${isActive ? 'bg-[#c6a15b]' : 'bg-transparent'}`}
+                    />
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </nav>
+
+          <div className="flex shrink-0 items-center gap-1">
+            <div className="relative" ref={bellRef}>
+              <button
+                type="button"
+                aria-label="Notifications"
+                className="relative grid size-10 place-items-center rounded-lg text-[var(--paper)] hover:bg-[#1f3d32]"
+                onClick={() => {
+                  setBellOpen((v) => !v)
+                  setMoreOpen(false)
+                }}
+              >
+                <Bell className="size-5 stroke-[1.6]" />
+                {noteCount ? (
+                  <span className="absolute right-1.5 top-1.5 grid min-w-4 place-items-center rounded-full bg-[var(--copper)] px-1 text-[0.6rem] font-semibold leading-4">
+                    {noteCount > 9 ? '9+' : noteCount}
+                  </span>
+                ) : null}
+              </button>
+              {bellOpen ? (
+                <div className="absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-border bg-[var(--paper)] text-[var(--forest)] shadow-xl">
+                  <p className="border-b border-border px-4 py-3 text-sm font-medium">Waiting for you</p>
+                  {notes.data?.length ? (
+                    <ul className="max-h-72 overflow-y-auto py-1">
+                      {notes.data.slice(0, 8).map((n, i) => (
+                        <li key={`${n.title}-${i}`}>
+                          <Link
+                            to={n.href || '/app'}
+                            className="block px-4 py-2.5 hover:bg-muted"
+                            onClick={() => setBellOpen(false)}
+                          >
+                            <p className="text-sm">{n.title}</p>
+                            {n.body ? <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p> : null}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="px-4 py-6 text-sm text-muted-foreground">No new matches waiting.</p>
+                  )}
+                </div>
+              ) : null}
             </div>
-            <p className="mx-2 mb-2 rounded-xl bg-[#f7f1e4] px-3 py-2 text-xs leading-relaxed">
-              Packets leave only after you approve.
-            </p>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 border-t border-border px-4 py-3 text-sm hover:bg-muted"
-              onClick={onSignOut}
-            >
-              <LogOut className="size-4" />
-              Sign out
-            </button>
-          </div>
-        ) : null}
-        {alerts ? (
-          <div className="absolute left-0 right-0 z-30 mt-2 max-h-72 overflow-auto rounded-2xl border border-border bg-white p-2 shadow-lg">
-            {notes.length ? (
-              notes.map((n) => (
-                <Link
-                  key={n.title}
-                  to={n.href || '/app'}
-                  onClick={() => {
-                    setAlerts(false)
-                    onNavigate(n.href || '/app')
-                  }}
-                  className="block rounded-xl px-3 py-2 hover:bg-muted"
-                >
-                  <p className="text-sm font-medium">{n.title}</p>
-                  {n.body ? <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p> : null}
-                </Link>
-              ))
-            ) : (
-              <p className="px-3 py-4 text-sm text-muted-foreground">No new matches waiting.</p>
-            )}
-          </div>
-        ) : null}
-      </div>
 
-      <div className="my-4 h-px bg-border" />
+            <div className="relative" ref={moreRef}>
+              <button
+                type="button"
+                aria-label="More"
+                className="grid size-10 place-items-center rounded-lg hover:bg-[#1f3d32]"
+                onClick={() => {
+                  setMoreOpen((v) => !v)
+                  setBellOpen(false)
+                }}
+              >
+                <MoreVertical className="size-5 stroke-[1.6]" />
+              </button>
+              {moreOpen ? (
+                <div className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-border bg-[var(--paper)] text-[var(--forest)] shadow-xl">
+                  <div className="border-b border-border px-4 py-3 sm:hidden">
+                    <p className="truncate text-sm font-medium">{name}</p>
+                    <p className="truncate text-xs text-muted-foreground">{profile.email}</p>
+                  </div>
+                  <div className="p-2">
+                    <MenuLink to="/app/interview" icon={MessageSquare} label="Interview" onClick={() => setMoreOpen(false)} />
+                    <MenuLink to="/app/billing" icon={CreditCard} label="Plan" onClick={() => setMoreOpen(false)} />
+                    <MenuLink to="/app/settings" icon={Settings} label="Settings" onClick={() => setMoreOpen(false)} />
+                    <MenuLink to="/support" icon={CircleHelp} label="Help" onClick={() => setMoreOpen(false)} />
+                  </div>
+                  <p className="mx-3 mb-2 rounded-xl border border-[#c6a15b55] bg-[#f7f1e4] px-3 py-2 text-xs leading-relaxed">
+                    Packets leave only after you approve.
+                  </p>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 border-t border-border px-4 py-3 text-sm hover:bg-muted"
+                    onClick={() => void signOut().then(() => navigate('/'))}
+                  >
+                    <LogOut className="size-4" />
+                    Sign out
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </header>
 
-      <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-4">
-        {NAV.map((item) => {
-          if (item.badge === 'notes') {
-            return (
-              <div key={item.label} className={item.gapBefore ? 'mt-5' : ''}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenu(false)
-                    setAlerts((v) => !v)
-                  }}
-                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${
-                    alerts ? 'bg-[#e7ece8] font-medium' : 'hover:bg-[#eef2ef]'
-                  }`}
-                >
-                  <item.icon className="size-[18px] stroke-[1.6] text-[var(--forest)]" />
-                  <span className="flex-1 text-left">{item.label}</span>
-                  {noteCount > 0 ? (
-                    <span className="grid min-w-5 place-items-center rounded-full bg-[var(--copper)] px-1.5 text-[10px] font-semibold text-[var(--paper)]">
-                      {noteCount > 9 ? '9+' : noteCount}
-                    </span>
-                  ) : null}
-                </button>
-              </div>
-            )
-          }
-          return (
-            <NavLink
-              key={item.label + item.to}
-              to={item.to}
-              end={item.end}
-              onClick={() => onNavigate(item.to)}
-              className={({ isActive }) =>
-                `${item.gapBefore ? 'mt-5 ' : ''}flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
-                  isActive ? 'bg-[#e7ece8] font-medium text-[var(--forest)]' : 'text-[var(--forest)] hover:bg-[#eef2ef]'
-                }`
-              }
-            >
-              <item.icon className="size-[18px] stroke-[1.6]" />
-              <span className="flex-1">{item.label}</span>
-              {item.chevron ? <ChevronRight className="size-4 text-muted-foreground" /> : null}
-            </NavLink>
-          )
-        })}
-      </nav>
+      <main className="mx-auto min-w-0 w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-8">
+        <Outlet />
+      </main>
     </div>
   )
 }
@@ -224,62 +221,5 @@ function MenuLink({
       <Icon className="size-4 opacity-70" />
       {label}
     </Link>
-  )
-}
-
-export function AppShell() {
-  const { profile, signOut } = useAuth()
-  const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
-  const notes = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => api<{ title: string; body?: string; href?: string }[]>('/api/notifications'),
-  })
-  const name = displayName(profile)
-
-  const sidebar = (
-    <SidebarContent
-      name={name}
-      email={profile.email}
-      avatarUrl={profile.avatarUrl}
-      noteCount={notes.data?.length ?? 0}
-      notes={notes.data ?? []}
-      onNavigate={(path) => {
-        setOpen(false)
-        if (path === '/') navigate('/')
-      }}
-      onSignOut={() => void signOut().then(() => navigate('/'))}
-    />
-  )
-
-  return (
-    <div className="min-h-svh bg-[var(--background)] lg:grid lg:grid-cols-[248px_1fr]">
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-[var(--paper)] px-4 py-3 lg:hidden">
-        <BrandMark compact />
-        <button type="button" aria-label="Open menu" onClick={() => setOpen(true)}>
-          <Menu className="size-6" />
-        </button>
-      </header>
-
-      {open ? (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <aside className="relative flex h-full w-[min(20rem,88vw)] flex-col bg-[#f3f5f3] p-4">
-            <button type="button" className="absolute right-3 top-3" aria-label="Close" onClick={() => setOpen(false)}>
-              <X className="size-5" />
-            </button>
-            {sidebar}
-          </aside>
-        </div>
-      ) : null}
-
-      <aside className="sticky top-0 hidden h-svh border-r border-border bg-[#f3f5f3] p-4 lg:flex">
-        {sidebar}
-      </aside>
-
-      <main className="mx-auto min-w-0 w-full max-w-[1180px] px-4 py-6 sm:px-8 sm:py-8">
-        <Outlet />
-      </main>
-    </div>
   )
 }
