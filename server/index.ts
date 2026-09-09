@@ -1,5 +1,4 @@
 import 'dotenv/config'
-import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { careerInsights, followUps, interviewQuestions, preparePacket } from '../shared/engine/packets'
@@ -18,6 +17,7 @@ import type {
   JobMatch,
   MessageThreadPayload,
   MessageThreadSummary,
+  ParsedResume,
   PreparedPacket,
   ThreadMessage,
 } from '../shared/types'
@@ -1797,20 +1797,26 @@ memory.addMessage({
 
 export { app }
 
-const hosted =
-  Boolean(process.env.VERCEL) ||
-  Boolean(process.env.VERCEL_ENV) ||
-  Boolean(process.env.NOW_REGION)
+const hosted = Boolean(
+  process.env.VERCEL ||
+    process.env.VERCEL_ENV ||
+    process.env.NOW_REGION ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT,
+)
+const isLocalEntry = /server\/index\.(ts|js|mts|mjs)$/.test(process.argv[1] ?? '')
 
-if (!hosted) {
-  const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, () => {
-    console.log(`API http://127.0.0.1:${port}  supabase=${Boolean(supabaseAdmin)}`)
-  })
-  server.on('error', (err: NodeJS.ErrnoException) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error(`Port ${port} is already in use. Stop the other API (kill the old npm run dev) and start again.`)
-      process.exit(1)
-    }
-    throw err
+if (!hosted && isLocalEntry) {
+  void import('@hono/node-server').then(({ serve }) => {
+    const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, () => {
+      console.log(`API http://127.0.0.1:${port}  supabase=${Boolean(supabaseAdmin)}`)
+    })
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`Port ${port} is already in use. Stop the other API (kill the old npm run dev) and start again.`)
+        process.exit(1)
+      }
+      throw err
+    })
   })
 }
