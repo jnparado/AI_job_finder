@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, Search } from 'lucide-react'
+import { ArrowLeft, Check, Search, X } from 'lucide-react'
 import type { CareerLevel, CandidateProfile, Currency, EmploymentType, WorkMode, WorkshopNotes } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -234,12 +234,22 @@ export function CandidateWorkshop() {
           >
             <ArrowLeft className="size-5" />
           </button>
-          <Link to="/">
+          <Link to="/" aria-label="Atelier home">
             <BrandMark />
           </Link>
-          <span className="grid size-10 place-items-center rounded-full border border-border text-xs font-medium">
-            {step}/{TOTAL}
-          </span>
+          <div className="flex items-center gap-1">
+            <span className="grid size-10 place-items-center rounded-full border border-border text-xs font-medium">
+              {step}/{TOTAL}
+            </span>
+            <button
+              type="button"
+              aria-label="Close"
+              className="grid size-10 place-items-center rounded-full text-foreground hover:bg-muted"
+              onClick={() => navigate('/')}
+            >
+              <X className="size-5" />
+            </button>
+          </div>
         </div>
         <div className="h-0.5 bg-muted">
           <div className="h-full bg-[var(--forest)] transition-[width]" style={{ width: `${(step / TOTAL) * 100}%` }} />
@@ -334,7 +344,7 @@ export function CandidateWorkshop() {
           ) : null}
 
           {step === 7 ? (
-            <Ask title="What should the workshop take off your plate?">
+            <Ask title="What do you want help with in your job search?">
               <Choices
                 value={d.workshop.help}
                 options={[

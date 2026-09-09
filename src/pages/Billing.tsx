@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, CreditCard } from 'lucide-react'
@@ -10,6 +10,11 @@ import { Button } from '@/components/ui/button'
 import { Card, Badge } from '@/components/ui/card'
 import { PageHeader } from '@/components/ui/feedback'
 
+function checkoutReturnNotice(params: URLSearchParams) {
+  if (params.get('status') === 'cancel') return 'Checkout was canceled. No charge was made.'
+  return ''
+}
+
 interface BillingPayload {
   subscription: Subscription
   plan?: Plan
@@ -20,8 +25,9 @@ interface BillingPayload {
 export function BillingPage() {
   const { profile } = useAuth()
   const qc = useQueryClient()
-  const [params, setParams] = useSearchParams()
-  const [notice, setNotice] = useState('')
+  const [params] = useSearchParams()
+  const [notice, setNotice] = useState(() => checkoutReturnNotice(params))
+  const handledReturn = useRef(false)
   const role = profile.role === 'employer' ? 'employer' : 'candidate'
 
   const billing = useQuery({
@@ -37,30 +43,32 @@ export function BillingPage() {
   const confirm = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api<BillingPayload>('/api/billing/confirm', { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['billing'] }),
+    onSuccess: (_data, variables) => {
+      void qc.invalidateQueries({ queryKey: ['billing'] })
+      setNotice(
+        variables.demo
+          ? 'Subscription is active on this machine. Add Stripe or PayPal keys to charge live payments.'
+          : 'Payment confirmed. Your plan is active.',
+      )
+    },
   })
 
+  const status = params.get('status')
   useEffect(() => {
-    const status = params.get('status')
-    if (!status) return
-    const sessionId = params.get('session_id')
-    const subscriptionId = params.get('subscription_id')
-    const demo = params.get('demo') === '1'
+    if (!status || handledReturn.current) return
+    handledReturn.current = true
     if (status === 'success') {
       void confirm.mutateAsync({
-        sessionId,
-        subscriptionId,
-        demo,
+        sessionId: params.get('session_id'),
+        subscriptionId: params.get('subscription_id'),
+        demo: params.get('demo') === '1',
         provider: params.get('provider'),
-      }).then(() => {
-        setNotice(demo ? 'Subscription is active on this machine. Add Stripe or PayPal keys to charge live payments.' : 'Payment confirmed. Your plan is active.')
       })
     }
-    if (status === 'cancel') setNotice('Checkout was canceled. No charge was made.')
-    setParams({}, { replace: true })
-    // confirm once from the return URL, then clear the query string
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, setParams])
+    const url = new URL(window.location.href)
+    url.search = ''
+    window.history.replaceState({}, '', `${url.pathname}${url.hash}`)
+  }, [confirm, params, status])
 
   const checkout = useMutation({
     mutationFn: (body: { planId: string; interval: 'year'; provider: 'card' | 'stripe' | 'paypal' }) =>
