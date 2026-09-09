@@ -70,6 +70,9 @@ export function normalizeAndDedupe(raw: Job[]): {
       ...(existing.sources ?? []),
       { source: job.source, url: job.applicationUrl },
     ]
+    if ((job.description?.length ?? 0) > (existing.description?.length ?? 0)) {
+      existing.description = job.description
+    }
     if ((job.skills.length) > existing.skills.length) existing.skills = job.skills
     if ((job.salaryMax ?? 0) > (existing.salaryMax ?? 0)) {
       existing.salaryMin = job.salaryMin

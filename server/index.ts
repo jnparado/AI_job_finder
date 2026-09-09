@@ -509,6 +509,9 @@ function jobFromRow(row: Record<string, unknown>): Job {
     requiredExperience: row.required_experience != null ? Number(row.required_experience) : undefined,
     seniority: row.seniority as Job['seniority'],
     applicationUrl: String(row.application_url ?? `/app/jobs/${id}`),
+    sources: row.application_url
+      ? [{ source: String(row.source ?? 'atelier'), url: String(row.application_url) }]
+      : undefined,
     applyChannel: row.apply_channel ? String(row.apply_channel) : 'Atelier — sent to employer',
     postedAt: row.posted_at ? String(row.posted_at).slice(0, 10) : undefined,
     canonicalKey: row.canonical_key ? String(row.canonical_key) : undefined,

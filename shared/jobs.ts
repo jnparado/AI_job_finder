@@ -378,8 +378,27 @@ export const JOB_CATALOG: Job[] = [
     source: 'api',
     title: 'Full Stack Developer',
     company: 'Manila Cloud',
-    description:
-      'Full-time remote from the Philippines. React, Next.js, Node.js, PostgreSQL, TypeScript. 5+ years.',
+    description: `Manila Cloud is hiring a Full Stack Developer to ship product with a small remote team.
+
+About the role
+You will own features from the API through the React client. The work is full-time and remote from the Philippines. You will work in TypeScript across Next.js, Node.js, and PostgreSQL.
+
+What you will do
+• Design and ship product features end to end
+• Write typed APIs and data models in Node.js and PostgreSQL
+• Build and maintain the Next.js / React client
+• Review code, catch regressions, and keep releases small
+• Work with design and product on scope before you write the first line
+
+What we look for
+• 5+ years building production web software
+• Strong React, Next.js, and TypeScript
+• Node.js services and PostgreSQL in real products
+• Comfortable owning a feature without a large staff around you
+• Clear written English for a remote team
+
+How to apply
+Open the official listing and submit there. Atelier prepares your packet — we do not submit on other boards for you.`,
     location: 'Philippines — Remote',
     remote: true,
     workMode: 'remote',

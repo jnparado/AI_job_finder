@@ -4,6 +4,9 @@ export function stripHtml(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li|tr|blockquote|section)>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
@@ -11,7 +14,10 @@ export function stripHtml(html: string): string {
     .replace(/&gt;/gi, '>')
     .replace(/&#39;/g, "'")
     .replace(/&quot;/g, '"')
-    .replace(/\s+/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
 
@@ -82,7 +88,7 @@ export function postedAt(value: unknown): string | undefined {
 }
 
 export function asJob(partial: Omit<Job, 'skills'> & { skills?: string[] }): Job {
-  const description = stripHtml(partial.description).slice(0, 3500)
+  const description = stripHtml(partial.description)
   const location = partial.location?.replace(/\s+/g, ' ').trim()
   const remote = partial.remote || inferWorkMode(location, partial.remote) === 'remote'
   return {

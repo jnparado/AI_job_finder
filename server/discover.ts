@@ -101,7 +101,9 @@ async function fromRemotive(query: string): Promise<Job[]> {
   const rows = Array.isArray(json?.jobs) ? json.jobs : []
   return rows.slice(0, PER_SOURCE).map((row) => {
     const j = asRecord(row) ?? {}
-    const url = str(j.url)
+    const listing = str(j.url)
+    const apply = str(j.apply_url)
+    const url = listing || apply
     const salary = parseSalary(str(j.salary))
     return asJob({
       id: idFor('remotive', str(j.id) || url),
@@ -117,6 +119,10 @@ async function fromRemotive(query: string): Promise<Job[]> {
       salaryMax: salary.max,
       skills: Array.isArray(j.tags) ? j.tags.map(str) : [],
       applicationUrl: url,
+      sources: [
+        listing ? { source: 'remotive', url: listing } : null,
+        apply && apply !== listing ? { source: 'remotive', url: apply } : null,
+      ].filter((s): s is { source: string; url: string } => Boolean(s)),
       applyChannel: 'Remotive (official listing)',
       postedAt: postedAt(j.publication_date),
     })
@@ -128,7 +134,9 @@ async function fromRemoteOk(): Promise<Job[]> {
   const rows = Array.isArray(json) ? json.slice(1) : []
   return rows.slice(0, PER_SOURCE).map((row) => {
     const j = asRecord(row) ?? {}
-    const url = str(j.apply_url || j.url)
+    const listing = str(j.url)
+    const apply = str(j.apply_url)
+    const url = listing || apply
     return asJob({
       id: idFor('remoteok', str(j.id) || url),
       source: 'remoteok',
@@ -143,6 +151,10 @@ async function fromRemoteOk(): Promise<Job[]> {
       currency: inferCurrency(str(j.salary_currency)),
       skills: Array.isArray(j.tags) ? j.tags.map(str) : [],
       applicationUrl: url,
+      sources: [
+        listing ? { source: 'remoteok', url: listing } : null,
+        apply && apply !== listing ? { source: 'remoteok', url: apply } : null,
+      ].filter((s): s is { source: string; url: string } => Boolean(s)),
       applyChannel: 'Remote OK (official listing)',
       postedAt: postedAt(j.date),
     })

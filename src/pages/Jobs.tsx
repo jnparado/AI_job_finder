@@ -13,6 +13,7 @@ import { MatchCard } from '@/components/jobs/MatchCard'
 import { ScoreBadge } from '@/components/jobs/ScoreBadge'
 import { SocialShare } from '@/components/social/SocialLinks'
 import { ApplyOnPlatforms } from '@/components/jobs/ApplyOnPlatforms'
+import { originalListingUrl } from '@shared/applyBoards'
 
 const FILTERS: { id: MatchCategory | 'all' | '70'; label: string }[] = [
   { id: '70', label: 'Recommended' },
@@ -238,6 +239,7 @@ export function JobDetailsPage() {
 
   const gaps = [...m.missingSkills, ...m.preferredMissing]
   const atelier = Boolean(m.job.employerId || m.job.source === 'atelier')
+  const postingUrl = originalListingUrl(m.job)
 
   return (
     <div className="space-y-6 pb-24">
@@ -325,7 +327,9 @@ export function JobDetailsPage() {
 
       <Card>
         <h2>Job description</h2>
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{m.job.description}</p>
+        <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">
+          {m.job.description?.trim() || 'No description was provided with this listing.'}
+        </div>
         <div className="mt-4 flex flex-wrap gap-2">
           {m.job.skills.map((s) => (
             <Badge key={s}>{s}</Badge>
@@ -345,9 +349,9 @@ export function JobDetailsPage() {
                 ? 'Send to employer'
                 : `Prepare packet · apply on ${sourceLabel(m.job.source)}`}
           </Button>
-          {m.job.applicationUrl?.startsWith('http') ? (
+          {postingUrl ? (
             <Button variant="outline" asChild>
-              <a href={m.job.applicationUrl} target="_blank" rel="noreferrer">
+              <a href={postingUrl} target="_blank" rel="noreferrer">
                 Official listing
               </a>
             </Button>

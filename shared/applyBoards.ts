@@ -4,8 +4,26 @@ export function isAtelierJob(job: { source?: string; employerId?: string | null 
   return job.source === 'atelier' || Boolean(job.employerId)
 }
 
-export function listingUrl(job: { applicationUrl?: string }) {
-  return job.applicationUrl?.startsWith('http') ? job.applicationUrl : undefined
+function isHttp(url?: string) {
+  return Boolean(url?.startsWith('http://') || url?.startsWith('https://'))
+}
+
+function isSearchPage(url: string) {
+  return /\/jobs\/search|\/jobs\?q=|\/nx\/search\/jobs|sc\.keyword=|\/jobs\/\?keyword=/.test(url)
+}
+
+export function originalListingUrl(job: {
+  applicationUrl?: string
+  sources?: { url?: string }[]
+}) {
+  const urls = [...(job.sources ?? []).map((s) => s.url), job.applicationUrl].filter(
+    (url): url is string => Boolean(url && isHttp(url)),
+  )
+  return urls.find((url) => !isSearchPage(url)) ?? urls[0]
+}
+
+export function listingUrl(job: { applicationUrl?: string; sources?: { url?: string }[] }) {
+  return originalListingUrl(job)
 }
 
 export function officialApplyLinks(job: { title: string; company?: string }): OfficialBoard[] {
