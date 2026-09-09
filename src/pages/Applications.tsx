@@ -51,7 +51,7 @@ export function ApplicationsPage() {
   const counts = {
     submitted: list.filter((a) => a.status === 'submitted' || a.status === 'under_review').length,
     interview: list.filter((a) => a.status.includes('interview')).length,
-    offer: list.filter((a) => a.status === 'offer').length,
+    offer: list.filter((a) => a.status === 'offer' || a.status === 'hired').length,
     rejected: list.filter((a) => a.status === 'rejected').length,
   }
   return (
@@ -64,7 +64,7 @@ export function ApplicationsPage() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat n={counts.submitted} label="Applied" />
         <Stat n={counts.interview} label="Interview" />
-        <Stat n={counts.offer} label="Offer" />
+        <Stat n={counts.offer} label="Hired" />
         <Stat n={counts.rejected} label="Closed" />
       </div>
       {list.length === 0 ? (
@@ -312,12 +312,24 @@ export function ApplicationDetailsPage() {
             value={a.status}
             onChange={(e) => status.mutate(e.target.value)}
           >
-            {['submitted', 'under_review', 'interview', 'technical_interview', 'hr_interview', 'final_interview', 'offer', 'rejected'].map((s) => (
+            {['submitted', 'under_review', 'interview', 'technical_interview', 'hr_interview', 'final_interview', 'offer', 'hired', 'rejected'].map((s) => (
               <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>
             ))}
           </select>
         </Card>
       )}
+
+      {(a.status === 'hired' || a.status === 'offer') && a.deliveredToEmployer ? (
+        <Card className="space-y-2">
+          <h2>Ateliar</h2>
+          <p className="text-sm text-muted-foreground">
+            This Atelier role is hired. Start the official work clock and download Ateliar for your desk.
+          </p>
+          <Button variant="copper" asChild>
+            <Link to="/app/ateliar">Open Ateliar</Link>
+          </Button>
+        </Card>
+      ) : null}
 
       {a.directToEmployer || a.deliveredToEmployer ? <ThreadPanel applicationId={a.id} /> : null}
 

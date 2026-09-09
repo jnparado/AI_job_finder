@@ -14,6 +14,7 @@ import {
   ScrollText,
   Search,
   Settings,
+  Timer,
   User,
   Wallet,
 } from 'lucide-react'
@@ -29,6 +30,7 @@ const PRIMARY: { to: string; label: string; icon: LucideIcon; end?: boolean }[] 
   { to: '/app', label: 'Home', icon: Home, end: true },
   { to: '/app/applications', label: 'Packets', icon: FileText },
   { to: '/app/messages', label: 'Inbox', icon: MessagesSquare },
+  { to: '/app/ateliar', label: 'Ateliar', icon: Timer },
   { to: '/app/resume', label: 'Resume', icon: ScrollText },
   { to: '/app/profile', label: 'Profile', icon: User },
   { to: '/app/career', label: 'Coach', icon: LineChart },
@@ -98,6 +100,23 @@ export function AppShell() {
           <div ref={toolsRef} className="relative flex shrink-0 items-center gap-1 sm:gap-1.5">
             <button
               type="button"
+              aria-label="Notifications"
+              className="relative grid size-10 place-items-center text-white"
+              onClick={() => {
+                setBellOpen((v) => !v)
+                setMoreOpen(false)
+              }}
+            >
+              <Bell className="size-5 stroke-[1.5]" />
+              {noteCount ? (
+                <span className="absolute right-1 top-1 grid min-w-4 place-items-center rounded-full bg-[var(--copper)] px-1 text-[0.6rem] font-semibold leading-4">
+                  {noteCount > 9 ? '9+' : noteCount}
+                </span>
+              ) : null}
+            </button>
+
+            <button
+              type="button"
               onClick={() => {
                 setMoreOpen((v) => !v)
                 setBellOpen(false)
@@ -117,23 +136,6 @@ export function AppShell() {
                   Candidate
                 </span>
               </span>
-            </button>
-
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="relative grid size-10 place-items-center text-white"
-              onClick={() => {
-                setBellOpen((v) => !v)
-                setMoreOpen(false)
-              }}
-            >
-              <Bell className="size-5 stroke-[1.5]" />
-              {noteCount ? (
-                <span className="absolute right-1 top-1 grid min-w-4 place-items-center rounded-full bg-[var(--copper)] px-1 text-[0.6rem] font-semibold leading-4">
-                  {noteCount > 9 ? '9+' : noteCount}
-                </span>
-              ) : null}
             </button>
 
             <button
@@ -181,6 +183,7 @@ export function AppShell() {
                   </p>
                 </div>
                 <div className="p-2">
+                  <MenuLink to="/app/ateliar" icon={Timer} label="Ateliar" onClick={() => setMoreOpen(false)} />
                   <MenuLink to="/app/profile" icon={User} label="Your studio" onClick={() => setMoreOpen(false)} />
                   <MenuLink to="/app/interview" icon={MessageSquare} label="Interview" onClick={() => setMoreOpen(false)} />
                   <MenuLink to="/app/finances" icon={Wallet} label="Finances" onClick={() => setMoreOpen(false)} />

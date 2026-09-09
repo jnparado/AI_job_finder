@@ -10,6 +10,7 @@ import {
   ScrollText,
   Search,
   Sparkles,
+  Timer,
 } from 'lucide-react'
 import type { JobMatch } from '@shared/types'
 import { displayName } from '@shared/types'
@@ -90,7 +91,7 @@ export function DashboardPage() {
   const stepCount = steps.filter(Boolean).length
   const sent = packets.filter((a) => a.status !== 'draft')
   const inReview = packets.filter((a) => REVIEW.has(a.status))
-  const hired = packets.filter((a) => a.status === 'offer')
+  const hired = packets.filter((a) => a.status === 'offer' || a.status === 'hired')
   const latestPacket = packets[0]
   const latestTitle = latestPacket
     ? matches.find((m) => m.job.id === latestPacket.jobId)?.job.title || 'Packet in studio'
@@ -163,6 +164,7 @@ export function DashboardPage() {
           <SideLink to="/app/applications" icon={FileText} label="My packets" />
           <SideLink to="/app/messages" icon={MessageSquare} label="Messages" />
           <SideLink to="/app/resume" icon={ScrollText} label="Resume" />
+          <SideLink to="/app/ateliar" icon={Timer} label="Ateliar" />
         </Card>
 
         <Card className="space-y-3 shadow-[0_10px_28px_rgba(19,38,31,0.06)]">
@@ -195,7 +197,7 @@ export function DashboardPage() {
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
             <PipeStat n={sent.length} label="Sent" />
             <PipeStat n={inReview.length} label="In review" />
-            <PipeStat n={hired.length} label="Offer" />
+            <PipeStat n={hired.length} label="Hired" />
           </div>
           {latestTitle ? (
             <p className="mt-4 rounded-xl bg-[#eef3f0] px-3 py-2 text-sm">
@@ -272,6 +274,7 @@ export function DashboardPage() {
             <Chip to="/app/profile" icon={Sparkles} label={profile.remoteWorldwide ? 'Open to remote' : 'Work prefs'} />
             <Chip to="/app/jobs" icon={Search} label="Matches" />
             <Chip to="/app/career" icon={LineChart} label="Coach" />
+            <Chip to="/app/ateliar" icon={Timer} label="Ateliar" />
           </div>
         </Card>
 

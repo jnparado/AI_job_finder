@@ -59,6 +59,17 @@ export function SettingsPage() {
           Open finances
         </Link>
       </Card>
+      <Card className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2>Ateliar</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Official work clock for hired Atelier roles. Download it for your desk.
+          </p>
+        </div>
+        <Link to="/app/ateliar" className="text-sm font-medium text-[var(--copper)]">
+          Open Ateliar
+        </Link>
+      </Card>
       <Card className="space-y-3">
         <h2>Daily job agent</h2>
         <label className="flex items-center gap-2 text-sm">

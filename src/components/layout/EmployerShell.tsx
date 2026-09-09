@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bell, Briefcase, Inbox, LayoutDashboard, Menu, MessagesSquare, Plus, Wallet, X } from 'lucide-react'
+import { Bell, Briefcase, Inbox, LayoutDashboard, Menu, MessagesSquare, Plus, Timer, Wallet, X } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = 
   { to: '/employer/inbox', label: 'Inbox', icon: Inbox },
   { to: '/employer/messages', label: 'Messages', icon: MessagesSquare },
   { to: '/employer/finances', label: 'Finances', icon: Wallet },
+  { to: '/employer/ateliar', label: 'Ateliar', icon: Timer },
 ]
 
 export function EmployerShell() {

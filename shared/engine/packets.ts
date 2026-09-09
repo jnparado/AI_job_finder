@@ -146,6 +146,7 @@ export function careerInsights(
     'hr_interview',
     'final_interview',
     'offer',
+    'hired',
   ])
   const buckets = [
     { label: 'Frontend', re: /frontend|front-end|react|ui engineer|web engineer/i },

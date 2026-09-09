@@ -95,7 +95,7 @@ export function EmployerDashboardPage() {
   const roles = jobs.data ?? []
   const review = list.filter((a) => a.status === 'submitted' || a.status === 'under_review').length
   const interview = list.filter((a) => a.status.includes('interview')).length
-  const offers = list.filter((a) => a.status === 'offer').length
+  const offers = list.filter((a) => a.status === 'offer' || a.status === 'hired').length
   const company = profile.companyName || 'Your company'
   const latest = list[0]
 
@@ -131,7 +131,7 @@ export function EmployerDashboardPage() {
           <DashStat n={list.length} label="Received" />
           <DashStat n={review} label="In review" />
           <DashStat n={interview} label="Interview" />
-          <DashStat n={offers} label="Offers" />
+          <DashStat n={offers} label="Hired" />
         </div>
       </section>
 
@@ -426,7 +426,16 @@ export function EmployerInboxPage() {
   })
   return (
     <div className="space-y-6">
-      <PageHeader kicker="Candidates" title="Inbox" description="Packets candidates approved are delivered here. Message them from the packet or Messages. External board jobs still apply on their official sites." />
+      <PageHeader
+        kicker="Candidates"
+        title="Inbox"
+        description="Packets candidates approved are delivered here. Mark someone hired to open Ateliar, the official work clock. External board jobs still apply on their official sites."
+        actions={
+          <Button variant="outline" asChild>
+            <Link to="/employer/ateliar">Ateliar</Link>
+          </Button>
+        }
+      />
       {inbox.data?.length ? (
         <div className="space-y-3">
           {inbox.data.map((a) => (
@@ -519,12 +528,21 @@ export function EmployerApplicationPage() {
           value={a.status}
           onChange={(e) => update.mutate(e.target.value)}
         >
-          {['submitted', 'under_review', 'interview', 'offer', 'rejected'].map((s) => (
+          {['submitted', 'under_review', 'interview', 'offer', 'hired', 'rejected'].map((s) => (
             <option key={s} value={s}>
               {s.replaceAll('_', ' ')}
             </option>
           ))}
         </select>
+        {a.status === 'hired' || a.status === 'offer' ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Hired candidates can start{' '}
+            <Link to="/employer/ateliar" className="font-medium text-[var(--copper)]">
+              Ateliar
+            </Link>{' '}
+            and log hours on this role.
+          </p>
+        ) : null}
       </Card>
       <ThreadPanel applicationId={a.id} />
     </div>

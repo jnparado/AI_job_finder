@@ -1,5 +1,6 @@
 import type { Subscription } from '../shared/billing'
 import type { LedgerEntry } from '../shared/finances'
+import type { TrackerSession } from '../shared/tracker'
 import type { CandidateProfile, DiscoverySummary, Job, JobMatch, PreparedPacket, ThreadMessage } from '../shared/types'
 import { emptyProfile } from '../shared/types'
 
@@ -52,6 +53,7 @@ const discovery = new Map<string, DiscoverySummary>()
 const subscriptions = new Map<string, Subscription>()
 const threadMessages = new Map<string, ThreadMessage[]>()
 const ledger: LedgerEntry[] = []
+const trackerSessions: TrackerSession[] = []
 
 export const memory = {
   getProfile(userId: string) {
@@ -173,5 +175,20 @@ export const memory = {
   },
   getLedgerForEmployer(employerId: string) {
     return ledger.filter((e) => e.employerId === employerId)
+  },
+  addTrackerSession(row: TrackerSession) {
+    const i = trackerSessions.findIndex((s) => s.id === row.id)
+    if (i >= 0) trackerSessions[i] = row
+    else trackerSessions.unshift(row)
+    return row
+  },
+  getTrackerSessions(candidateId: string) {
+    return trackerSessions.filter((s) => s.candidateId === candidateId)
+  },
+  getTrackerSession(id: string) {
+    return trackerSessions.find((s) => s.id === id)
+  },
+  getTrackerForEmployer(employerId: string) {
+    return trackerSessions.filter((s) => s.employerId === employerId)
   },
 }

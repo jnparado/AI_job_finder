@@ -535,4 +535,8 @@ export const CANDIDATE_FAQ = [
     q: 'Will employers know the packet was drafted with AI?',
     a: 'They see a normal application you approved. You can edit every line. We do not invent skills you did not list.',
   },
+  {
+    q: 'What is Ateliar?',
+    a: 'Ateliar is Atelier’s official work tracker. After an Atelier employer marks you hired, you start and stop it yourself, export a timesheet, or download Ateliar.html for your desk. Nothing is captured in the background.',
+  },
 ]

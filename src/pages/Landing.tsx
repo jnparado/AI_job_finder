@@ -373,7 +373,7 @@ export function EmployerLandingPage() {
             steps={[
               ['01', 'Post the role', 'Write the listing once on Atelier. Candidates whose profiles fit see it in search.'],
               ['02', 'They approve a packet', 'Matched people prepare a letter and answers. Nothing hits your inbox until they send.'],
-              ['03', 'You decide', 'Review the packet, message the candidate, then move them to interview, offer, or close.'],
+              ['03', 'You decide', 'Review the packet, message the candidate, then move them to interview, offer, or hired. Hired people log hours in Ateliar, our official work clock.'],
             ]}
           />
         </div>
@@ -475,6 +475,10 @@ export function EmployerLandingPage() {
           {
             q: 'Can I message candidates?',
             a: 'Yes. Once a packet is in your inbox, you can write to that candidate on Atelier and they can reply. This is only for people who applied to your Atelier listing — not LinkedIn or Upwork applicants.',
+          },
+          {
+            q: 'What is Ateliar?',
+            a: 'Ateliar is Atelier’s official work tracker for candidates you mark hired. They start and stop it themselves and can download it for their desk. Hours show on the role you hired — it is not a hidden monitor, and it is not another company’s product.',
           },
           {
             q: 'Is there a fee to post?',

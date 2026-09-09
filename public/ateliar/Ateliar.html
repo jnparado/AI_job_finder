@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ateliar — official work tracker</title>
+    <style>
+      :root {
+        --forest: #13261f;
+        --paper: #f4f6f4;
+        --gold: #c6a15b;
+        --copper: #b85c38;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Figtree, ui-sans-serif, system-ui, sans-serif;
+        background: var(--paper);
+        color: var(--forest);
+      }
+      header {
+        background: var(--forest);
+        color: var(--paper);
+        padding: 1.25rem 1.5rem;
+      }
+      header p { margin: 0.35rem 0 0; color: #c9c0ae; font-size: 0.85rem; }
+      h1 { margin: 0; font-family: Fraunces, Georgia, serif; font-size: 1.8rem; }
+      main { max-width: 40rem; margin: 0 auto; padding: 1.5rem; }
+      .clock {
+        font-family: Fraunces, Georgia, serif;
+        font-size: 3.5rem;
+        letter-spacing: 0.04em;
+      }
+      label { display: block; margin: 1rem 0 0.35rem; font-size: 0.9rem; }
+      input, textarea, select, button {
+        width: 100%;
+        border-radius: 0.75rem;
+        border: 1px solid #d5d0c6;
+        padding: 0.7rem 0.85rem;
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+        margin-top: 0.75rem;
+        background: var(--copper);
+        color: var(--paper);
+        border: 0;
+        font-weight: 600;
+      }
+      button.ghost { background: transparent; color: var(--forest); border: 1px solid #d5d0c6; }
+      ul { list-style: none; padding: 0; }
+      li {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #e4dfd4;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Ateliar</h1>
+      <p>Official Atelier work tracker. You start it. You stop it. Download your hours anytime.</p>
+    </header>
+    <main>
+      <p class="clock" id="clock">00:00:00</p>
+      <p id="status">Idle</p>
+      <label>Role or project<input id="role" value="Hired Atelier role" /></label>
+      <label>Note<input id="note" placeholder="What you are working on" /></label>
+      <button id="toggle" type="button">Start Ateliar</button>
+      <button id="export" class="ghost" type="button">Download timesheet</button>
+      <h2>Sessions</h2>
+      <ul id="list"></ul>
+    </main>
+    <script>
+      const KEY = 'ateliar-sessions-v1'
+      const $ = (id) => document.getElementById(id)
+      let rows = JSON.parse(localStorage.getItem(KEY) || '[]')
+      let tick = null
+
+      function pad(n) { return String(n).padStart(2, '0') }
+      function fmt(s) {
+        s = Math.max(0, Math.floor(s))
+        return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map(pad).join(':')
+      }
+      function seconds(row) {
+        if (row.endedAt) return row.seconds
+        return Math.max(0, Math.floor((Date.now() - new Date(row.startedAt).getTime()) / 1000))
+      }
+      function save() { localStorage.setItem(KEY, JSON.stringify(rows)) }
+      function running() { return rows.find((r) => !r.endedAt) }
+
+      function render() {
+        const open = running()
+        $('clock').textContent = fmt(open ? seconds(open) : 0)
+        $('status').textContent = open ? 'Running · ' + (open.role || 'Ateliar') : 'Idle · hours stay on this device until you download them'
+        $('toggle').textContent = open ? 'Stop Ateliar' : 'Start Ateliar'
+        $('list').innerHTML = rows.map((r) => (
+          '<li><span>' + (r.role || 'Ateliar') + (r.note ? ' · ' + r.note : '') + '</span><strong>' + fmt(seconds(r)) + '</strong></li>'
+        )).join('') || '<li>No sessions yet.</li>'
+      }
+
+      $('toggle').onclick = () => {
+        const open = running()
+        if (open) {
+          open.seconds = seconds(open)
+          open.endedAt = new Date().toISOString()
+          open.note = $('note').value.trim()
+        } else {
+          rows.unshift({
+            id: String(Date.now()),
+            role: $('role').value.trim() || 'Hired Atelier role',
+            note: $('note').value.trim(),
+            startedAt: new Date().toISOString(),
+            seconds: 0,
+          })
+        }
+        save()
+        render()
+      }
+
+      $('export').onclick = () => {
+        const header = 'Date,Role,Started,Ended,Hours,Note'
+        const csv = [header].concat(rows.map((r) => {
+          const hours = (seconds(r) / 3600).toFixed(2)
+          return [r.startedAt.slice(0, 10), r.role, r.startedAt, r.endedAt || '', hours, r.note || '']
+            .map((v) => '"' + String(v).replaceAll('"', '""') + '"').join(',')
+        })).join('\n')
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+        a.download = 'Ateliar-timesheet.csv'
+        a.click()
+      }
+
+      tick = setInterval(render, 1000)
+      render()
+    </script>
+  </body>
+</html>

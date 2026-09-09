@@ -28,6 +28,7 @@ import { confirmUserEmail, ensureProfileRow, registerUser } from './authUsers'
 import { supabaseAdmin, supabaseAuth } from './supabase'
 import { emptyFinance, summarizeLedger } from '../shared/finances'
 import type { LedgerEntry } from '../shared/finances'
+import { isHiredStatus, sessionSeconds, type TrackerSession } from '../shared/tracker'
 import { PLANS, defaultPlanId, isPaidPlan, planById, plansFor } from '../shared/billing'
 import type { BillingInterval, BillingProvider, BillingRole } from '../shared/billing'
 import {
@@ -1503,11 +1504,16 @@ app.patch('/api/employer/applications/:id', async (c) => {
       detail: `${job?.company ?? 'Employer'} updated this application.`,
     })
     memory.addApplication(row)
+    const hired = isHiredStatus(body.status)
     await notifyUser(
       row.userId,
-      `${job?.title ?? 'Application'} is now ${body.status.replaceAll('_', ' ')}`,
-      `${job?.company ?? 'The employer'} updated your application.`,
-      `/app/applications/${row.id}`,
+      hired
+        ? `${job?.title ?? 'Role'} is hired — Ateliar is open`
+        : `${job?.title ?? 'Application'} is now ${body.status.replaceAll('_', ' ')}`,
+      hired
+        ? `${job?.company ?? 'The employer'} marked you hired. Start Ateliar to log hours on this Atelier role.`
+        : `${job?.company ?? 'The employer'} updated your application.`,
+      hired ? '/app/ateliar' : `/app/applications/${row.id}`,
     )
   }
   if (supabaseAdmin) {
@@ -1539,6 +1545,141 @@ async function persistLedger(row: LedgerEntry) {
 function financeFor(candidateId: string, currency: Currency = 'USD') {
   return summarizeLedger(memory.getLedgerForCandidate(candidateId), currency)
 }
+
+function sessionFromRow(row: Record<string, unknown>): TrackerSession {
+  return {
+    id: String(row.id),
+    candidateId: String(row.candidate_id ?? ''),
+    employerId: row.employer_id ? String(row.employer_id) : undefined,
+    applicationId: String(row.application_id ?? ''),
+    jobTitle: String(row.job_title ?? 'Hired role'),
+    company: String(row.company ?? 'Atelier employer'),
+    startedAt: String(row.started_at ?? new Date().toISOString()),
+    endedAt: row.ended_at ? String(row.ended_at) : undefined,
+    seconds: Number(row.seconds ?? 0),
+    note: row.note ? String(row.note) : undefined,
+  }
+}
+
+async function hydrateTracker(filter: { candidateId?: string; employerId?: string }) {
+  if (!supabaseAdmin) return
+  let q = supabaseAdmin.from('ateliar_sessions').select('*')
+  if (filter.candidateId) q = q.eq('candidate_id', filter.candidateId)
+  if (filter.employerId) q = q.eq('employer_id', filter.employerId)
+  const { data, error } = await q
+  if (error) {
+    console.warn('hydrateTracker', error.message)
+    return
+  }
+  for (const row of data ?? []) {
+    memory.addTrackerSession(sessionFromRow(row as Record<string, unknown>))
+  }
+}
+
+function hiredRolesFor(userId: string) {
+  return memory
+    .getApplications(userId)
+    .filter((a) => isHiredStatus(a.status))
+    .map((a) => {
+      const job = memory.getJob(a.jobId)
+      return {
+        applicationId: a.id,
+        jobId: a.jobId,
+        jobTitle: job?.title ?? 'Hired role',
+        company: job?.company ?? 'Atelier employer',
+        employerId: job?.employerId,
+        status: a.status,
+      }
+    })
+}
+
+app.get('/api/ateliar', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role === 'employer') {
+    await hydrateTracker({ employerId: user.id })
+    const sessions = memory.getTrackerForEmployer(user.id).map((s) => ({
+      ...s,
+      seconds: sessionSeconds(s),
+    }))
+    return c.json({ role: 'employer', sessions })
+  }
+  await hydrateApplications({ userId: user.id })
+  await hydrateTracker({ candidateId: user.id })
+  const sessions = memory.getTrackerSessions(user.id).map((s) => ({
+    ...s,
+    seconds: sessionSeconds(s),
+  }))
+  return c.json({
+    role: 'candidate',
+    roles: hiredRolesFor(user.id),
+    sessions,
+    running: sessions.find((s) => !s.endedAt) ?? null,
+  })
+})
+
+app.post('/api/ateliar/start', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  await hydrateApplications({ userId: user.id })
+  await hydrateTracker({ candidateId: user.id })
+  const running = memory.getTrackerSessions(user.id).find((s) => !s.endedAt)
+  if (running) return c.json({ error: 'Stop the open Ateliar session first.', session: running }, 400)
+  const body = (await c.req.json().catch(() => ({}))) as { applicationId?: string; note?: string }
+  const roles = hiredRolesFor(user.id)
+  const role = roles.find((r) => r.applicationId === body.applicationId) ?? roles[0]
+  if (!role) return c.json({ error: 'Ateliar opens after an Atelier employer marks you hired.' }, 400)
+  const row: TrackerSession = {
+    id: crypto.randomUUID(),
+    candidateId: user.id,
+    employerId: role.employerId,
+    applicationId: role.applicationId,
+    jobTitle: role.jobTitle,
+    company: role.company,
+    startedAt: new Date().toISOString(),
+    seconds: 0,
+    note: String(body.note ?? '').trim(),
+  }
+  memory.addTrackerSession(row)
+  if (supabaseAdmin) {
+    const { error } = await supabaseAdmin.from('ateliar_sessions').insert({
+      id: row.id,
+      candidate_id: row.candidateId,
+      employer_id: row.employerId ?? null,
+      application_id: row.applicationId,
+      job_title: row.jobTitle,
+      company: row.company,
+      started_at: row.startedAt,
+      seconds: 0,
+      note: row.note ?? null,
+    })
+    if (error) console.warn('ateliar start', error.message)
+  }
+  return c.json({ session: row })
+})
+
+app.post('/api/ateliar/stop', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  await hydrateTracker({ candidateId: user.id })
+  const body = (await c.req.json().catch(() => ({}))) as { sessionId?: string; note?: string }
+  const session =
+    (body.sessionId ? memory.getTrackerSession(body.sessionId) : undefined) ??
+    memory.getTrackerSessions(user.id).find((s) => !s.endedAt)
+  if (!session || session.candidateId !== user.id) return c.json({ error: 'No open Ateliar session.' }, 400)
+  session.seconds = sessionSeconds(session)
+  session.endedAt = new Date().toISOString()
+  if (body.note) session.note = String(body.note).trim()
+  memory.addTrackerSession(session)
+  if (supabaseAdmin) {
+    await supabaseAdmin
+      .from('ateliar_sessions')
+      .update({ ended_at: session.endedAt, seconds: session.seconds, note: session.note ?? null })
+      .eq('id', session.id)
+  }
+  return c.json({ session })
+})
 
 app.get('/api/finances', async (c) => {
   const user = await auth(c)
@@ -1863,7 +2004,7 @@ memory.addApplication({
   id: demoAppId,
   userId: DEMO_USER,
   jobId: demoRole.id,
-  status: 'submitted',
+  status: 'hired',
   channel: 'Atelier employer inbox',
   authorized: true,
   deliveredToEmployer: true,
@@ -1898,6 +2039,18 @@ memory.addMessage({
   senderRole: 'candidate',
   body: 'Hi Sam — I sent my packet for the Full Stack role. Happy to walk through the matching and packet work whenever you have time.',
   createdAt: new Date().toISOString(),
+})
+memory.addTrackerSession({
+  id: 'a0000000-0000-4000-8000-000000000031',
+  candidateId: DEMO_USER,
+  employerId: DEMO_EMPLOYER,
+  applicationId: demoAppId,
+  jobTitle: 'Full Stack Engineer',
+  company: 'Atelier Labs',
+  startedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  endedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+  seconds: 3600,
+  note: 'Shipped matching work.',
 })
 memory.addLedger({
   id: 'a0000000-0000-4000-8000-000000000021',
