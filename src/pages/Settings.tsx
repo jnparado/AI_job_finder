@@ -61,13 +61,13 @@ export function SettingsPage() {
       </Card>
       <Card className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2>Ateliar</h2>
+          <h2>Atelier time tracker</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Official work clock for hired Atelier roles. Download it for your desk.
           </p>
         </div>
         <Link to="/app/ateliar" className="text-sm font-medium text-[var(--copper)]">
-          Open Ateliar
+          Open tracker
         </Link>
       </Card>
       <Card className="space-y-3">

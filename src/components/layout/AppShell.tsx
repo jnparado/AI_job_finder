@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
+import { prefetchRoute } from '@/lib/prefetch'
 import { BrandMark } from '@/components/ui/feedback'
 import { displayName } from '@shared/types'
 import { initials } from '@/lib/utils'
@@ -30,7 +31,7 @@ const PRIMARY: { to: string; label: string; icon: LucideIcon; end?: boolean }[] 
   { to: '/app', label: 'Home', icon: Home, end: true },
   { to: '/app/applications', label: 'Packets', icon: FileText },
   { to: '/app/messages', label: 'Inbox', icon: MessagesSquare },
-  { to: '/app/ateliar', label: 'Ateliar', icon: Timer },
+  { to: '/app/ateliar', label: 'Tracker', icon: Timer },
   { to: '/app/resume', label: 'Resume', icon: ScrollText },
   { to: '/app/profile', label: 'Profile', icon: User },
   { to: '/app/career', label: 'Coach', icon: LineChart },
@@ -80,6 +81,8 @@ export function AppShell() {
                 key={item.to}
                 to={item.to}
                 end={item.end}
+                onMouseEnter={() => prefetchRoute(item.to)}
+                onFocus={() => prefetchRoute(item.to)}
                 className={({ isActive }) =>
                   `flex min-w-[4.25rem] flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[0.7rem] transition-colors sm:min-w-[4.75rem] ${
                     isActive ? 'text-[var(--paper)]' : 'text-[#c9c0ae] hover:text-[var(--paper)]'
@@ -183,7 +186,7 @@ export function AppShell() {
                   </p>
                 </div>
                 <div className="p-2">
-                  <MenuLink to="/app/ateliar" icon={Timer} label="Ateliar" onClick={() => setMoreOpen(false)} />
+                  <MenuLink to="/app/ateliar" icon={Timer} label="Atelier time tracker" onClick={() => setMoreOpen(false)} />
                   <MenuLink to="/app/profile" icon={User} label="Your studio" onClick={() => setMoreOpen(false)} />
                   <MenuLink to="/app/interview" icon={MessageSquare} label="Interview" onClick={() => setMoreOpen(false)} />
                   <MenuLink to="/app/finances" icon={Wallet} label="Finances" onClick={() => setMoreOpen(false)} />
@@ -226,7 +229,13 @@ function MenuLink({
   onClick: () => void
 }) {
   return (
-    <Link to={to} onClick={onClick} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-muted">
+    <Link
+      to={to}
+      onClick={onClick}
+      onMouseEnter={() => prefetchRoute(to)}
+      onFocus={() => prefetchRoute(to)}
+      className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-muted"
+    >
       <Icon className="size-4 opacity-70" />
       {label}
     </Link>

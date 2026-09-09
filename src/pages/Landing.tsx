@@ -373,7 +373,7 @@ export function EmployerLandingPage() {
             steps={[
               ['01', 'Post the role', 'Write the listing once on Atelier. Candidates whose profiles fit see it in search.'],
               ['02', 'They approve a packet', 'Matched people prepare a letter and answers. Nothing hits your inbox until they send.'],
-              ['03', 'You decide', 'Review the packet, message the candidate, then move them to interview, offer, or hired. Hired people log hours in Ateliar, our official work clock.'],
+              ['03', 'You decide', 'Review the packet, message the candidate, then move them to interview, offer, or hired. Hired people log hours in Atelier time tracker.'],
             ]}
           />
         </div>
@@ -431,6 +431,8 @@ export function EmployerLandingPage() {
           <img
             src="/brand/employer/employer-office.jpg"
             alt="A calm modern office"
+            loading="lazy"
+            decoding="async"
             className="h-full min-h-[280px] w-full object-cover lg:min-h-[420px]"
           />
           <div className="p-8 sm:p-12">
@@ -477,8 +479,8 @@ export function EmployerLandingPage() {
             a: 'Yes. Once a packet is in your inbox, you can write to that candidate on Atelier and they can reply. This is only for people who applied to your Atelier listing — not LinkedIn or Upwork applicants.',
           },
           {
-            q: 'What is Ateliar?',
-            a: 'Ateliar is Atelier’s official work tracker for candidates you mark hired. They start and stop it themselves and can download it for their desk. Hours show on the role you hired — it is not a hidden monitor, and it is not another company’s product.',
+            q: 'What is Atelier time tracker?',
+            a: 'Atelier time tracker is our official work clock for candidates you mark hired. They clock in and out themselves and can download it for their desk. Hours show on the role you hired — it is not a hidden monitor, and it is not another company’s product.',
           },
           {
             q: 'Is there a fee to post?',
@@ -494,7 +496,7 @@ export function EmployerLandingPage() {
 function HelpShot({ src, title, body }: { src: string; title: string; body: string }) {
   return (
     <Link to="/register?role=employer" className="overflow-hidden rounded-[1.5rem] border border-[#c9c0ae22] bg-[#0d1b16]/70 transition-colors hover:border-[#c6a15b66]">
-      <img src={src} alt="" className="aspect-[4/3] w-full object-cover" />
+      <img src={src} alt="" loading="lazy" decoding="async" className="aspect-[4/3] w-full object-cover" />
       <div className="p-5">
         <h3 className="text-xl">{title}</h3>
         <p className="mt-2 text-sm leading-relaxed text-[#c9c0ae]">{body}</p>
@@ -548,6 +550,8 @@ function InviteClose({ audience }: { audience?: 'candidate' | 'employer' }) {
           alt=""
           width={72}
           height={72}
+          loading="lazy"
+          decoding="async"
           className="mx-auto size-[4.5rem] rounded-2xl object-cover shadow-[0_0_0_1px_rgba(198,161,91,0.28)]"
         />
         <p className="mt-6 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-[#c6a15b]">

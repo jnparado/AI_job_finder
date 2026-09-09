@@ -1,8 +1,8 @@
-Ateliar
-Official work tracker from Atelier.
+Atelier time tracker
+Official work clock from Atelier.
 
-Download Ateliar.html and open it in any browser. Start and stop your own sessions.
-Export a CSV timesheet whenever you need it.
+Download Atelier-time-tracker.html and open it in any browser.
+Clock in, mark On my way, and export a CSV timesheet.
 
-Ateliar is for candidates hired on Atelier. You run it. Nothing is captured in the background.
-It is not Time Doctor or any other third-party monitor.
+You run it. Nothing is captured in the background.
+It is for candidates hired on Atelier.

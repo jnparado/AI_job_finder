@@ -11,9 +11,18 @@ export interface RouterTrace {
 }
 
 const traces: RouterTrace[] = []
+let pausedUntil = 0
 
 export function openaiReady(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY)
+  return Boolean(process.env.OPENAI_API_KEY) && Date.now() >= pausedUntil
+}
+
+export function openaiPaused(): boolean {
+  return Date.now() < pausedUntil
+}
+
+function pauseOpenAI(ms = 20 * 60_000) {
+  pausedUntil = Math.max(pausedUntil, Date.now() + ms)
 }
 
 export function modelFor(lane: RouterLane): string {
@@ -24,7 +33,9 @@ export function modelFor(lane: RouterLane): string {
 
 export function routerStatus() {
   return {
-    configured: openaiReady(),
+    configured: Boolean(process.env.OPENAI_API_KEY),
+    available: openaiReady(),
+    paused: openaiPaused(),
     luna: modelFor('luna'),
     terra: modelFor('terra'),
     sol: modelFor('sol'),
@@ -70,6 +81,10 @@ async function completeText(task: RouterTask, system: string, user: string): Pro
     record({ at: new Date().toISOString(), task, lane, model, ms: Date.now() - started, ok: true })
     return text
   } catch (err) {
+    const error = err instanceof Error ? err.message : 'failed'
+    if (/429|insufficient_quota|credits remaining|billing/i.test(error)) {
+      pauseOpenAI()
+    }
     record({
       at: new Date().toISOString(),
       task,
@@ -77,7 +92,7 @@ async function completeText(task: RouterTask, system: string, user: string): Pro
       model,
       ms: Date.now() - started,
       ok: false,
-      error: err instanceof Error ? err.message : 'failed',
+      error,
     })
     return null
   }

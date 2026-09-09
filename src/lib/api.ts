@@ -1,6 +1,11 @@
 import { supabase } from './supabase'
 
 const DEMO_KEY = 'aja-demo-token'
+let accessToken: string | null = null
+
+export function setAccessToken(token: string | null) {
+  accessToken = token
+}
 
 export function getDemoToken(): string | null {
   return localStorage.getItem(DEMO_KEY)
@@ -15,10 +20,11 @@ export async function authHeader(): Promise<Record<string, string>> {
   const token = getDemoToken()
   if (token === 'employer') return { Authorization: 'Bearer employer' }
   if (token) return { Authorization: 'Bearer demo' }
+  if (accessToken) return { Authorization: `Bearer ${accessToken}` }
   if (!supabase) return {}
   const { data } = await supabase.auth.getSession()
-  const access = data.session?.access_token
-  return access ? { Authorization: `Bearer ${access}` } : {}
+  accessToken = data.session?.access_token ?? null
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {

@@ -76,6 +76,8 @@ export function BrandMark({ light = false, compact = false }: { light?: boolean;
         alt=""
         width={40}
         height={40}
+        decoding="async"
+        fetchPriority="high"
         className={`${compact ? 'size-8 sm:size-10' : 'size-10'} shrink-0 rounded-xl object-cover shadow-[0_0_0_1px_rgba(198,161,91,0.28)]`}
       />
       <div className="min-w-0">

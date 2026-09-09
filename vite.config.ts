@@ -30,6 +30,18 @@ export default defineConfig(({ mode }) => {
         '@shared': path.resolve(import.meta.dirname, './shared'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) return 'react'
+            if (id.includes('node_modules/react-router')) return 'router'
+            if (id.includes('node_modules/@tanstack')) return 'query'
+            if (id.includes('node_modules/@supabase')) return 'supabase'
+          },
+        },
+      },
+    },
     server: {
       host: '127.0.0.1',
       port: 5173,

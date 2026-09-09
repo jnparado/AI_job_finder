@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Bell, Briefcase, Inbox, LayoutDashboard, Menu, MessagesSquare, Plus, Timer, Wallet, X } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
+import { prefetchRoute } from '@/lib/prefetch'
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/ui/feedback'
 import { initials } from '@/lib/utils'
@@ -16,7 +17,7 @@ const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = 
   { to: '/employer/inbox', label: 'Inbox', icon: Inbox },
   { to: '/employer/messages', label: 'Messages', icon: MessagesSquare },
   { to: '/employer/finances', label: 'Finances', icon: Wallet },
-  { to: '/employer/ateliar', label: 'Ateliar', icon: Timer },
+  { to: '/employer/ateliar', label: 'Time tracker', icon: Timer },
 ]
 
 export function EmployerShell() {
@@ -41,6 +42,8 @@ export function EmployerShell() {
             key={l.to}
             to={l.to}
             end={l.end}
+            onMouseEnter={() => prefetchRoute(l.to)}
+            onFocus={() => prefetchRoute(l.to)}
             onClick={() => setOpen(false)}
             className={({ isActive }) =>
               `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${

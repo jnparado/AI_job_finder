@@ -321,12 +321,12 @@ export function ApplicationDetailsPage() {
 
       {(a.status === 'hired' || a.status === 'offer') && a.deliveredToEmployer ? (
         <Card className="space-y-2">
-          <h2>Ateliar</h2>
+          <h2>Atelier time tracker</h2>
           <p className="text-sm text-muted-foreground">
-            This Atelier role is hired. Start the official work clock and download Ateliar for your desk.
+            This Atelier role is hired. Clock in here, or download the tracker for your desk.
           </p>
           <Button variant="copper" asChild>
-            <Link to="/app/ateliar">Open Ateliar</Link>
+            <Link to="/app/ateliar">Open tracker</Link>
           </Button>
         </Card>
       ) : null}

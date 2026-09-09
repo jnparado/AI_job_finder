@@ -26,15 +26,20 @@ export function BrandCarousel({
       onMouseLeave={() => setPaused(false)}
     >
       <div className="relative aspect-[3/4] overflow-hidden rounded-[1.75rem] shadow-[0_40px_80px_-36px_rgba(0,0,0,0.7)] sm:aspect-[4/5] lg:aspect-[3/4]">
-        {slides.map((slide, i) => (
-          <BrandSlide
-            key={slide.file}
-            folder={folder}
-            file={slide.file}
-            alt={slide.alt}
-            active={i === index}
-          />
-        ))}
+        {slides.map((slide, i) => {
+          const next = (index + 1) % slides.length
+          const prev = (index - 1 + slides.length) % slides.length
+          if (i !== index && i !== next && i !== prev) return null
+          return (
+            <BrandSlide
+              key={slide.file}
+              folder={folder}
+              file={slide.file}
+              alt={slide.alt}
+              active={i === index}
+            />
+          )
+        })}
         {slides.length > 1 ? (
           <div className="absolute top-4 right-4 z-10 flex gap-1.5">
             {slides.map((slide, i) => (
@@ -75,6 +80,8 @@ function BrandSlide({
     <img
       src={src}
       alt={active ? alt : ''}
+      loading={active ? 'eager' : 'lazy'}
+      decoding="async"
       onError={() => {
         if (src !== local) setSrc(local)
       }}

@@ -429,10 +429,10 @@ export function EmployerInboxPage() {
       <PageHeader
         kicker="Candidates"
         title="Inbox"
-        description="Packets candidates approved are delivered here. Mark someone hired to open Ateliar, the official work clock. External board jobs still apply on their official sites."
+        description="Packets candidates approved are delivered here. Mark someone hired to open Atelier time tracker. External board jobs still apply on their official sites."
         actions={
           <Button variant="outline" asChild>
-            <Link to="/employer/ateliar">Ateliar</Link>
+            <Link to="/employer/ateliar">Time tracker</Link>
           </Button>
         }
       />
@@ -538,7 +538,7 @@ export function EmployerApplicationPage() {
           <p className="mt-3 text-sm text-muted-foreground">
             Hired candidates can start{' '}
             <Link to="/employer/ateliar" className="font-medium text-[var(--copper)]">
-              Ateliar
+              Atelier time tracker
             </Link>{' '}
             and log hours on this role.
           </p>

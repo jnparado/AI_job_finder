@@ -1,14 +1,22 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, Timer } from 'lucide-react'
-import { formatDuration, sessionsToCsv, sessionSeconds, type TrackerSession } from '@shared/tracker'
+import { Download } from 'lucide-react'
+import {
+  formatClock,
+  formatHoursMinutes,
+  formatSheetDate,
+  secondsInRange,
+  sessionSeconds,
+  sessionsToCsv,
+  startOfLocalDay,
+  startOfLocalWeek,
+  type TrackerSession,
+} from '@shared/tracker'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { PageHeader } from '@/components/ui/feedback'
 
 interface HiredRole {
   applicationId: string
@@ -29,19 +37,24 @@ interface EmployerDesk {
   sessions: TrackerSession[]
 }
 
+const WAY_KEY = 'atelier-tracker-on-way'
+
 export function AteliarPage() {
   const { profile } = useAuth()
   const q = useQuery({
     queryKey: ['ateliar'],
     queryFn: () => api<CandidateDesk | EmployerDesk>('/api/ateliar'),
-    refetchInterval: 15_000,
+    refetchInterval: (query) => {
+      const data = query.state.data as CandidateDesk | EmployerDesk | undefined
+      return data && 'running' in data && data.running ? 15_000 : false
+    },
   })
   if (profile.role === 'employer') {
-    return <EmployerAteliar sessions={q.data && 'sessions' in q.data ? q.data.sessions : []} />
+    return <EmployerTracker sessions={q.data && 'sessions' in q.data ? q.data.sessions : []} />
   }
   const desk = q.data && 'roles' in q.data ? q.data : null
   return (
-    <CandidateAteliar
+    <CandidateTracker
       roles={desk?.roles ?? []}
       sessions={desk?.sessions ?? []}
       running={desk?.running ?? null}
@@ -49,7 +62,7 @@ export function AteliarPage() {
   )
 }
 
-function CandidateAteliar({
+function CandidateTracker({
   roles,
   sessions,
   running,
@@ -60,8 +73,8 @@ function CandidateAteliar({
 }) {
   const qc = useQueryClient()
   const [roleId, setRoleId] = useState(roles[0]?.applicationId ?? '')
-  const [note, setNote] = useState(running?.note ?? '')
   const [now, setNow] = useState(Date.now())
+  const [onWay, setOnWay] = useState(() => sessionStorage.getItem(WAY_KEY) === '1')
   const [notice, setNotice] = useState('')
 
   useEffect(() => {
@@ -69,181 +82,271 @@ function CandidateAteliar({
   }, [roleId, roles])
 
   useEffect(() => {
-    if (!running) return
     const t = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(t)
-  }, [running])
+  }, [])
+
+  const role = roles.find((r) => r.applicationId === roleId) ?? roles[0]
+  const dayStart = startOfLocalDay(now)
+  const weekStart = startOfLocalWeek(now)
+  const today = secondsInRange(sessions, dayStart, dayStart + 86_400_000, now)
+  const week = secondsInRange(sessions, weekStart, weekStart + 7 * 86_400_000, now)
+  const status = running ? 'Tracking' : onWay ? 'On the way' : 'Idle'
+  const statusHint = running
+    ? formatHoursMinutes(sessionSeconds(running, now)) + ' this shift'
+    : onWay
+      ? 'Clock in when you start'
+      : 'Start a shift to track'
 
   const start = useMutation({
-    mutationFn: () =>
-      api('/api/ateliar/start', { method: 'POST', body: JSON.stringify({ applicationId: roleId, note }) }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['ateliar'] })
-      setNotice('Ateliar is running.')
+    mutationFn: async () => {
+      const location = await optionalLocation()
+      return api('/api/ateliar/start', {
+        method: 'POST',
+        body: JSON.stringify({
+          applicationId: roleId,
+          note: location ? `Clock in · ${location}` : 'Clock in',
+        }),
+      })
     },
-    onError: (err) => setNotice(err instanceof Error ? err.message : 'Could not start Ateliar.'),
+    onSuccess: () => {
+      sessionStorage.removeItem(WAY_KEY)
+      setOnWay(false)
+      void qc.invalidateQueries({ queryKey: ['ateliar'] })
+      setNotice('')
+    },
+    onError: (err) => setNotice(err instanceof Error ? err.message : 'Could not start tracking.'),
   })
   const stop = useMutation({
-    mutationFn: () =>
-      api('/api/ateliar/stop', { method: 'POST', body: JSON.stringify({ sessionId: running?.id, note }) }),
+    mutationFn: () => api('/api/ateliar/stop', { method: 'POST', body: JSON.stringify({ sessionId: running?.id }) }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['ateliar'] })
-      setNotice('Session saved.')
+      setNotice('')
     },
-    onError: (err) => setNotice(err instanceof Error ? err.message : 'Could not stop Ateliar.'),
+    onError: (err) => setNotice(err instanceof Error ? err.message : 'Could not clock out.'),
   })
 
-  const liveSeconds = running ? sessionSeconds(running, now) : 0
-  const totalSeconds = useMemo(
-    () => sessions.reduce((n, s) => n + sessionSeconds(s, now), 0),
-    [sessions, now],
+  const sheet = useMemo(
+    () => [...sessions].sort((a, b) => +new Date(b.startedAt) - +new Date(a.startedAt)),
+    [sessions],
   )
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        kicker="Ateliar"
-        title="Official work tracker"
-        description="Ateliar is Atelier’s tracker for hired candidates. You start it. You stop it. The employer sees hours on the role they hired — not a hidden monitor, and not another company’s product."
+      <TrackerHeader
+        title="Atelier time tracker"
+        subtitle="Clock in, track live hours, and review your timesheet. Download it for your desk if you want it offline."
+        onDownload={() => void downloadTrackerApp()}
+        extra={
+          <Button variant="outline" onClick={() => downloadText('Atelier-timesheet.csv', sessionsToCsv(sessions))}>
+            <Download className="size-4" />
+            Download timesheet
+          </Button>
+        }
       />
 
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => void downloadAteliarApp()}>
-          <Download className="size-4" />
-          Download Ateliar
-        </Button>
-        <Button variant="outline" onClick={() => downloadText('Ateliar-timesheet.csv', sessionsToCsv(sessions))}>
-          <Download className="size-4" />
-          Download timesheet
-        </Button>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatCard kicker="Today" value={formatHoursMinutes(today)} hint="Completed shifts" />
+        <StatCard kicker="This week" value={formatHoursMinutes(week)} hint="Mon – Sun total" />
+        <StatCard kicker="Status" value={status} hint={statusHint} />
       </div>
 
-      {roles.length ? (
-        <Card className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Timer className="size-5 text-[var(--copper)]" />
-            <h2>Desk clock</h2>
-          </div>
-          <p className="font-serif text-5xl tabular-nums">{formatDuration(running ? liveSeconds : 0)}</p>
-          <p className="text-sm text-muted-foreground">
-            {running
-              ? `Running for ${running.company} · ${running.jobTitle}`
-              : `${formatDuration(totalSeconds)} logged on hired Atelier roles.`}
+      {role ? (
+        <section className="rounded-3xl border border-dashed border-[#1f3d32]/25 bg-[#f7faf8] p-6 sm:p-7">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            {running ? 'Tracking now' : onWay ? 'On the way' : 'Ready to track'}
           </p>
-          <label className="block max-w-lg space-y-1 text-sm">
-            Hired role
+          {roles.length > 1 && !running ? (
             <select
-              className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+              className="mt-3 h-10 max-w-lg rounded-full border border-input bg-white px-4 text-sm"
               value={roleId}
-              disabled={Boolean(running)}
               onChange={(e) => setRoleId(e.target.value)}
             >
               {roles.map((r) => (
                 <option key={r.applicationId} value={r.applicationId}>
-                  {r.company} — {r.jobTitle}
+                  {r.jobTitle} · {r.company}
                 </option>
               ))}
             </select>
-          </label>
-          <label className="block max-w-lg space-y-1 text-sm">
-            What you are working on
-            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note" />
-          </label>
-          {running ? (
-            <Button variant="copper" disabled={stop.isPending} onClick={() => stop.mutate()}>
-              {stop.isPending ? 'Saving…' : 'Stop Ateliar'}
-            </Button>
           ) : (
-            <Button variant="copper" disabled={start.isPending} onClick={() => start.mutate()}>
-              {start.isPending ? 'Starting…' : 'Start Ateliar'}
-            </Button>
+            <h2 className="mt-2 text-2xl sm:text-3xl">{running?.jobTitle ?? role.jobTitle}</h2>
           )}
-          {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
-        </Card>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {running?.company ?? role.company} · {formatSheetDate(running?.startedAt ?? new Date(now).toISOString())}
+            {running ? ` · ${formatHoursMinutes(sessionSeconds(running, now))}` : ''}
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            {running ? (
+              <Button className="rounded-full" variant="copper" disabled={stop.isPending} onClick={() => stop.mutate()}>
+                {stop.isPending ? 'Saving…' : 'Clock out'}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  className="rounded-full"
+                  variant={onWay ? 'default' : 'outline'}
+                  onClick={() => void markOnWay(setOnWay, setNotice)}
+                >
+                  On my way
+                </Button>
+                <Button className="rounded-full" variant="default" disabled={start.isPending} onClick={() => start.mutate()}>
+                  {start.isPending ? 'Starting…' : 'Start tracking'}
+                </Button>
+              </>
+            )}
+          </div>
+          {notice ? <p className="mt-3 text-sm text-muted-foreground">{notice}</p> : null}
+        </section>
       ) : (
-        <Card>
+        <Card className="rounded-3xl">
           <p className="text-sm leading-relaxed text-muted-foreground">
-            Ateliar unlocks when an Atelier employer marks you hired. Outside boards stay on their own sites — we do
-            not track work there.
+            Atelier time tracker opens after an Atelier employer marks you hired. You start it. You stop it. Outside
+            boards stay on their own sites.
           </p>
         </Card>
       )}
 
-      <Card className="space-y-3">
-        <h2>Sessions</h2>
-        {sessions.length ? (
-          <ul className="space-y-3">
-            {sessions.map((s) => (
-              <li key={s.id} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-3 last:border-0 last:pb-0">
-                <div>
-                  <p className="font-medium">
-                    {s.company} · {s.jobTitle}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(s.startedAt).toLocaleString()}
-                    {s.note ? ` · ${s.note}` : ''}
-                    {s.endedAt ? '' : ' · running'}
-                  </p>
-                </div>
-                <p className="font-serif text-xl tabular-nums">{formatDuration(sessionSeconds(s, now))}</p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted-foreground">No Ateliar sessions yet.</p>
-        )}
-      </Card>
+      <Timesheet sessions={sheet} now={now} />
     </div>
   )
 }
 
-function EmployerAteliar({ sessions }: { sessions: TrackerSession[] }) {
-  const total = sessions.reduce((n, s) => n + sessionSeconds(s), 0)
+function EmployerTracker({ sessions }: { sessions: TrackerSession[] }) {
+  const now = Date.now()
+  const dayStart = startOfLocalDay(now)
+  const weekStart = startOfLocalWeek(now)
+  const today = secondsInRange(sessions, dayStart, dayStart + 86_400_000, now)
+  const week = secondsInRange(sessions, weekStart, weekStart + 7 * 86_400_000, now)
+  const live = sessions.some((s) => !s.endedAt)
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        kicker="Ateliar"
-        title="Hired hours"
-        description="Hours candidates logged in Ateliar after you marked them hired on Atelier."
+      <TrackerHeader
+        title="Atelier time tracker"
+        subtitle="Hours hired candidates logged after you marked them hired. They start and stop the clock themselves."
+        onDownload={() => void downloadTrackerApp()}
+        extra={
+          <>
+            <Button variant="outline" onClick={() => downloadText('Atelier-team.csv', sessionsToCsv(sessions))}>
+              <Download className="size-4" />
+              Download timesheet
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/employer/inbox">Mark someone hired</Link>
+            </Button>
+          </>
+        }
       />
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => void downloadAteliarApp()}>
-          <Download className="size-4" />
-          Download Ateliar
-        </Button>
-        <Button variant="outline" onClick={() => downloadText('Ateliar-team.csv', sessionsToCsv(sessions))}>
-          <Download className="size-4" />
-          Download team timesheet
-        </Button>
-        <Button variant="outline" asChild>
-          <Link to="/employer/inbox">Mark someone hired</Link>
-        </Button>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatCard kicker="Today" value={formatHoursMinutes(today)} hint="Team hours" />
+        <StatCard kicker="This week" value={formatHoursMinutes(week)} hint="Mon – Sun total" />
+        <StatCard kicker="Status" value={live ? 'Live' : 'Idle'} hint={live ? 'Someone is tracking' : 'No open shift'} />
       </div>
-      <Card>
-        <p className="text-sm text-muted-foreground">Total logged</p>
-        <p className="mt-1 font-serif text-4xl tabular-nums">{formatDuration(total)}</p>
-      </Card>
-      <Card className="space-y-3">
-        <h2>Sessions</h2>
-        {sessions.length ? (
-          sessions.map((s) => (
-            <div key={s.id} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-3 last:border-0 last:pb-0">
-              <div>
-                <p className="font-medium">{s.jobTitle}</p>
-                <p className="text-sm text-muted-foreground">
-                  {new Date(s.startedAt).toLocaleString()}
-                  {s.note ? ` · ${s.note}` : ''}
-                </p>
-              </div>
-              <p className="font-serif text-xl tabular-nums">{formatDuration(sessionSeconds(s))}</p>
-            </div>
-          ))
-        ) : (
-          <p className="text-sm text-muted-foreground">No hired candidate has started Ateliar yet.</p>
-        )}
-      </Card>
+      <Timesheet sessions={sessions} now={now} />
     </div>
   )
+}
+
+function TrackerHeader({
+  title,
+  subtitle,
+  onDownload,
+  extra,
+}: {
+  title: string
+  subtitle: string
+  onDownload: () => void
+  extra?: ReactNode
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="max-w-xl">
+        <h1 className="text-3xl sm:text-4xl">{title}</h1>
+        <p className="mt-2 text-sm text-muted-foreground sm:text-base">{subtitle}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={onDownload}>
+          <Download className="size-4" />
+          Download tracker
+        </Button>
+        {extra}
+      </div>
+    </div>
+  )
+}
+
+function StatCard({ kicker, value, hint }: { kicker: string; value: string; hint: string }) {
+  return (
+    <div className="rounded-3xl border border-border bg-white px-5 py-5 shadow-[0_8px_24px_rgba(19,38,31,0.04)]">
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{kicker}</p>
+      <p className="mt-2 font-serif text-3xl tabular-nums">{value}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{hint}</p>
+    </div>
+  )
+}
+
+function Timesheet({ sessions, now }: { sessions: TrackerSession[]; now: number }) {
+  return (
+    <section className="overflow-hidden rounded-3xl border border-border bg-white shadow-[0_8px_24px_rgba(19,38,31,0.04)]">
+      <div className="px-5 py-5 sm:px-6">
+        <h2 className="text-xl">Timesheet</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Completed tracked sessions</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[36rem] text-left text-sm">
+          <thead className="border-y border-border text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <tr>
+              <th className="px-5 py-3 font-semibold sm:px-6">Date</th>
+              <th className="px-5 py-3 font-semibold sm:px-6">Shift</th>
+              <th className="px-5 py-3 font-semibold sm:px-6">Clock in</th>
+              <th className="px-5 py-3 font-semibold sm:px-6">Clock out</th>
+              <th className="px-5 py-3 font-semibold sm:px-6">Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sessions.length ? (
+              sessions.map((s) => (
+                <tr key={s.id} className="border-b border-border last:border-0">
+                  <td className="px-5 py-4 sm:px-6">{formatSheetDate(s.startedAt)}</td>
+                  <td className="px-5 py-4 sm:px-6">
+                    <p className="font-medium">{s.company}</p>
+                    <p className="text-muted-foreground">{s.jobTitle}</p>
+                  </td>
+                  <td className="px-5 py-4 tabular-nums sm:px-6">{formatClock(s.startedAt)}</td>
+                  <td className="px-5 py-4 tabular-nums sm:px-6">{s.endedAt ? formatClock(s.endedAt) : 'Live'}</td>
+                  <td className="px-5 py-4 tabular-nums sm:px-6">{formatHoursMinutes(sessionSeconds(s, now))}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} className="px-5 py-8 text-muted-foreground sm:px-6">
+                  No tracked sessions yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+async function markOnWay(setOnWay: (v: boolean) => void, setNotice: (v: string) => void) {
+  sessionStorage.setItem(WAY_KEY, '1')
+  setOnWay(true)
+  const location = await optionalLocation()
+  setNotice(location ? 'On the way. Location saved for this clock-in.' : 'On the way. Start tracking when you begin.')
+}
+
+function optionalLocation(): Promise<string | undefined> {
+  if (!navigator.geolocation) return Promise.resolve(undefined)
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(`${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`),
+      () => resolve(undefined),
+      { enableHighAccuracy: false, maximumAge: 60_000, timeout: 6000 },
+    )
+  })
 }
 
 function downloadHref(href: string, filename: string) {
@@ -260,8 +363,8 @@ function downloadText(filename: string, body: string, type = 'text/csv;charset=u
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-async function downloadAteliarApp() {
-  const res = await fetch('/ateliar/Ateliar.html')
+async function downloadTrackerApp() {
+  const res = await fetch('/ateliar/Atelier-time-tracker.html')
   const html = await res.text()
-  downloadText('Ateliar.html', html, 'text/html;charset=utf-8')
+  downloadText('Atelier-time-tracker.html', html, 'text/html;charset=utf-8')
 }

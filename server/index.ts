@@ -1508,10 +1508,10 @@ app.patch('/api/employer/applications/:id', async (c) => {
     await notifyUser(
       row.userId,
       hired
-        ? `${job?.title ?? 'Role'} is hired — Ateliar is open`
+        ? `${job?.title ?? 'Role'} is hired — Atelier time tracker is open`
         : `${job?.title ?? 'Application'} is now ${body.status.replaceAll('_', ' ')}`,
       hired
-        ? `${job?.company ?? 'The employer'} marked you hired. Start Ateliar to log hours on this Atelier role.`
+        ? `${job?.company ?? 'The employer'} marked you hired. Open Atelier time tracker to log hours on this role.`
         : `${job?.company ?? 'The employer'} updated your application.`,
       hired ? '/app/ateliar' : `/app/applications/${row.id}`,
     )
@@ -1625,11 +1625,11 @@ app.post('/api/ateliar/start', async (c) => {
   await hydrateApplications({ userId: user.id })
   await hydrateTracker({ candidateId: user.id })
   const running = memory.getTrackerSessions(user.id).find((s) => !s.endedAt)
-  if (running) return c.json({ error: 'Stop the open Ateliar session first.', session: running }, 400)
+  if (running) return c.json({ error: 'Clock out of the open shift first.', session: running }, 400)
   const body = (await c.req.json().catch(() => ({}))) as { applicationId?: string; note?: string }
   const roles = hiredRolesFor(user.id)
   const role = roles.find((r) => r.applicationId === body.applicationId) ?? roles[0]
-  if (!role) return c.json({ error: 'Ateliar opens after an Atelier employer marks you hired.' }, 400)
+  if (!role) return c.json({ error: 'Atelier time tracker opens after an Atelier employer marks you hired.' }, 400)
   const row: TrackerSession = {
     id: crypto.randomUUID(),
     candidateId: user.id,
@@ -1667,7 +1667,7 @@ app.post('/api/ateliar/stop', async (c) => {
   const session =
     (body.sessionId ? memory.getTrackerSession(body.sessionId) : undefined) ??
     memory.getTrackerSessions(user.id).find((s) => !s.endedAt)
-  if (!session || session.candidateId !== user.id) return c.json({ error: 'No open Ateliar session.' }, 400)
+  if (!session || session.candidateId !== user.id) return c.json({ error: 'No open shift.' }, 400)
   session.seconds = sessionSeconds(session)
   session.endedAt = new Date().toISOString()
   if (body.note) session.note = String(body.note).trim()
@@ -1962,6 +1962,25 @@ seeded.email = 'demo@atelier.local'
 seeded.firstName = 'Jordan'
 seeded.lastName = 'Reyes'
 seeded.headline = 'Full stack engineer'
+seeded.currentTitle = 'Full Stack Engineer'
+seeded.desiredTitle = 'Full Stack Engineer'
+seeded.yearsExperience = 5
+seeded.skills = ['React', 'TypeScript', 'Node.js', 'PostgreSQL', 'Next.js']
+seeded.aiSkills = ['GPT', 'RAG']
+seeded.remoteWorldwide = true
+seeded.workModes = ['remote']
+seeded.employmentTypes = ['full-time']
+seeded.resumeText =
+  'Jordan Reyes\nFull Stack Engineer\nReact, TypeScript, Node.js, PostgreSQL.\nBuilt matching, packets, and hiring inboxes.'
+seeded.parsedProfile = {
+  name: 'Jordan Reyes',
+  headline: 'Full Stack Engineer',
+  experience_years: 5,
+  skills: ['React', 'TypeScript', 'Node.js', 'PostgreSQL', 'Next.js'],
+  ai_skills: ['GPT', 'RAG'],
+  industries: ['Software'],
+}
+seeded.onboardingCompleted = true
 memory.setProfile(DEMO_USER, seeded)
 
 const hiring = emptyProfile()
@@ -1998,6 +2017,7 @@ const demoRole = asJob({
   employerId: DEMO_EMPLOYER,
 })
 memory.setJobs([demoRole])
+memory.setMatches(DEMO_USER, matchJobs([demoRole], seeded))
 
 const demoAppId = 'a0000000-0000-4000-8000-000000000001'
 memory.addApplication({

@@ -536,7 +536,7 @@ export const CANDIDATE_FAQ = [
     a: 'They see a normal application you approved. You can edit every line. We do not invent skills you did not list.',
   },
   {
-    q: 'What is Ateliar?',
-    a: 'Ateliar is Atelier’s official work tracker. After an Atelier employer marks you hired, you start and stop it yourself, export a timesheet, or download Ateliar.html for your desk. Nothing is captured in the background.',
+    q: 'What is Atelier time tracker?',
+    a: 'Atelier time tracker is our official work clock. After an Atelier employer marks you hired, you clock in and out yourself, export a timesheet, or download Atelier-time-tracker.html for your desk. Nothing is captured in the background.',
   },
 ]

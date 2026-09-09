@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { Provider, User } from '@supabase/supabase-js'
 import type { CandidateProfile } from '@shared/types'
 import { emptyProfile, isStaffRole } from '@shared/types'
-import { api, getDemoToken, setDemoToken } from './api'
+import { api, getDemoToken, setAccessToken, setDemoToken } from './api'
 import { identityFromUser } from './identity'
 import { oauthOptions } from './social'
 import { supabase, supabaseConfigured, upsertOwnProfile } from './supabase'
@@ -79,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = supabase
       ? supabase.auth.onAuthStateChange((_event, session) => {
           if (cancelled) return
+          setAccessToken(session?.access_token ?? null)
           setUser(session?.user ?? null)
           if (session?.user) {
             setDemoToken(false)
@@ -113,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
       const session = await supabase.auth.getSession()
+      setAccessToken(session.data.session?.access_token ?? null)
       if (!cancelled) setUser(session.data.session?.user ?? null)
       if (session.data.session?.user) {
         try {
@@ -267,6 +269,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut: async () => {
         setDemoToken(false)
         setDemo(false)
+        setAccessToken(null)
         setUser(null)
         setProfile(emptyProfile())
         await supabase?.auth.signOut()

@@ -21,7 +21,7 @@ const REMEMBER_KEY = 'atelier-remember-email'
 export function LoginPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { signInEmail, configured, destinationFor, user, loading } = useAuth()
+  const { signInEmail, signInDemo, configured, destinationFor, user, demo, loading } = useAuth()
   const role: 'candidate' | 'employer' = params.get('role') === 'employer' ? 'employer' : 'candidate'
   const hiring = role === 'employer'
   const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_KEY) ?? '')
@@ -36,8 +36,8 @@ export function LoginPage() {
   }, [role])
 
   useEffect(() => {
-    if (!loading && user) navigate(destinationFor(), { replace: true })
-  }, [loading, user, destinationFor, navigate])
+    if (!loading && (user || demo)) navigate(destinationFor(), { replace: true })
+  }, [loading, user, demo, destinationFor, navigate])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -113,6 +113,23 @@ export function LoginPage() {
         </div>
       </form>
       <SocialAuth disabled={busy} />
+      {!hiring ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-4 w-full rounded-xl"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true)
+            void signInDemo()
+              .then((profile) => navigate(destinationFor(profile)))
+              .catch((err) => setError(err instanceof Error ? err.message : 'Could not open the studio.'))
+              .finally(() => setBusy(false))
+          }}
+        >
+          Open candidate studio
+        </Button>
+      ) : null}
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{' '}
         <Link to={hiring ? '/register?role=employer' : '/register'} className="font-medium text-[var(--copper)]">

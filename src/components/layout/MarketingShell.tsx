@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/ui/feedback'
 import { SocialFollow } from '@/components/social/SocialLinks'
 import { filmLocal, filmSrc } from '@/lib/films'
+import { prefetchRoute } from '@/lib/prefetch'
 
 export function MarketingShell({
   audience,
@@ -79,10 +80,14 @@ export function MarketingShell({
 
           <div className="flex shrink-0 gap-2">
             <Button variant="outline" className="border-[#c9c0ae55] text-[var(--paper)] hover:bg-[#1f3d32]" asChild>
-              <Link to={hiring ? '/login?role=employer' : '/login'}>Log in</Link>
+              <Link to={hiring ? '/login?role=employer' : '/login'} onMouseEnter={() => prefetchRoute('/login')}>
+                Log in
+              </Link>
             </Button>
             <Button variant={hiring ? 'paper' : 'copper'} asChild>
-              <Link to={registerTo}>Sign up</Link>
+              <Link to={registerTo} onMouseEnter={() => prefetchRoute('/register')}>
+                Sign up
+              </Link>
             </Button>
           </div>
         </div>
@@ -246,17 +251,33 @@ function MarketingVideo({
   const local = filmLocal(file)
   const remotePoster = poster ? filmSrc(poster) : undefined
   const localPoster = poster ? filmLocal(poster) : undefined
+  const ref = useRef<HTMLVideoElement>(null)
+  const [near, setNear] = useState(false)
   const [video, setVideo] = useState(remote)
   const [shot, setShot] = useState(remotePoster)
 
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setNear(true)
+      },
+      { rootMargin: '240px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+
   return (
     <video
+      ref={ref}
       className={className}
       controls
       playsInline
-      preload="auto"
+      preload={near ? 'metadata' : 'none'}
       poster={shot}
-      src={video}
+      src={near ? video : undefined}
       onError={() => {
         if (video !== local) setVideo(local)
         if (shot && localPoster && shot !== localPoster) setShot(localPoster)
