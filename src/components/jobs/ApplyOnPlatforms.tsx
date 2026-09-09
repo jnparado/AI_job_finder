@@ -22,26 +22,27 @@ export function ApplyOnPlatforms({
   const listing = listingUrl(job)
   const boards = officialApplyLinks(job)
   const platform = sourceLabel(job.source)
+  const listingIsBoardSearch = boards.some((b) => b.url === listing)
 
   return (
     <div className={compact ? 'space-y-2' : 'space-y-3'}>
       {compact ? null : (
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Atelier drafts the resume and letter. You submit them on the official page. We never click Apply on
-          LinkedIn, Indeed, Upwork, or similar boards.
+          Atelier drafts the resume and letter. You submit them on LinkedIn, Indeed, Upwork, or the official
+          listing. We never click Apply there for you.
         </p>
       )}
       <div className="flex flex-wrap gap-2">
         {listing && !boardsOnly ? (
           <Button variant="copper" size={compact ? 'sm' : 'default'} asChild>
             <a href={listing} target="_blank" rel="noreferrer">
-              Apply on {platform}
+              {listingIsBoardSearch ? `Find on ${platform}` : `Apply on ${platform}`}
               <ExternalLink className="size-3.5" />
             </a>
           </Button>
         ) : null}
         {boards
-          .filter((board) => board.source !== job.source)
+          .filter((board) => board.source !== job.source && board.url !== listing)
           .map((board) => (
             <Button key={board.source} variant="outline" size={compact ? 'sm' : 'default'} asChild>
               <a href={board.url} target="_blank" rel="noreferrer">

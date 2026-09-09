@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Copy, ExternalLink } from 'lucide-react'
 import type { JobMatch } from '@shared/types'
 import { sourceLabel } from '@shared/types'
-import { originalListingUrl } from '@shared/applyBoards'
+import { listingUrl } from '@shared/applyBoards'
 import { api } from '@/lib/api'
 import { prettyStatus } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -150,7 +150,7 @@ export function ApplicationDetailsPage() {
   const a = q.data
   if (!a) return <Card className="h-40 animate-pulse bg-muted/60" />
   const p = a.packet
-  const officialUrl = a.match?.job ? originalListingUrl(a.match.job) : undefined
+  const officialUrl = a.match?.job ? listingUrl(a.match.job) : undefined
   const platform = a.match?.job.source ? sourceLabel(a.match.job.source) : a.channel
   const external = !a.directToEmployer && Boolean(officialUrl)
 

@@ -13,7 +13,7 @@ import { MatchCard } from '@/components/jobs/MatchCard'
 import { ScoreBadge } from '@/components/jobs/ScoreBadge'
 import { SocialShare } from '@/components/social/SocialLinks'
 import { ApplyOnPlatforms } from '@/components/jobs/ApplyOnPlatforms'
-import { originalListingUrl } from '@shared/applyBoards'
+import { listingUrl } from '@shared/applyBoards'
 
 const FILTERS: { id: MatchCategory | 'all' | '70'; label: string }[] = [
   { id: '70', label: 'Recommended' },
@@ -239,7 +239,7 @@ export function JobDetailsPage() {
 
   const gaps = [...m.missingSkills, ...m.preferredMissing]
   const atelier = Boolean(m.job.employerId || m.job.source === 'atelier')
-  const postingUrl = originalListingUrl(m.job)
+  const postingUrl = listingUrl(m.job)
 
   return (
     <div className="space-y-6 pb-24">

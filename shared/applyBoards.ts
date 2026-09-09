@@ -12,18 +12,19 @@ function isSearchPage(url: string) {
   return /\/jobs\/search|\/jobs\?q=|\/nx\/search\/jobs|sc\.keyword=|\/jobs\/\?keyword=/.test(url)
 }
 
-export function originalListingUrl(job: {
-  applicationUrl?: string
-  sources?: { url?: string }[]
-}) {
-  const urls = [...(job.sources ?? []).map((s) => s.url), job.applicationUrl].filter(
-    (url): url is string => Boolean(url && isHttp(url)),
-  )
-  return urls.find((url) => !isSearchPage(url)) ?? urls[0]
-}
-
-export function listingUrl(job: { applicationUrl?: string; sources?: { url?: string }[] }) {
-  return originalListingUrl(job)
+export function isUsableListingUrl(url?: string) {
+  if (!url || !isHttp(url)) return false
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    if (host === 'example' || host.endsWith('.example') || host === 'example.com' || host.endsWith('.example.com')) {
+      return false
+    }
+    if (/linkedin\.com\/jobs\/view\/[a-z][a-z0-9-]*$/i.test(url) && !/\d{6,}/.test(url)) return false
+    if (/indeed\.com\/viewjob\?jk=[a-z][a-z-]+$/i.test(url)) return false
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function officialApplyLinks(job: { title: string; company?: string }): OfficialBoard[] {
@@ -35,4 +36,30 @@ export function officialApplyLinks(job: { title: string; company?: string }): Of
     { source: 'freelancer', label: 'Freelancer', url: `https://www.freelancer.com/jobs/?keyword=${q}` },
     { source: 'glassdoor', label: 'Glassdoor', url: `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${q}` },
   ]
+}
+
+export function originalListingUrl(job: {
+  title?: string
+  company?: string
+  source?: string
+  applicationUrl?: string
+  sources?: { url?: string }[]
+}) {
+  const urls = [...(job.sources ?? []).map((s) => s.url), job.applicationUrl].filter(
+    (url): url is string => isUsableListingUrl(url),
+  )
+  return urls.find((url) => !isSearchPage(url)) ?? urls[0]
+}
+
+export function listingUrl(job: {
+  title: string
+  company?: string
+  source?: string
+  applicationUrl?: string
+  sources?: { url?: string }[]
+}) {
+  const listing = originalListingUrl(job)
+  if (listing) return listing
+  const boards = officialApplyLinks(job)
+  return boards.find((b) => b.source === job.source)?.url ?? boards[0]?.url
 }
