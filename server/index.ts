@@ -48,6 +48,7 @@ const port = Number(process.env.API_PORT ?? 8787)
 const corsOrigins = [
   process.env.APP_URL,
   process.env.VITE_APP_URL,
+  'https://ai-job-finder-ecru.vercel.app',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
 ]
@@ -861,21 +862,7 @@ function safeResumeName(name: string) {
   return name.replace(/[^\w.\-]+/g, '_').slice(0, 80) || 'resume'
 }
 
-async function ingestResumeBuffer(
-  user: AuthUser,
-  buffer: Buffer,
-  fileName: string,
-  mime: string,
-  storedPath?: string,
-) {
-  if (!buffer.length) throw new Error('That file is empty.')
-  if (buffer.length > MAX_RESUME_BYTES) throw new Error('Keep the file under 8 MB.')
-  if (!resumeFileOk(fileName, mime)) throw new Error('Use a PDF, DOCX, or TXT file.')
-  const text = (await extractFileText(buffer, mime, fileName)).replace(/\u0000/g, '').trim()
-  if (text.length < 20) {
-    throw new Error('Could not read that resume. Try another PDF or paste the text below.')
-  }
-  const parsed = await parseResumeSmart(text)
+async function applyParsedResume(user: AuthUser, text: string, parsed: ParsedResume) {
   const profile = await loadProfile(user)
   const merged: CandidateProfile = {
     ...profile,
@@ -895,6 +882,25 @@ async function ingestResumeBuffer(
     merged.lastName = rest.join(' ')
   }
   await saveProfile(user, merged)
+  return merged
+}
+
+async function ingestResumeBuffer(
+  user: AuthUser,
+  buffer: Buffer,
+  fileName: string,
+  mime: string,
+  storedPath?: string,
+) {
+  if (!buffer.length) throw new Error('That file is empty.')
+  if (buffer.length > MAX_RESUME_BYTES) throw new Error('Keep the file under 8 MB.')
+  if (!resumeFileOk(fileName, mime)) throw new Error('Use a PDF, DOCX, or TXT file.')
+  const text = (await extractFileText(buffer, mime, fileName)).replace(/\u0000/g, '').trim()
+  if (text.length < 20) {
+    throw new Error('Could not read that resume. Try another PDF or paste the text below.')
+  }
+  const parsed = await parseResumeSmart(text)
+  const merged = await applyParsedResume(user, text, parsed)
   if (supabaseAdmin) {
     try {
       const path = storedPath || `${user.id}/${Date.now()}-${safeResumeName(fileName)}`
@@ -926,6 +932,20 @@ app.post('/api/resume/upload', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   try {
+    const contentType = c.req.header('content-type') || ''
+    if (contentType.includes('application/json')) {
+      const body = (await c.req.json()) as {
+        fileName?: string
+        mimeType?: string
+        contentBase64?: string
+      }
+      const fileName = String(body.fileName || 'resume.txt')
+      const mime = String(body.mimeType || '')
+      const raw = String(body.contentBase64 || '').replace(/\s+/g, '')
+      if (!raw) return c.json({ error: 'Choose a resume file to upload.' }, 400)
+      const buffer = Buffer.from(raw, 'base64')
+      return c.json(await ingestResumeBuffer(user, buffer, fileName, mime))
+    }
     const form = await c.req.formData()
     const file = form.get('file')
     if (!isUploadedFile(file)) return c.json({ error: 'Choose a resume file to upload.' }, 400)
@@ -966,9 +986,19 @@ app.post('/api/resume/from-storage', async (c) => {
 app.post('/api/resume/parse-text', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
-  const { text } = (await c.req.json()) as { text: string }
-  const parsed = await parseResumeSmart(text ?? '')
-  return c.json({ parsed })
+  try {
+    const { text } = (await c.req.json()) as { text?: string }
+    const raw = String(text ?? '').replace(/\u0000/g, '').trim()
+    if (raw.length < 20) {
+      return c.json({ error: 'Paste more of your resume so we can read it.' }, 400)
+    }
+    const parsed = await parseResumeSmart(raw)
+    const profile = await applyParsedResume(user, raw, parsed)
+    return c.json({ parsed, profile })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Parse failed'
+    return c.json({ error: message }, 400)
+  }
 })
 
 app.post('/api/agent/search', async (c) => {
@@ -1767,7 +1797,12 @@ memory.addMessage({
 
 export { app }
 
-if (!process.env.VERCEL) {
+const hosted =
+  Boolean(process.env.VERCEL) ||
+  Boolean(process.env.VERCEL_ENV) ||
+  Boolean(process.env.NOW_REGION)
+
+if (!hosted) {
   const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, () => {
     console.log(`API http://127.0.0.1:${port}  supabase=${Boolean(supabaseAdmin)}`)
   })

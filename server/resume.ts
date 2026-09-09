@@ -1,5 +1,3 @@
-import mammoth from 'mammoth'
-import { extractText } from 'unpdf'
 import { parseResumeText } from '../shared/engine/resumeParser'
 import type { ParsedResume } from '../shared/types'
 import { extractResume } from './agents'
@@ -12,6 +10,7 @@ export async function extractFileText(
   const lower = filename.toLowerCase()
   try {
     if (mime.includes('pdf') || lower.endsWith('.pdf')) {
+      const { extractText } = await import('unpdf')
       const { text } = await extractText(new Uint8Array(buffer))
       return Array.isArray(text) ? text.join('\n') : String(text ?? '')
     }
@@ -20,6 +19,7 @@ export async function extractFileText(
       lower.endsWith('.docx') ||
       mime.includes('officedocument')
     ) {
+      const mammoth = await import('mammoth')
       const result = await mammoth.extractRawText({ buffer })
       return result.value
     }

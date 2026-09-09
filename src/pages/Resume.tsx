@@ -2,8 +2,8 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/lib/auth'
-import { api, apiUpload, authHeader } from '@/lib/api'
-import { supabase } from '@/lib/supabase'
+import { api, apiUpload } from '@/lib/api'
+import { resumeMime, saveResumeToSupabase } from '@/lib/resumeStorage'
 import { Button } from '@/components/ui/button'
 import { Card, Badge, Textarea } from '@/components/ui/card'
 import { PageHeader } from '@/components/ui/feedback'
@@ -34,8 +34,17 @@ function fileLooksLikeResume(file: File) {
   )
 }
 
-function safeName(name: string) {
-  return name.replace(/[^\w.\-]+/g, '_').slice(0, 80) || 'resume'
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result || '')
+      const comma = result.indexOf(',')
+      resolve(comma >= 0 ? result.slice(comma + 1) : result)
+    }
+    reader.onerror = () => reject(new Error('Could not read that file.'))
+    reader.readAsDataURL(file)
+  })
 }
 
 function UploadProgress({ value, label }: { value: number; label: string }) {
@@ -94,58 +103,50 @@ export function ResumePage() {
     return result
   }
 
-  async function sendToApi(file: File, onPct: (n: number) => void) {
+  async function sendAsJson(file: File, onPct: (n: number) => void) {
+    onPct(18)
+    const contentBase64 = await fileToBase64(file)
+    onPct(55)
+    return api<{ parsed: ParsedResume }>('/api/resume/upload', {
+      method: 'POST',
+      body: JSON.stringify({
+        fileName: file.name,
+        mimeType: resumeMime(file),
+        contentBase64,
+      }),
+    })
+  }
+
+  async function sendAsForm(file: File, onPct: (n: number) => void) {
     const form = new FormData()
     form.append('file', file)
     return apiUpload<{ parsed: ParsedResume }>('/api/resume/upload', form, onPct)
   }
 
-  async function sendViaStorage(file: File, onPct: (n: number) => void) {
-    const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
-    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
-    if (!supabase || !user?.id || !url || !anon) return sendToApi(file, onPct)
-    const auth = await authHeader()
-    const token = auth.Authorization?.replace(/^Bearer\s+/i, '')
-    if (!token || token === 'demo' || token === 'employer') return sendToApi(file, onPct)
-
-    const objectPath = `${user.id}/${Date.now()}-${safeName(file.name)}`
-    const endpoint = `${url.replace(/\/$/, '')}/storage/v1/object/resumes/${objectPath}`
-
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', endpoint)
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-        xhr.setRequestHeader('apikey', anon)
-        xhr.setRequestHeader('x-upsert', 'true')
-        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
-        xhr.timeout = 120_000
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) onPct(Math.round((event.loaded / event.total) * 100))
-        }
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve()
-            return
-          }
-          reject(new Error('storage'))
-        }
-        xhr.onerror = () => reject(new Error('storage'))
-        xhr.ontimeout = () => reject(new Error('storage'))
-        xhr.send(file)
-      })
-    } catch {
-      return sendToApi(file, onPct)
+  async function sendFile(file: File, onPct: (n: number) => void) {
+    if (user?.id) {
+      try {
+        const stored = await saveResumeToSupabase(file, user.id, onPct)
+        return await api<{ parsed: ParsedResume }>('/api/resume/from-storage', {
+          method: 'POST',
+          body: JSON.stringify({
+            path: stored.path,
+            fileName: file.name,
+            mimeType: stored.mime,
+          }),
+        })
+      } catch {
+        // Fall through to a direct API upload if storage is missing or blocked.
+      }
     }
-
-    return api<{ parsed: ParsedResume }>('/api/resume/from-storage', {
-      method: 'POST',
-      body: JSON.stringify({
-        path: objectPath,
-        fileName: file.name,
-        mimeType: file.type,
-      }),
-    })
+    if (file.size <= 3.2 * 1024 * 1024) {
+      try {
+        return await sendAsJson(file, onPct)
+      } catch {
+        return sendAsForm(file, onPct)
+      }
+    }
+    return sendAsForm(file, onPct)
   }
 
   async function onFile(file: File) {
@@ -168,7 +169,7 @@ export function ResumePage() {
     setError('')
     setSearch(null)
     try {
-      const res = await sendViaStorage(file, (pct) => {
+      const res = await sendFile(file, (pct) => {
         setProgress(Math.max(4, Math.round(pct * 0.62)))
       })
       setParsed(res.parsed)
@@ -277,10 +278,9 @@ export function ResumePage() {
         <p className="text-sm text-muted-foreground">
           PDF, DOCX, or TXT, up to 8 MB. Parsing runs on the server, then matching starts automatically.
         </p>
-        <label
-          htmlFor="resume-file"
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-10 text-center text-sm ${
-            dragOver ? 'border-[var(--copper)] bg-muted/60' : 'border-border bg-background hover:border-primary'
+        <div
+          className={`flex flex-col items-center justify-center rounded-xl border border-dashed px-4 py-10 text-center text-sm ${
+            dragOver ? 'border-[var(--copper)] bg-muted/60' : 'border-border bg-background'
           } ${busy ? 'pointer-events-none opacity-70' : ''}`}
           onDragOver={(e) => {
             e.preventDefault()
@@ -300,9 +300,15 @@ export function ResumePage() {
           <span className="mt-1 text-muted-foreground">
             {fileName && busy ? fileName : 'or drop it on this box'}
           </span>
-          <span className="mt-4 inline-flex h-10 items-center rounded-xl border border-border px-4 text-sm font-medium">
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4 rounded-xl"
+            disabled={busy}
+            onClick={() => inputRef.current?.click()}
+          >
             Browse files
-          </span>
+          </Button>
           <input
             id="resume-file"
             ref={inputRef}
@@ -315,7 +321,7 @@ export function ResumePage() {
               if (f) void onFile(f)
             }}
           />
-        </label>
+        </div>
         {error ? <p className="text-[var(--copper)]">{error}</p> : null}
       </Card>
       <Card className="space-y-3">
