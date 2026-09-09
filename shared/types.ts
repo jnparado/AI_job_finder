@@ -78,6 +78,14 @@ export interface ParsedResume {
   summary?: string
 }
 
+export interface WorkshopNotes {
+  employmentStatus?: string
+  urgency?: string
+  usedAiTools?: string
+  searchFriction?: string
+  help?: string
+}
+
 export interface CandidateProfile {
   id?: string
   firstName: string
@@ -112,6 +120,7 @@ export interface CandidateProfile {
   locale?: string
   identities?: SocialIdentity[]
   socialLinks?: Record<string, string>
+  workshop?: WorkshopNotes
 }
 
 export interface SocialIdentity {
@@ -236,6 +245,7 @@ export function emptyProfile(): CandidateProfile {
     locale: '',
     identities: [],
     socialLinks: {},
+    workshop: {},
   }
 }
 

@@ -21,7 +21,7 @@ export function AboutPage() {
   return (
     <Doc title="About">
       <p>
-        Atelier is an AI job assistant. Candidates match against authorized listings, prepare an application, and send it only after they approve the packet. Employers post a role and review those packets.
+        Atelier is AI-powered job matching. Candidates match against authorized listings, prepare an application, and send it only after they approve the packet. Employers post a role and review those packets.
       </p>
       <p>
         We do not scrape LinkedIn, Indeed, or Upwork. We do not auto-apply. Scores are weighed against a real profile — not invented skills.
@@ -48,7 +48,7 @@ export function PrivacyPage() {
   return (
     <Doc title="Privacy Policy" updated="8 September 2026">
       <p>
-        This policy explains how Atelier, an independent AI job assistant at{' '}
+        This policy explains how Atelier, an independent AI-powered job matching product at{' '}
         <a href="https://ai-job-finder-ecru.vercel.app/" className="text-[#c6a15b] hover:text-[var(--paper)]">
           ai-job-finder-ecru.vercel.app
         </a>
@@ -139,7 +139,7 @@ export function TermsPage() {
   return (
     <Doc title="Terms of Use" updated="8 September 2026">
       <p>
-        These terms govern your use of Atelier, an independent AI job assistant at{' '}
+        These terms govern your use of Atelier, an independent AI-powered job matching product at{' '}
         <a href="https://ai-job-finder-ecru.vercel.app/" className="text-[#c6a15b] hover:text-[var(--paper)]">
           ai-job-finder-ecru.vercel.app
         </a>

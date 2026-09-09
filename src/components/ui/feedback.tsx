@@ -81,9 +81,9 @@ export function BrandMark({ light = false }: { light?: boolean }) {
       <div>
         <div className={`font-serif text-lg leading-none ${light ? 'text-[var(--paper)]' : ''}`}>Atelier</div>
         <div
-          className={`mt-1 text-[0.62rem] uppercase tracking-[0.16em] ${light ? 'text-[#c9c0ae]' : 'text-muted-foreground'}`}
+          className={`mt-1 text-[0.58rem] uppercase tracking-[0.1em] ${light ? 'text-[#c9c0ae]' : 'text-muted-foreground'}`}
         >
-          AI Job Assistant
+          AI-Powered Job Matching
         </div>
       </div>
     </div>

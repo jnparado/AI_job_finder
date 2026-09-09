@@ -25,7 +25,7 @@ export function LandingPage() {
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:py-24">
         <div>
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-[#c6a15b]">
-            Atelier · AI Job Assistant
+            Atelier · AI-Powered Job Matching
           </p>
           <span className="mt-5 block h-px w-12 bg-[#c6a15b]" />
           <h1 className="mt-6 max-w-[12ch] text-5xl leading-[1.02] sm:text-7xl">

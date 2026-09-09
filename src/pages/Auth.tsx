@@ -10,10 +10,11 @@ import { useAuth } from '@/lib/auth'
 import { rememberIntendedAccount, supabase, takeIntendedAccount, upsertOwnProfile } from '@/lib/supabase'
 import { authHero, brandSrc, localBrandPath } from '@/lib/brandAssets'
 import { emptyProfile } from '@shared/types'
+import type { CandidateProfile } from '@shared/types'
 import { SocialAuth } from '@/components/social/SocialAuth'
 import { api } from '@/lib/api'
 import { identityFromUser } from '@/lib/identity'
-import type { CandidateProfile } from '@shared/types'
+import { CandidateWorkshop } from '@/pages/CandidateWorkshop'
 
 const REMEMBER_KEY = 'atelier-remember-email'
 
@@ -122,6 +123,12 @@ export function LoginPage() {
 }
 
 export function RegisterPage() {
+  const [params] = useSearchParams()
+  if (params.get('role') === 'employer') return <EmployerRegisterPage />
+  return <CandidateWorkshop />
+}
+
+function EmployerRegisterPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const { signUpEmail, configured, destinationFor, user, loading } = useAuth()

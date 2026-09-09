@@ -89,6 +89,8 @@ function socialMetaFromParsed(parsed: unknown) {
     locale: String(meta.locale ?? ''),
     identities: Array.isArray(meta.identities) ? (meta.identities as SocialIdentity[]) : [],
     socialLinks: meta.socialLinks && typeof meta.socialLinks === 'object' ? (meta.socialLinks as Record<string, string>) : {},
+    workshop:
+      meta.workshop && typeof meta.workshop === 'object' ? (meta.workshop as CandidateProfile['workshop']) : undefined,
   }
 }
 
@@ -101,6 +103,7 @@ function withSocialMeta(parsed: CandidateProfile['parsedProfile'], profile: Cand
       locale: profile.locale ?? '',
       identities: profile.identities ?? [],
       socialLinks: profile.socialLinks ?? {},
+      workshop: profile.workshop ?? {},
     },
   }
 }
@@ -145,6 +148,7 @@ function profileFromRow(row: Record<string, unknown>, email: string): CandidateP
       row.social_links && typeof row.social_links === 'object'
         ? (row.social_links as Record<string, string>)
         : packed.socialLinks ?? {},
+    workshop: packed.workshop,
   }
 }
 

@@ -209,7 +209,7 @@ function MarketingFooter() {
         <div className="mt-14 flex flex-col gap-4 border-t border-[#c9c0ae22] pt-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm text-[#9a9386]">
-              © {new Date().getFullYear()} Atelier, AI Job Assistant. All rights reserved.
+              © {new Date().getFullYear()} Atelier, AI-Powered Job Matching. All rights reserved.
             </p>
             <p className="mt-1 text-xs leading-relaxed text-[#6f6a60]">
               An independent product — not affiliated with other companies named Atelier.

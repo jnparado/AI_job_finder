@@ -332,6 +332,18 @@ with check (bucket_id = 'resumes' and auth.uid()::text = (storage.foldername(nam
 
 -- Employer accounts: post jobs on Atelier; approved candidate packets land in their inbox.
 alter table public.profiles add column if not exists role text default 'candidate';
+update public.profiles
+set role = case
+  when lower(trim(coalesce(role, ''))) in ('employer', 'hiring') then 'employer'
+  else 'candidate'
+end
+where role is null or lower(trim(coalesce(role, ''))) not in ('candidate', 'employer');
+alter table public.profiles alter column role set default 'candidate';
+alter table public.profiles alter column role set not null;
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles
+  add constraint profiles_role_check check (role in ('candidate', 'employer'));
+comment on column public.profiles.role is 'Account type: candidate or employer.';
 alter table public.profiles add column if not exists company_name text;
 alter table public.profiles add column if not exists company_website text;
 alter table public.profiles add column if not exists avatar_url text;
