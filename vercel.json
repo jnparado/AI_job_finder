@@ -7,14 +7,18 @@
     }
   ],
   "functions": {
-    "api/[...route].ts": {
+    "api/index.ts": {
       "maxDuration": 60,
       "includeFiles": "dist-api/**"
     }
   },
   "rewrites": [
     {
-      "source": "/((?!api/|films/|ads/|brand/|favicon.svg$|sitemap.xml$|robots.txt$|googled5f79ee15542f52d.html$).*)",
+      "source": "/api/(.*)",
+      "destination": "/api"
+    },
+    {
+      "source": "/((?!api/?$|api/|films/|ads/|brand/|favicon.svg$|sitemap.xml$|robots.txt$|googled5f79ee15542f52d.html$).*)",
       "destination": "/index.html"
     }
   ]
