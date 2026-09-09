@@ -1,3 +1,4 @@
+import { isStaffRole, parseAccountRole } from '../shared/types'
 import { supabaseAdmin } from './supabase'
 
 function normalizeEmail(email: string): string {
@@ -18,10 +19,12 @@ export async function ensureProfileRow(
   extras?: { role?: 'candidate' | 'employer'; companyName?: string },
 ) {
   if (!supabaseAdmin) return
+  const { data: existing } = await supabaseAdmin.from('profiles').select('role').eq('id', userId).maybeSingle()
+  const keepStaff = isStaffRole(parseAccountRole(existing?.role))
   const row: Record<string, unknown> = { id: userId, email }
-  if (extras?.role) row.role = extras.role
+  if (extras?.role && !keepStaff) row.role = extras.role
   if (extras?.companyName) row.company_name = extras.companyName
-  if (extras?.role === 'employer') row.onboarding_completed = Boolean(extras.companyName)
+  if (extras?.role === 'employer' && !keepStaff) row.onboarding_completed = Boolean(extras.companyName)
   const { error } = await supabaseAdmin.from('profiles').upsert(row, { onConflict: 'id' })
   if (error) {
     const { error: fallback } = await supabaseAdmin.from('profiles').upsert({ id: userId, email }, { onConflict: 'id' })

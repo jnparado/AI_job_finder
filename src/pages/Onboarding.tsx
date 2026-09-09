@@ -1,9 +1,8 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
-import { CandidateWorkshop } from '@/pages/CandidateWorkshop'
 
+/** Old path from before signup lived on /register. Anyone with an account goes to their home. */
 export function OnboardingPage() {
-  const { profile } = useAuth()
-  if (profile.role === 'employer') return <Navigate to="/employer" replace />
-  return <CandidateWorkshop />
+  const { destinationFor, profile } = useAuth()
+  return <Navigate to={destinationFor(profile)} replace />
 }

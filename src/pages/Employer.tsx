@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Inbox, MessagesSquare, Plus } from 'lucide-react'
 import type { Plan, Subscription } from '@shared/billing'
@@ -32,12 +32,16 @@ interface InboxRow {
 }
 
 export function EmployerSetupPage() {
-  const { profile, saveProfile } = useAuth()
+  const { profile, saveProfile, destinationFor } = useAuth()
   const navigate = useNavigate()
   const [companyName, setCompanyName] = useState(profile.companyName ?? '')
   const [companyWebsite, setCompanyWebsite] = useState(profile.companyWebsite ?? '')
   const [firstName, setFirstName] = useState(profile.firstName)
   const [lastName, setLastName] = useState(profile.lastName)
+
+  if (profile.role !== 'employer') {
+    return <Navigate to={destinationFor(profile)} replace />
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()

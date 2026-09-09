@@ -9,6 +9,7 @@ export type CareerLevel =
 export type WorkMode = 'remote' | 'hybrid' | 'onsite'
 export type EmploymentType = 'full-time' | 'part-time' | 'contract' | 'freelance'
 export type Currency = 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'PHP' | 'CHF'
+export type AccountRole = 'candidate' | 'employer' | 'admin' | 'super_admin'
 
 export type MatchCategory =
   | 'excellent'
@@ -113,7 +114,7 @@ export interface CandidateProfile {
   experience: ExperienceEntry[]
   onboardingCompleted: boolean
   parsedProfile?: ParsedResume | null
-  role?: 'candidate' | 'employer'
+  role?: AccountRole
   companyName?: string
   companyWebsite?: string
   avatarUrl?: string
@@ -210,6 +211,21 @@ export function categoryLabel(cat: MatchCategory): string {
     poor: 'Poor Match',
   }
   return labels[cat]
+}
+
+export function parseAccountRole(value: unknown): AccountRole {
+  const v = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+  if (v === 'employer' || v === 'hiring') return 'employer'
+  if (v === 'admin') return 'admin'
+  if (v === 'super_admin' || v === 'superadmin') return 'super_admin'
+  return 'candidate'
+}
+
+export function isStaffRole(role?: string): boolean {
+  return role === 'admin' || role === 'super_admin'
 }
 
 export function emptyProfile(): CandidateProfile {

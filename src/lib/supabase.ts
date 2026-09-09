@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { isStaffRole, parseAccountRole } from '@shared/types'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -42,6 +43,12 @@ export async function upsertOwnProfile(input: {
   companyName?: string
 }) {
   if (!supabase) return
+  const { data: existing } = await supabase.from('profiles').select('role').eq('id', input.id).maybeSingle()
+  if (isStaffRole(parseAccountRole(existing?.role))) {
+    const { error } = await supabase.from('profiles').upsert({ id: input.id, email: input.email }, { onConflict: 'id' })
+    if (error) console.warn('upsertOwnProfile', error.message)
+    return
+  }
   const role = input.role === 'employer' ? 'employer' : 'candidate'
   const row: Record<string, unknown> = {
     id: input.id,

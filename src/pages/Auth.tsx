@@ -9,7 +9,7 @@ import { BrandMark } from '@/components/ui/feedback'
 import { useAuth } from '@/lib/auth'
 import { rememberIntendedAccount, supabase, takeIntendedAccount, upsertOwnProfile } from '@/lib/supabase'
 import { authHero, brandSrc, localBrandPath } from '@/lib/brandAssets'
-import { emptyProfile } from '@shared/types'
+import { emptyProfile, isStaffRole } from '@shared/types'
 import type { CandidateProfile } from '@shared/types'
 import { SocialAuth } from '@/components/social/SocialAuth'
 import { api } from '@/lib/api'
@@ -418,7 +418,7 @@ export function CallbackPage() {
                   body: JSON.stringify(identityFromUser(data.session.user)),
                 })
               : await refreshProfile()
-            if (metaRole === 'employer' && profile.role !== 'employer' && !profile.onboardingCompleted) {
+            if (metaRole === 'employer' && profile.role !== 'employer' && !isStaffRole(profile.role) && !profile.onboardingCompleted) {
               profile = await api<CandidateProfile>('/api/profile', {
                 method: 'POST',
                 body: JSON.stringify({

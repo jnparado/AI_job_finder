@@ -15,7 +15,7 @@ import { ResumePage } from '@/pages/Resume'
 import { ProfilePage } from '@/pages/Profile'
 import { CareerPage, InterviewPage, SettingsPage } from '@/pages/Settings'
 import { BillingPage } from '@/pages/Billing'
-import { RequireEmployer, RequireOnboarding, RequireSession } from '@/pages/guards'
+import { RequireEmployer, RequireOnboarding, RequireSession, RequireStaff } from '@/pages/guards'
 import { EmployerShell } from '@/components/layout/EmployerShell'
 import {
   EmployerApplicationPage,
@@ -25,6 +25,7 @@ import {
   EmployerPostJobPage,
   EmployerSetupPage,
 } from '@/pages/Employer'
+import { AdminPage } from '@/pages/Admin'
 import { MetaPixel } from '@/components/social/MetaPixel'
 import { GoogleTags } from '@/components/social/GoogleTags'
 import { JsonLd } from '@/components/social/JsonLd'
@@ -88,6 +89,9 @@ export default function App() {
                 <Route path="messages/:id" element={<EmployerThreadPage />} />
                 <Route path="billing" element={<BillingPage />} />
               </Route>
+            </Route>
+            <Route element={<RequireStaff />}>
+              <Route path="/admin" element={<AdminPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

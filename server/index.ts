@@ -21,7 +21,7 @@ import type {
   PreparedPacket,
   ThreadMessage,
 } from '../shared/types'
-import { displayName, emptyProfile, type SocialIdentity } from '../shared/types'
+import { displayName, emptyProfile, isStaffRole, parseAccountRole, type SocialIdentity } from '../shared/types'
 import { DEMO_EMPLOYER, DEMO_USER, memory, type StoredApplication } from './memory'
 import { extractFileText, parseResumeSmart } from './resume'
 import { confirmUserEmail, ensureProfileRow, registerUser } from './authUsers'
@@ -139,7 +139,7 @@ function profileFromRow(row: Record<string, unknown>, email: string): CandidateP
     experience: [],
     onboardingCompleted: Boolean(row.onboarding_completed),
     parsedProfile: parsed,
-    role: row.role === 'employer' ? 'employer' : 'candidate',
+    role: parseAccountRole(row.role),
     companyName: String(row.company_name ?? ''),
     companyWebsite: String(row.company_website ?? ''),
     avatarUrl: String(row.avatar_url ?? packed.avatarUrl ?? ''),
@@ -415,7 +415,7 @@ async function saveProfile(user: AuthUser, profile: CandidateProfile) {
     onboarding_completed: profile.onboardingCompleted,
     resume_text: profile.resumeText,
     parsed_profile: withSocialMeta(profile.parsedProfile, profile),
-    role: profile.role ?? 'candidate',
+    role: parseAccountRole(profile.role),
     company_name: profile.companyName ?? '',
     company_website: profile.companyWebsite ?? '',
     avatar_url: profile.avatarUrl ?? '',
@@ -798,6 +798,8 @@ app.post('/api/profile', async (c) => {
   const body = (await c.req.json()) as Partial<CandidateProfile>
   const current = await loadProfile(user)
   const next = { ...current, ...body, email: body.email || current.email || user.email }
+  if (isStaffRole(current.role)) next.role = current.role
+  else next.role = body.role === 'employer' || (body.role === undefined && current.role === 'employer') ? 'employer' : 'candidate'
   return c.json(await saveProfile(user, next))
 })
 

@@ -4,7 +4,7 @@ import { ArrowLeft, Check, Search, X } from 'lucide-react'
 import type { CareerLevel, CandidateProfile, Currency, EmploymentType, WorkMode, WorkshopNotes } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { BrandMark } from '@/components/ui/feedback'
+import { BrandMark, LoadingScreen } from '@/components/ui/feedback'
 import { CountrySelect } from '@/components/ui/country-select'
 import { useAuth } from '@/lib/auth'
 import { rememberIntendedAccount } from '@/lib/supabase'
@@ -144,7 +144,7 @@ function toProfile(draft: Draft, base: CandidateProfile): CandidateProfile {
 }
 
 export function CandidateWorkshop() {
-  const { user, demo, profile, saveProfile, signUpEmail, configured } = useAuth()
+  const { user, demo, profile, saveProfile, signUpEmail, configured, destinationFor, loading } = useAuth()
   const navigate = useNavigate()
   const signedIn = Boolean(user || demo)
   const [{ draft, step: savedStep }] = useState(loadDraft)
@@ -165,12 +165,8 @@ export function CandidateWorkshop() {
     sessionStorage.setItem(STEP_KEY, String(step))
   }, [d, step])
 
-  if (profile.role === 'employer' && signedIn) {
-    return <Navigate to="/employer" replace />
-  }
-  if (signedIn && profile.onboardingCompleted && profile.desiredTitle) {
-    return <Navigate to="/app" replace />
-  }
+  if (loading) return <LoadingScreen label="Opening sign up…" />
+  if (signedIn) return <Navigate to={destinationFor(profile)} replace />
 
   function patch(next: Partial<Draft>) {
     setD((cur) => ({ ...cur, ...next }))
@@ -198,14 +194,10 @@ export function CandidateWorkshop() {
     setError('')
     setBusy(true)
     try {
-      if (!signedIn) {
-        if (!configured) throw new Error('Add your Supabase keys in .env, then restart the app.')
-        if (password.length < 8) throw new Error('Use at least 8 characters for the password.')
-        const created = await signUpEmail(d.email, password, { role: 'candidate' })
-        await saveProfile(toProfile(d, created))
-      } else {
-        await saveProfile(toProfile(d, profile))
-      }
+      if (!configured) throw new Error('Add your Supabase keys in .env, then restart the app.')
+      if (password.length < 8) throw new Error('Use at least 8 characters for the password.')
+      const created = await signUpEmail(d.email, password, { role: 'candidate' })
+      await saveProfile(toProfile(d, created))
       sessionStorage.removeItem(DRAFT_KEY)
       sessionStorage.removeItem(STEP_KEY)
       navigate('/app', { replace: true })
@@ -588,58 +580,47 @@ export function CandidateWorkshop() {
 
           {step === 20 ? (
             <Ask
-              title={signedIn ? 'The workshop is ready.' : 'Open your workshop.'}
-              lead={
-                signedIn
-                  ? 'We will save this profile and start matching authorized listings against it.'
-                  : 'Create an account so the packet, scores, and messages stay with you. Nothing is sent until you approve.'
-              }
+              title="Open your workshop."
+              lead="Create an account so the packet, scores, and messages stay with you. Nothing is sent until you approve."
             >
-              {signedIn ? (
-                <div>
-                  {error ? <p className="mb-3 text-sm text-[#8f4326]">{error}</p> : null}
-                  <Continue label={busy ? 'Saving…' : 'Enter the workshop'} disabled={busy} onClick={() => void finishAccount()} />
-                </div>
-              ) : (
-                <form
-                  className="space-y-3 text-left"
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    void finishAccount()
-                  }}
-                >
-                  <Input
-                    className="h-12 rounded-2xl"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="Email"
-                    value={d.email}
-                    onChange={(e) => patch({ email: e.target.value })}
-                    required
-                  />
-                  <Input
-                    className="h-12 rounded-2xl"
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="Password (8+ characters)"
-                    minLength={8}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                  {error ? <p className="text-sm text-[#8f4326]">{error}</p> : null}
-                  <Button variant="copper" className="h-12 w-full rounded-2xl" type="submit" disabled={busy}>
-                    {busy ? 'Creating…' : 'Create account'}
-                  </Button>
-                  <SocialAuth disabled={busy} />
-                  <p className="text-center text-sm text-muted-foreground">
-                    Already have an account?{' '}
-                    <Link to="/login" className="font-medium text-[var(--copper)]">
-                      Sign in
-                    </Link>
-                  </p>
-                </form>
-              )}
+              <form
+                className="space-y-3 text-left"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  void finishAccount()
+                }}
+              >
+                <Input
+                  className="h-12 rounded-2xl"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="Email"
+                  value={d.email}
+                  onChange={(e) => patch({ email: e.target.value })}
+                  required
+                />
+                <Input
+                  className="h-12 rounded-2xl"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Password (8+ characters)"
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                {error ? <p className="text-sm text-[#8f4326]">{error}</p> : null}
+                <Button variant="copper" className="h-12 w-full rounded-2xl" type="submit" disabled={busy}>
+                  {busy ? 'Creating…' : 'Create account'}
+                </Button>
+                <SocialAuth disabled={busy} />
+                <p className="text-center text-sm text-muted-foreground">
+                  Already have an account?{' '}
+                  <Link to="/login" className="font-medium text-[var(--copper)]">
+                    Sign in
+                  </Link>
+                </p>
+              </form>
             </Ask>
           ) : null}
         </div>

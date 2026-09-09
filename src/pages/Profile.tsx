@@ -70,9 +70,9 @@ export function ProfilePage() {
             </div>
           </div>
           <Button variant="copper" asChild>
-            <Link to="/onboarding">
+            <Link to="/app/settings">
               <Pencil className="size-4" />
-              Edit profile
+              Account settings
             </Link>
           </Button>
         </div>

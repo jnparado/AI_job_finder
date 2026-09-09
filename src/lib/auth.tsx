@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Provider, User } from '@supabase/supabase-js'
 import type { CandidateProfile } from '@shared/types'
-import { emptyProfile } from '@shared/types'
+import { emptyProfile, isStaffRole } from '@shared/types'
 import { api, getDemoToken, setDemoToken } from './api'
 import { identityFromUser } from './identity'
 import { oauthOptions } from './social'
@@ -140,8 +140,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       configured: supabaseConfigured,
       refreshProfile,
       destinationFor: (p = profile) => {
+        if (isStaffRole(p.role)) return '/admin'
         if (p.role === 'employer') return p.companyName || p.onboardingCompleted ? '/employer' : '/employer/setup'
-        return p.onboardingCompleted ? '/app' : '/onboarding'
+        return '/app'
       },
       saveProfile: async (patch) => {
         const next = await api<CandidateProfile>('/api/profile', {
@@ -208,7 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!user) throw new Error('Account created, but sign in failed. Try logging in.')
         await upsertOwnProfile({ id: user.id, email: user.email ?? email, role, companyName })
         const profile = await establish(user)
-        if (role === 'employer') {
+        if (role === 'employer' && !isStaffRole(profile.role)) {
           try {
             const next = await api<CandidateProfile>('/api/profile', {
               method: 'POST',
