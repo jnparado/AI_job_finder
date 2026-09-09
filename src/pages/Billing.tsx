@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, CreditCard } from 'lucide-react'
-import type { BillingInterval, Plan, Subscription } from '@shared/billing'
-import { formatMoney, isPaidPlan } from '@shared/billing'
+import type { Plan, Subscription } from '@shared/billing'
+import { formatMoney, isEmployerPromo, isPaidPlan } from '@shared/billing'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
@@ -21,7 +21,6 @@ export function BillingPage() {
   const { profile } = useAuth()
   const qc = useQueryClient()
   const [params, setParams] = useSearchParams()
-  const [interval, setInterval] = useState<BillingInterval>('month')
   const [notice, setNotice] = useState('')
   const role = profile.role === 'employer' ? 'employer' : 'candidate'
 
@@ -64,7 +63,7 @@ export function BillingPage() {
   }, [params, setParams])
 
   const checkout = useMutation({
-    mutationFn: (body: { planId: string; interval: BillingInterval; provider: 'card' | 'stripe' | 'paypal' }) =>
+    mutationFn: (body: { planId: string; interval: 'year'; provider: 'card' | 'stripe' | 'paypal' }) =>
       api<{ url: string; demo?: boolean; note?: string }>('/api/billing/checkout', {
         method: 'POST',
         body: JSON.stringify(body),
@@ -93,11 +92,27 @@ export function BillingPage() {
       <PageHeader
         kicker="Billing"
         title={role === 'employer' ? 'Hiring subscription' : 'Candidate subscription'}
-        description="Pay with card through Stripe, or with PayPal. Apple Pay and Google Pay appear in Stripe Checkout when available."
+        description={
+          role === 'employer'
+            ? 'New hiring teams get the full Hiring plan free for one year. After that, plans are yearly — there is no monthly option.'
+            : 'Candidate Plus is billed yearly. There is no monthly plan.'
+        }
       />
 
       {notice ? (
         <Card className="border-[var(--copper)]/40 bg-[var(--copper)]/5 text-sm">{notice}</Card>
+      ) : null}
+
+      {isEmployerPromo(current) ? (
+        <Card className="border-[#c6a15b55] bg-[var(--forest)] text-[var(--paper)]">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Employer offer</p>
+          <h2 className="mt-2 text-2xl">Hiring is free for 1 year</h2>
+          <p className="mt-2 max-w-xl text-sm text-[#d8d0c0]">
+            Unlimited roles and inbox until{' '}
+            {current?.currentPeriodEnd ? new Date(current.currentPeriodEnd).toLocaleDateString() : 'your first anniversary'}.
+            No monthly billing.
+          </p>
+        </Card>
       ) : null}
 
       <Card className="flex flex-wrap items-center justify-between gap-3">
@@ -105,30 +120,25 @@ export function BillingPage() {
           <p className="eyebrow">Current plan</p>
           <h2 className="mt-1 text-2xl">{billing.data?.plan?.name ?? 'Free'}</h2>
           <p className="text-sm text-muted-foreground">
-            {current?.provider ? `Paid with ${current.provider === 'demo' ? 'demo checkout' : current.provider}` : 'No payment method on file'}
+            {current?.provider === 'promo'
+              ? 'First year free'
+              : current?.provider
+                ? `Paid with ${current.provider === 'demo' ? 'demo checkout' : current.provider}`
+                : 'No payment method on file'}
             {current?.currentPeriodEnd ? ` · renews ${new Date(current.currentPeriodEnd).toLocaleDateString()}` : ''}
           </p>
         </div>
-        {current && isPaidPlan(current.planId) && current.status !== 'canceled' ? (
+        {current && isPaidPlan(current.planId) && current.status !== 'canceled' && !isEmployerPromo(current) ? (
           <Button variant="outline" onClick={() => cancel.mutate()} disabled={cancel.isPending}>
             Cancel subscription
           </Button>
         ) : null}
       </Card>
 
-      <div className="flex gap-2">
-        <Button variant={interval === 'month' ? 'default' : 'outline'} onClick={() => setInterval('month')}>
-          Monthly
-        </Button>
-        <Button variant={interval === 'year' ? 'default' : 'outline'} onClick={() => setInterval('year')}>
-          Yearly · 2 months free
-        </Button>
-      </div>
-
       <div className="grid gap-4 lg:grid-cols-2">
         {plans.map((plan) => {
           const active = current?.planId === plan.id && current.status !== 'canceled'
-          const amount = interval === 'year' ? plan.yearlyCents : plan.monthlyCents
+          const amount = plan.yearlyCents
           return (
             <Card key={plan.id} className={plan.highlighted ? 'border-[var(--forest)]' : ''}>
               <div className="flex items-start justify-between gap-3">
@@ -139,9 +149,11 @@ export function BillingPage() {
                 {active ? <Badge tone="good">Active</Badge> : plan.highlighted ? <Badge tone="copper">Popular</Badge> : null}
               </div>
               <p className="mt-4 font-serif text-4xl">
-                {formatMoney(amount)}
-                {amount > 0 ? (
-                  <span className="ml-1 text-base font-sans text-muted-foreground">/{interval === 'year' ? 'year' : 'mo'}</span>
+                {active && isEmployerPromo(current) && plan.id === 'employer-hiring'
+                  ? 'Free year'
+                  : formatMoney(amount)}
+                {amount > 0 && !(active && isEmployerPromo(current) && plan.id === 'employer-hiring') ? (
+                  <span className="ml-1 text-base font-sans text-muted-foreground">/year</span>
                 ) : null}
               </p>
               <ul className="mt-4 space-y-2 text-sm">
@@ -158,16 +170,16 @@ export function BillingPage() {
                     variant="copper"
                     className="w-full"
                     disabled={checkout.isPending}
-                    onClick={() => checkout.mutate({ planId: plan.id, interval, provider: 'card' })}
+                    onClick={() => checkout.mutate({ planId: plan.id, interval: 'year', provider: 'card' })}
                   >
                     <CreditCard className="size-4" />
-                    Pay with card
+                    Pay yearly with card
                   </Button>
                   <Button
                     variant="outline"
                     className="w-full"
                     disabled={checkout.isPending}
-                    onClick={() => checkout.mutate({ planId: plan.id, interval, provider: 'stripe' })}
+                    onClick={() => checkout.mutate({ planId: plan.id, interval: 'year', provider: 'stripe' })}
                   >
                     Checkout with Stripe
                   </Button>
@@ -175,7 +187,7 @@ export function BillingPage() {
                     variant="outline"
                     className="w-full bg-[#ffc439] text-[#003087] hover:bg-[#f5b82e]"
                     disabled={checkout.isPending}
-                    onClick={() => checkout.mutate({ planId: plan.id, interval, provider: 'paypal' })}
+                    onClick={() => checkout.mutate({ planId: plan.id, interval: 'year', provider: 'paypal' })}
                   >
                     PayPal
                   </Button>
@@ -185,7 +197,7 @@ export function BillingPage() {
                   className="mt-6 w-full"
                   variant="outline"
                   disabled={checkout.isPending}
-                  onClick={() => checkout.mutate({ planId: plan.id, interval, provider: 'card' })}
+                  onClick={() => checkout.mutate({ planId: plan.id, interval: 'year', provider: 'card' })}
                 >
                   Stay on free
                 </Button>

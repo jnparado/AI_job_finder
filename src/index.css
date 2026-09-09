@@ -141,6 +141,16 @@ button {
     animation: none;
   }
 }
+
+/* Safari paints a black frame when <video> is clipped by overflow+radius on a parent. */
+.atelier-player {
+  display: block;
+  background: #0d1b16;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,

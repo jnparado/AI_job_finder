@@ -416,6 +416,15 @@ create policy "public read brand files"
 on storage.objects for select
 using (bucket_id = 'brand');
 
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('films', 'films', true, 52428800)
+on conflict (id) do update set public = true, file_size_limit = 52428800;
+
+drop policy if exists "public read film files" on storage.objects;
+create policy "public read film files"
+on storage.objects for select
+using (bucket_id = 'films');
+
 -- Two-way messages on Atelier applications (candidate ↔ employer). API uses the service role.
 create table if not exists public.thread_messages (
   id uuid primary key default gen_random_uuid(),

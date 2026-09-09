@@ -5,9 +5,49 @@ Do not claim auto-apply on LinkedIn, Indeed, or Upwork.
 Replace the quiet tone bed with licensed music before you spend.
 
 ------------------------------------------------------------------------
+FACEBOOK PAGE · candidate · organic post or boost
+File: atelier-fb-page-candidate.mp4 (16:9 · 15s) — Page video / Watch
+      atelier-fb-feed.mp4 (1:1 · 15s) — Feed
+      atelier-fb-feed-4x5-candidate.mp4 (4:5 · 15s) — Feed ads
+      atelier-fb-reels-candidate.mp4 (9:16 · 15s) — Reels / Stories
+
+Primary text
+The workshop scores roles to your real resume, drafts the packet, and waits.
+Nothing leaves until you approve. Then you can message the employer on Atelier.
+
+Headline
+Jobs that actually fit you
+
+Description
+AI-Powered Job Matching. You approve every send.
+
+CTA button
+Sign up
+
+------------------------------------------------------------------------
+FACEBOOK PAGE · employer · organic post or boost
+File: atelier-fb-page-employer.mp4 (16:9 · 15s) — Page video / Watch
+      atelier-fb-feed.mp4 (1:1 · 15s) — Feed
+      atelier-fb-feed-4x5-employer.mp4 (4:5 · 15s) — Feed ads
+      atelier-fb-reels-employer.mp4 (9:16 · 15s) — Reels / Stories
+
+Primary text
+Post a role on Atelier. Candidates who match send a packet only after they approve.
+Review, message, and decide in one inbox — people who meant to apply.
+
+Headline
+Hire people who meant to apply
+
+Description
+Packets, not spray. AI-Powered Job Matching.
+
+CTA button
+Sign up
+
+------------------------------------------------------------------------
 CANDIDATE · Meta (Facebook / Instagram) · Reels, Stories, Feed
-File: atelier-ad-shorts-candidate.mp4 (9:16) or atelier-ad-feed-4x5-candidate.mp4 (4:5)
-      or atelier-ad-feed-square.mp4 (1:1)
+File: atelier-fb-reels-candidate.mp4 (9:16) or atelier-fb-feed-4x5-candidate.mp4 (4:5)
+      or atelier-fb-feed.mp4 (1:1)
 
 Primary text
 The workshop scores roles to your real resume, drafts the packet, and waits.
@@ -24,7 +64,8 @@ Sign up
 
 ------------------------------------------------------------------------
 EMPLOYER · Meta · Reels, Stories, Feed
-File: atelier-ad-shorts-employer.mp4 (9:16) or atelier-ad-feed-4x5-employer.mp4 (4:5)
+File: atelier-fb-reels-employer.mp4 (9:16) or atelier-fb-feed-4x5-employer.mp4 (4:5)
+      or atelier-fb-feed.mp4 (1:1)
 
 Primary text
 Post a role on Atelier. Candidates who match send a packet only after they approve.
@@ -65,5 +106,5 @@ On-screen text is already in the video. Caption can match the Meta primary text.
 
 ------------------------------------------------------------------------
 LINKEDIN
-File: atelier-ad-feed-square.mp4 (1:1) or 16:9 film
+File: atelier-fb-feed.mp4 (1:1) or atelier-fb-page-candidate.mp4 / atelier-fb-page-employer.mp4 (16:9)
 Intro text: same as Meta primary. CTA: Sign up. Objective: website visits.

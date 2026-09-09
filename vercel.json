@@ -1,7 +1,14 @@
 {
+  "redirects": [
+    {
+      "source": "/ads/:path*",
+      "destination": "/films/:path*",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
-      "source": "/((?!api/|sitemap.xml$|robots.txt$|googled5f79ee15542f52d.html$).*)",
+      "source": "/((?!api/|films/|ads/|brand/|favicon.svg$|sitemap.xml$|robots.txt$|googled5f79ee15542f52d.html$).*)",
       "destination": "/index.html"
     }
   ]

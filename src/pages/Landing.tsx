@@ -108,8 +108,8 @@ export function LandingPage() {
         kicker="Brand film"
         title="Atelier in 20 seconds"
         caption="Matching, approval, and hiring — in twenty seconds."
-        src="/ads/atelier-ad-16x9.mp4"
-        poster="/ads/atelier-ad-01-hero.jpg"
+        src="atelier-ad-16x9.mp4"
+        poster="atelier-ad-01-hero.jpg"
       />
 
       <InviteClose />
@@ -279,8 +279,8 @@ export function CandidateLandingPage() {
         kicker="Candidate film"
         title="Match. Prepare. Approve."
         caption="The workshop searches, scores, and drafts. You decide what leaves."
-        src="/ads/atelier-ad-candidate.mp4"
-        poster="/ads/atelier-ad-candidate-hero.jpg"
+        src="atelier-ad-candidate.mp4"
+        poster="atelier-ad-candidate-hero.jpg"
       />
       <SocialAdKit audience="candidate" />
 
@@ -450,8 +450,8 @@ export function EmployerLandingPage() {
         kicker="Employer film"
         title="Built for hiring teams"
         caption="Post a role, collect approved packets, and decide who to meet."
-        src="/ads/atelier-ad-employer.mp4"
-        poster="/ads/atelier-ad-employer-hero.jpg"
+        src="atelier-ad-employer.mp4"
+        poster="atelier-ad-employer-hero.jpg"
       />
       <SocialAdKit audience="employer" />
       <WorkshopFaq
@@ -478,7 +478,7 @@ export function EmployerLandingPage() {
           },
           {
             q: 'Is there a fee to post?',
-            a: 'You can post and review packets from an employer account. Billing, if you add it later, lives in Settings — not as a surprise checkout on this page.',
+            a: 'Hiring is free for your first year — unlimited roles and inbox. After that, the Hiring plan is billed yearly. There is no monthly subscription.',
           },
         ]}
       />

@@ -37,6 +37,7 @@ import {
   confirmStripeSession,
   createPayPalCheckout,
   createStripeCheckout,
+  grantEmployerYearPromo,
   handleStripeWebhook,
   loadSubscription,
 } from './billing'
@@ -193,6 +194,21 @@ async function notifyUser(userId: string, title: string, body: string, href?: st
     read: false,
   })
   if (error) console.warn('notifyUser', error.message)
+}
+
+const EMPLOYER_PROMO_TITLE = 'Hiring is free for 1 year'
+
+async function startEmployerPromo(userId: string) {
+  const { granted } = await grantEmployerYearPromo(userId)
+  if (!granted) return
+  const already = memory.getNotifications(userId).some((n) => n.title === EMPLOYER_PROMO_TITLE)
+  if (already) return
+  await notifyUser(
+    userId,
+    EMPLOYER_PROMO_TITLE,
+    'Your employer account includes the full Hiring plan at no charge for the first year. Post unlimited roles and review packets in your inbox. After that year, billing is yearly — there is no monthly plan.',
+    '/employer/billing',
+  )
 }
 
 async function persistThreadMessage(msg: ThreadMessage) {
@@ -373,6 +389,7 @@ async function loadProfile(user: AuthUser): Promise<CandidateProfile> {
 
 async function saveProfile(user: AuthUser, profile: CandidateProfile) {
   memory.setProfile(user.id, profile)
+  if ((profile.role ?? 'candidate') === 'employer') await startEmployerPromo(user.id)
   if (!supabaseAdmin) return profile
   const row: Record<string, unknown> = {
     id: user.id,
@@ -747,6 +764,7 @@ app.post('/api/auth/register', async (c) => {
         companyName,
         onboardingCompleted: true,
       })
+      await startEmployerPromo(result.userId)
     }
     return c.json({ ok: true, ...result })
   } catch (err) {
@@ -1119,6 +1137,30 @@ app.post('/api/applications/:id/recruiter', async (c) => {
 app.get('/api/notifications', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  if (supabaseAdmin) {
+    const { data } = await supabaseAdmin
+      .from('notifications')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(40)
+    if (data?.length) {
+      const seen = new Set(memory.getNotifications(user.id).map((n) => n.id))
+      for (const row of [...data].reverse()) {
+        const id = String(row.id)
+        if (seen.has(id)) continue
+        memory.addNotification({
+          id,
+          userId: user.id,
+          title: String(row.title),
+          body: row.body ? String(row.body) : '',
+          href: row.href ? String(row.href) : undefined,
+          read: Boolean(row.read),
+          createdAt: String(row.created_at ?? new Date().toISOString()),
+        })
+      }
+    }
+  }
   return c.json(memory.getNotifications(user.id))
 })
 
@@ -1413,6 +1455,7 @@ app.get('/api/billing/subscription', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const profile = await loadProfile(user)
   const role: BillingRole = profile.role === 'employer' ? 'employer' : 'candidate'
+  if (role === 'employer') await startEmployerPromo(user.id)
   const subscription = await loadSubscription(user.id, role)
   return c.json({
     subscription,
@@ -1435,7 +1478,7 @@ app.post('/api/billing/checkout', async (c) => {
   const planId = String(body.planId ?? '')
   const plan = planById(planId)
   if (!plan || plan.role !== role) return c.json({ error: 'That plan is not available for this account.' }, 400)
-  const interval: BillingInterval = body.interval === 'year' ? 'year' : 'month'
+  const interval: BillingInterval = 'year'
   const provider = body.provider === 'paypal' ? 'paypal' : 'stripe'
   const origin = appOrigin(c.req.header('Origin') ?? originFromReferer(c.req.header('Referer')))
   const returnPath = role === 'employer' ? '/employer/billing' : '/app/billing'
@@ -1516,7 +1559,7 @@ app.post('/api/billing/confirm', async (c) => {
       if (next) return c.json({ subscription: next })
     }
     if (body.demo && body.planId && isPaidPlan(body.planId)) {
-      const next = await activateSubscription(user.id, body.planId, body.interval === 'year' ? 'year' : 'month', 'demo')
+      const next = await activateSubscription(user.id, body.planId, 'year', 'demo')
       return c.json({ subscription: next })
     }
     return c.json({ subscription: await loadSubscription(user.id, role) })

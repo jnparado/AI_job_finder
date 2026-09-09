@@ -83,6 +83,32 @@ export async function saveSubscription(next: Subscription): Promise<Subscription
   return next
 }
 
+export async function grantEmployerYearPromo(userId: string): Promise<{ subscription: Subscription; granted: boolean }> {
+  const current = await loadSubscription(userId, 'employer')
+  const livePaid =
+    isPaidPlan(current.planId) &&
+    current.status === 'active' &&
+    current.provider &&
+    current.provider !== 'demo' &&
+    current.provider !== 'promo'
+  if (livePaid) return { subscription: current, granted: false }
+  if (current.provider === 'promo' && current.planId === 'employer-hiring') {
+    return { subscription: current, granted: false }
+  }
+  const period = new Date()
+  period.setFullYear(period.getFullYear() + 1)
+  const subscription = await saveSubscription({
+    userId,
+    planId: 'employer-hiring',
+    status: 'trialing',
+    provider: 'promo',
+    interval: 'year',
+    currentPeriodEnd: period.toISOString(),
+    updatedAt: new Date().toISOString(),
+  })
+  return { subscription, granted: true }
+}
+
 export async function activateSubscription(
   userId: string,
   planId: string,

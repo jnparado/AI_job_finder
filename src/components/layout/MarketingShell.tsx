@@ -1,8 +1,9 @@
+import { useState, type ReactNode } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/ui/feedback'
 import { SocialFollow } from '@/components/social/SocialLinks'
+import { filmLocal, filmSrc } from '@/lib/films'
 
 export function MarketingShell({
   audience,
@@ -232,6 +233,38 @@ function MarketingFooter() {
   )
 }
 
+function MarketingVideo({
+  file,
+  poster,
+  className,
+}: {
+  file: string
+  poster?: string
+  className: string
+}) {
+  const remote = filmSrc(file)
+  const local = filmLocal(file)
+  const remotePoster = poster ? filmSrc(poster) : undefined
+  const localPoster = poster ? filmLocal(poster) : undefined
+  const [video, setVideo] = useState(remote)
+  const [shot, setShot] = useState(remotePoster)
+
+  return (
+    <video
+      className={className}
+      controls
+      playsInline
+      preload="auto"
+      poster={shot}
+      src={video}
+      onError={() => {
+        if (video !== local) setVideo(local)
+        if (shot && localPoster && shot !== localPoster) setShot(localPoster)
+      }}
+    />
+  )
+}
+
 export function LandingVideo({
   src,
   poster,
@@ -253,15 +286,12 @@ export function LandingVideo({
           <h2 className="mt-3 text-3xl text-[var(--paper)] sm:text-4xl">{title}</h2>
           <p className="mt-3 text-sm leading-relaxed text-[#c9c0ae] sm:text-base">{caption}</p>
         </div>
-        <div className="relative mx-auto mt-10 overflow-hidden rounded-[1.75rem] border border-[#c9c0ae28] bg-[#0d1b16] shadow-[0_30px_80px_-40px_rgba(0,0,0,0.7)]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-[#c6a15b66] to-transparent" />
-          <video
-            className="aspect-video w-full"
-            controls
-            playsInline
-            preload="metadata"
+        <div className="relative mx-auto mt-10 rounded-[1.75rem] shadow-[0_30px_80px_-40px_rgba(0,0,0,0.7)] [transform:translateZ(0)]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px rounded-t-[1.75rem] bg-gradient-to-r from-transparent via-[#c6a15b66] to-transparent" />
+          <MarketingVideo
+            file={src}
             poster={poster}
-            src={src}
+            className="atelier-player aspect-video w-full rounded-[1.75rem] border border-[#c9c0ae28]"
           />
         </div>
       </div>
@@ -270,39 +300,37 @@ export function LandingVideo({
 }
 
 export function SocialAdKit({ audience }: { audience: 'candidate' | 'employer' }) {
-  const vertical =
-    audience === 'employer' ? '/ads/atelier-ad-shorts-employer.mp4' : '/ads/atelier-ad-shorts-candidate.mp4'
-  const poster =
-    audience === 'employer' ? '/ads/atelier-ad-v-hire-01.png' : '/ads/atelier-ad-v-cand-01.png'
-  const wide = audience === 'employer' ? '/ads/atelier-ad-employer.mp4' : '/ads/atelier-ad-candidate.mp4'
-  const feed45 =
-    audience === 'employer' ? '/ads/atelier-ad-feed-4x5-employer.mp4' : '/ads/atelier-ad-feed-4x5-candidate.mp4'
+  const isEmployer = audience === 'employer'
+  const vertical = isEmployer ? 'atelier-ad-shorts-employer.mp4' : 'atelier-ad-shorts-candidate.mp4'
+  const poster = isEmployer ? 'atelier-ad-v-hire-01.png' : 'atelier-ad-v-cand-01.png'
+  const page = isEmployer ? 'atelier-fb-page-employer.mp4' : 'atelier-fb-page-candidate.mp4'
+  const feed45 = isEmployer ? 'atelier-fb-feed-4x5-employer.mp4' : 'atelier-fb-feed-4x5-candidate.mp4'
+  const reels = isEmployer ? 'atelier-fb-reels-employer.mp4' : 'atelier-fb-reels-candidate.mp4'
+  const wide = isEmployer ? 'atelier-ad-employer.mp4' : 'atelier-ad-candidate.mp4'
   const cuts = [
-    { href: vertical, label: 'Reels, Shorts, TikTok, Stories', note: '9:16 · 15s' },
-    { href: feed45, label: 'Facebook / Instagram feed', note: '4:5 · 15s' },
-    { href: '/ads/atelier-ad-feed-square.mp4', label: 'Feed square', note: '1:1 · 15s' },
-    { href: wide, label: 'YouTube / LinkedIn in-stream', note: '16:9' },
-    { href: '/ads/atelier-ad-bumper-6s.mp4', label: 'YouTube bumper', note: '16:9 · 6s' },
+    { href: filmSrc(page), label: 'Facebook Page video', note: '16:9 · 15s' },
+    { href: filmSrc('atelier-fb-feed.mp4'), label: 'Facebook feed square', note: '1:1 · 15s' },
+    { href: filmSrc(feed45), label: 'Facebook / Instagram feed', note: '4:5 · 15s' },
+    { href: filmSrc(reels), label: 'Facebook Reels & Stories', note: '9:16 · 15s' },
+    { href: filmSrc(wide), label: 'YouTube / LinkedIn in-stream', note: '16:9' },
+    { href: filmSrc('atelier-ad-bumper-6s.mp4'), label: 'YouTube bumper', note: '16:9 · 6s' },
   ]
 
   return (
     <section className="px-5 pb-16 sm:px-8 sm:pb-20">
       <div className="mx-auto grid max-w-6xl items-start gap-10 lg:grid-cols-[0.42fr_1.58fr]">
         <div className="mx-auto w-full max-w-[22rem]">
-          <div className="overflow-hidden rounded-[1.75rem] border border-[#c9c0ae28] bg-[#0d1b16]">
-            <video
-              className="aspect-[9/16] w-full"
-              controls
-              playsInline
-              preload="metadata"
+          <div className="rounded-[1.75rem] [transform:translateZ(0)]">
+            <MarketingVideo
+              file={vertical}
               poster={poster}
-              src={vertical}
+              className="atelier-player aspect-[9/16] w-full rounded-[1.75rem] border border-[#c9c0ae28]"
             />
           </div>
         </div>
         <div>
-          <p className="eyebrow text-[#c6a15b]">Social ads</p>
-          <h2 className="mt-3 max-w-[16ch] text-3xl sm:text-4xl">Cuts ready for Facebook, YouTube, and Reels</h2>
+          <p className="eyebrow text-[#c6a15b]">Facebook Page ads</p>
+          <h2 className="mt-3 max-w-[16ch] text-3xl sm:text-4xl">Cuts ready for Page posts, Reels, and feed</h2>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-[#c9c0ae] sm:text-base">
             Same story as the film, sized for each placement. Download the MP4, paste the caption from the copy sheet, and point the ad to sign-up. Swap the quiet tone bed for licensed music before you spend.
           </p>
@@ -323,7 +351,7 @@ export function SocialAdKit({ audience }: { audience: 'candidate' | 'employer' }
               </li>
             ))}
           </ul>
-          <a href="/ads/social-copy.txt" className="mt-4 inline-block text-sm text-[#c6a15b] hover:text-[var(--paper)]">
+          <a href={filmSrc('social-copy.txt')} className="mt-4 inline-block text-sm text-[#c6a15b] hover:text-[var(--paper)]">
             Ad captions (Meta, YouTube, LinkedIn)
           </a>
         </div>

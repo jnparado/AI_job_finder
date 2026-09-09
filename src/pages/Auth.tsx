@@ -98,8 +98,9 @@ export function LoginPage() {
         {error ? <ErrorText>{error}</ErrorText> : null}
         {!configured ? (
           <ErrorText>
-            Auth is not connected in this build. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then restart npm run
-            dev. On the live site, add the same keys in Vercel → Environment Variables.
+            Auth is not connected in this build. Locally, keep VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in
+            .env (or SUPABASE_URL / SUPABASE_ANON_KEY) and restart npm run dev. On Vercel, add the same keys
+            under Settings → Environment Variables for Production, with Build and Runtime enabled, then redeploy.
           </ErrorText>
         ) : null}
         <div className="grid grid-cols-2 gap-3">
@@ -204,10 +205,21 @@ function EmployerRegisterPage() {
             <Input placeholder="Company name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} required />
           </Field>
         ) : null}
+        {role === 'employer' ? (
+          <div className="rounded-2xl border border-[#c6a15b55] bg-[var(--forest)] px-4 py-3 text-sm text-[var(--paper)]">
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Employer offer</p>
+            <p className="mt-1 font-medium">Hiring is free for 1 year.</p>
+            <p className="mt-1 text-[#d8d0c0]">
+              Unlimited roles and inbox for your first year. After that, billing is yearly — there is no monthly plan.
+            </p>
+          </div>
+        ) : null}
         {error ? <ErrorText>{error}</ErrorText> : null}
         {!configured ? (
           <ErrorText>
-            Auth is not connected in this build. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then restart the app.
+            Auth is not connected in this build. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (or the
+            matching SUPABASE_ keys) locally, then restart. On Vercel, set them for Production with Build
+            enabled and redeploy.
           </ErrorText>
         ) : null}
         <div className="grid grid-cols-2 gap-3">

@@ -1,6 +1,6 @@
 export type BillingRole = 'candidate' | 'employer'
 export type BillingInterval = 'month' | 'year'
-export type BillingProvider = 'stripe' | 'paypal' | 'card' | 'demo'
+export type BillingProvider = 'stripe' | 'paypal' | 'card' | 'demo' | 'promo'
 export type SubscriptionStatus = 'none' | 'active' | 'trialing' | 'past_due' | 'canceled'
 
 export interface Plan {
@@ -63,7 +63,7 @@ export const PLANS: Plan[] = [
     id: 'employer-hiring',
     role: 'employer',
     name: 'Hiring',
-    tagline: 'Unlimited roles and a full applicant inbox.',
+    tagline: 'First year free for new hiring teams. Then billed yearly.',
     monthlyCents: 4900,
     yearlyCents: 49000,
     highlighted: true,
@@ -88,6 +88,14 @@ export function isPaidPlan(planId: string): boolean {
   return Boolean(plan && plan.monthlyCents > 0)
 }
 
+export function isEmployerPromo(sub?: Subscription | null): boolean {
+  return Boolean(
+    sub &&
+      sub.planId === 'employer-hiring' &&
+      (sub.provider === 'promo' || sub.status === 'trialing'),
+  )
+}
+
 export function priceCents(plan: Plan, interval: BillingInterval): number {
   return interval === 'year' ? plan.yearlyCents : plan.monthlyCents
 }
@@ -103,7 +111,7 @@ export function emptySubscription(userId: string, role: BillingRole): Subscripti
     userId,
     planId: defaultPlanId(role),
     status: 'active',
-    interval: 'month',
+    interval: 'year',
     updatedAt: new Date().toISOString(),
   }
 }

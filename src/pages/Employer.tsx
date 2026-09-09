@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Inbox, MessagesSquare, Plus } from 'lucide-react'
+import type { Plan, Subscription } from '@shared/billing'
+import { isEmployerPromo } from '@shared/billing'
 import type { Currency, EmploymentType, Job } from '@shared/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -86,6 +88,10 @@ export function EmployerDashboardPage() {
     queryKey: ['employer-inbox'],
     queryFn: () => api<InboxRow[]>('/api/employer/applications'),
   })
+  const billing = useQuery({
+    queryKey: ['billing'],
+    queryFn: () => api<{ subscription: Subscription; plan?: Plan }>('/api/billing/subscription'),
+  })
   const list = inbox.data ?? []
   const roles = jobs.data ?? []
   const review = list.filter((a) => a.status === 'submitted' || a.status === 'under_review').length
@@ -96,6 +102,19 @@ export function EmployerDashboardPage() {
 
   return (
     <div className="space-y-8">
+      {isEmployerPromo(billing.data?.subscription) ? (
+        <Card className="border-[#c6a15b55] bg-[var(--forest)] text-[var(--paper)]">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Notification</p>
+          <h2 className="mt-2 text-2xl">Hiring is free for 1 year</h2>
+          <p className="mt-2 max-w-2xl text-sm text-[#d8d0c0]">
+            Your employer account includes the full Hiring plan until{' '}
+            {billing.data?.subscription.currentPeriodEnd
+              ? new Date(billing.data.subscription.currentPeriodEnd).toLocaleDateString()
+              : 'your first anniversary'}
+            . Post unlimited roles and review packets. After the year, billing is yearly — there is no monthly plan.
+          </p>
+        </Card>
+      ) : null}
       <section className="overflow-hidden rounded-3xl border border-border bg-[var(--forest)] text-[var(--paper)]">
         <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
           <div className="flex min-w-0 items-start gap-4">

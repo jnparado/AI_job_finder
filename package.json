@@ -10,7 +10,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "brand:upload": "tsx scripts/upload-brand-assets.ts"
+    "brand:upload": "tsx scripts/upload-brand-assets.ts",
+    "films:upload": "tsx scripts/upload-films.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
