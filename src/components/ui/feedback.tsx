@@ -79,9 +79,17 @@ export function BrandMark({ light = false }: { light?: boolean }) {
         className="size-10 rounded-xl object-cover shadow-[0_0_0_1px_rgba(198,161,91,0.28)]"
       />
       <div>
-        <div className={`font-serif text-lg leading-none ${light ? 'text-[var(--paper)]' : ''}`}>Atelier</div>
         <div
-          className={`mt-1 text-[0.58rem] uppercase tracking-[0.1em] ${light ? 'text-[#c9c0ae]' : 'text-muted-foreground'}`}
+          className={`font-serif text-lg leading-none ${
+            light ? 'text-white [text-shadow:0_1px_12px_rgba(0,0,0,0.55)]' : ''
+          }`}
+        >
+          Atelier
+        </div>
+        <div
+          className={`mt-1 text-[0.58rem] font-semibold uppercase tracking-[0.12em] ${
+            light ? 'text-[#e4c98a] [text-shadow:0_1px_10px_rgba(0,0,0,0.6)]' : 'text-muted-foreground'
+          }`}
         >
           AI-Powered Job Matching
         </div>

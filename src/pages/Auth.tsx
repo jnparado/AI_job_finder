@@ -576,9 +576,12 @@ function AuthFrame({
           }}
           className="absolute inset-0 size-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0a100e] via-[#0a100e88] to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0a100e]/85 via-[#0a100e]/45 to-[#0a100e]/90" />
         <div className="relative flex h-full flex-col justify-between p-10 text-[var(--paper)]">
-          <Link to={hiring ? '/employers' : '/'}>
+          <Link
+            to={hiring ? '/employers' : '/'}
+            className="inline-flex w-fit rounded-2xl bg-[#0a100e]/70 px-3 py-2.5 ring-1 ring-[#c6a15b44] backdrop-blur-md"
+          >
             <BrandMark light />
           </Link>
           <div>
