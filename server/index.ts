@@ -836,14 +836,45 @@ app.post('/api/profile/sync-identity', async (c) => {
   return c.json(await saveProfile(user, next))
 })
 
-app.post('/api/resume/upload', async (c) => {
-  const user = await auth(c)
-  if (!user) return c.json({ error: 'Unauthorized' }, 401)
-  const form = await c.req.formData()
-  const file = form.get('file')
-  if (!(file instanceof File)) return c.json({ error: 'file required' }, 400)
-  const buffer = Buffer.from(await file.arrayBuffer())
-  const text = await extractFileText(buffer, file.type, file.name)
+const MAX_RESUME_BYTES = 8 * 1024 * 1024
+
+function isUploadedFile(value: unknown): value is File {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      typeof (value as File).arrayBuffer === 'function' &&
+      typeof (value as File).name === 'string',
+  )
+}
+
+function resumeFileOk(name: string, mime: string) {
+  const lower = name.toLowerCase()
+  return (
+    lower.endsWith('.pdf') ||
+    lower.endsWith('.docx') ||
+    lower.endsWith('.txt') ||
+    /pdf|wordprocessingml|msword|text\/plain/i.test(mime)
+  )
+}
+
+function safeResumeName(name: string) {
+  return name.replace(/[^\w.\-]+/g, '_').slice(0, 80) || 'resume'
+}
+
+async function ingestResumeBuffer(
+  user: AuthUser,
+  buffer: Buffer,
+  fileName: string,
+  mime: string,
+  storedPath?: string,
+) {
+  if (!buffer.length) throw new Error('That file is empty.')
+  if (buffer.length > MAX_RESUME_BYTES) throw new Error('Keep the file under 8 MB.')
+  if (!resumeFileOk(fileName, mime)) throw new Error('Use a PDF, DOCX, or TXT file.')
+  const text = (await extractFileText(buffer, mime, fileName)).replace(/\u0000/g, '').trim()
+  if (text.length < 20) {
+    throw new Error('Could not read that resume. Try another PDF or paste the text below.')
+  }
   const parsed = await parseResumeSmart(text)
   const profile = await loadProfile(user)
   const merged: CandidateProfile = {
@@ -865,22 +896,71 @@ app.post('/api/resume/upload', async (c) => {
   }
   await saveProfile(user, merged)
   if (supabaseAdmin) {
-    const path = `${user.id}/${Date.now()}-${file.name}`
-    await supabaseAdmin.storage.from('resumes').upload(path, buffer, {
-      contentType: file.type,
-      upsert: true,
-    })
-    await supabaseAdmin.from('resumes').insert({
-      user_id: user.id,
-      file_path: path,
-      file_name: file.name,
-      mime_type: file.type,
-      extracted_text: text,
-      parsed,
-      is_primary: true,
-    })
+    try {
+      const path = storedPath || `${user.id}/${Date.now()}-${safeResumeName(fileName)}`
+      if (!storedPath) {
+        const { error: uploadError } = await supabaseAdmin.storage.from('resumes').upload(path, buffer, {
+          contentType: mime || 'application/octet-stream',
+          upsert: true,
+        })
+        if (uploadError) console.warn('resume storage upload', uploadError.message)
+      }
+      const { error: rowError } = await supabaseAdmin.from('resumes').insert({
+        user_id: user.id,
+        file_path: path,
+        file_name: fileName,
+        mime_type: mime,
+        extracted_text: text,
+        parsed,
+        is_primary: true,
+      })
+      if (rowError) console.warn('resume row', rowError.message)
+    } catch (err) {
+      console.warn('resume storage', err instanceof Error ? err.message : err)
+    }
   }
-  return c.json({ text, parsed, profile: merged })
+  return { text, parsed, profile: merged }
+}
+
+app.post('/api/resume/upload', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  try {
+    const form = await c.req.formData()
+    const file = form.get('file')
+    if (!isUploadedFile(file)) return c.json({ error: 'Choose a resume file to upload.' }, 400)
+    const buffer = Buffer.from(await file.arrayBuffer())
+    return c.json(await ingestResumeBuffer(user, buffer, file.name || 'resume.pdf', file.type || ''))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Upload failed'
+    return c.json({ error: message }, 400)
+  }
+})
+
+app.post('/api/resume/from-storage', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  if (!supabaseAdmin) return c.json({ error: 'Storage is not configured.' }, 500)
+  try {
+    const body = (await c.req.json()) as { path?: string; fileName?: string; mimeType?: string }
+    const path = String(body.path ?? '')
+    if (!path.startsWith(`${user.id}/`)) return c.json({ error: 'Invalid resume path.' }, 403)
+    const { data, error } = await supabaseAdmin.storage.from('resumes').download(path)
+    if (error || !data) return c.json({ error: error?.message ?? 'Could not read the uploaded file.' }, 400)
+    const buffer = Buffer.from(await data.arrayBuffer())
+    return c.json(
+      await ingestResumeBuffer(
+        user,
+        buffer,
+        body.fileName || path.split('/').pop() || 'resume.pdf',
+        body.mimeType || '',
+        path,
+      ),
+    )
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Upload failed'
+    return c.json({ error: message }, 400)
+  }
 })
 
 app.post('/api/resume/parse-text', async (c) => {
@@ -1683,13 +1763,17 @@ memory.addMessage({
   createdAt: new Date().toISOString(),
 })
 
-const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, () => {
-  console.log(`API http://127.0.0.1:${port}  supabase=${Boolean(supabaseAdmin)}`)
-})
-server.on('error', (err: NodeJS.ErrnoException) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${port} is already in use. Stop the other API (kill the old npm run dev) and start again.`)
-    process.exit(1)
-  }
-  throw err
-})
+export { app }
+
+if (!process.env.VERCEL) {
+  const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, () => {
+    console.log(`API http://127.0.0.1:${port}  supabase=${Boolean(supabaseAdmin)}`)
+  })
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${port} is already in use. Stop the other API (kill the old npm run dev) and start again.`)
+      process.exit(1)
+    }
+    throw err
+  })
+}

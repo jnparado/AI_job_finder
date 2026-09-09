@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { displayName } from '@shared/types'
-import { initials, money } from '@/lib/utils'
+import { initials, money, profileCompleteness } from '@/lib/utils'
 import { Badge, Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { SocialConnectForm } from '@/components/social/SocialConnectForm'
@@ -290,20 +290,4 @@ function CheckLine({ ok, label }: { ok: boolean; label: string }) {
 
 function titleCase(value: string) {
   return value.replaceAll('-', ' ').replace(/^\w/, (c) => c.toUpperCase())
-}
-
-function profileCompleteness(profile: ReturnType<typeof useAuth>['profile']) {
-  const checks = [
-    Boolean(profile.firstName && profile.lastName),
-    Boolean(profile.desiredTitle || profile.currentTitle),
-    profile.yearsExperience > 0,
-    Boolean(profile.industry),
-    profile.skills.length >= 4,
-    profile.aiSkills.length > 0,
-    Boolean(profile.careerGoals),
-    Boolean(profile.city || profile.country),
-    profile.locations.length > 0,
-    Boolean(profile.resumeText || profile.parsedProfile),
-  ]
-  return Math.round((checks.filter(Boolean).length / checks.length) * 100)
 }

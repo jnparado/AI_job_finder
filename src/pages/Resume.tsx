@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/lib/auth'
-import { api } from '@/lib/api'
+import { api, apiUpload, authHeader } from '@/lib/api'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Card, Badge, Textarea } from '@/components/ui/card'
 import { PageHeader } from '@/components/ui/feedback'
@@ -17,12 +18,51 @@ interface SearchResult {
   discovery?: DiscoverySummary
 }
 
-type Phase = 'idle' | 'parsing' | 'searching' | 'done'
+type Phase = 'idle' | 'uploading' | 'parsing' | 'searching' | 'done'
+
+const MAX_BYTES = 8 * 1024 * 1024
+const ACCEPT =
+  '.pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain'
+
+function fileLooksLikeResume(file: File) {
+  const name = file.name.toLowerCase()
+  return (
+    name.endsWith('.pdf') ||
+    name.endsWith('.docx') ||
+    name.endsWith('.txt') ||
+    /pdf|wordprocessingml|msword|text\/plain/i.test(file.type)
+  )
+}
+
+function safeName(name: string) {
+  return name.replace(/[^\w.\-]+/g, '_').slice(0, 80) || 'resume'
+}
+
+function UploadProgress({ value, label }: { value: number; label: string }) {
+  const pct = Math.min(100, Math.max(0, Math.round(value)))
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span>{label}</span>
+        <span className="tabular-nums text-muted-foreground">{pct}%</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-[var(--forest)] transition-[width] duration-200"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  )
+}
 
 export function ResumePage() {
-  const { profile, saveProfile, refreshProfile } = useAuth()
+  const { user, profile, saveProfile, refreshProfile } = useAuth()
   const qc = useQueryClient()
+  const inputRef = useRef<HTMLInputElement>(null)
   const [phase, setPhase] = useState<Phase>('idle')
+  const [progress, setProgress] = useState(0)
+  const [fileName, setFileName] = useState('')
   const [parsed, setParsed] = useState<ParsedResume | null>(profile.parsedProfile ?? null)
   const [error, setError] = useState('')
   const [search, setSearch] = useState<SearchResult | null>(null)
@@ -30,36 +70,132 @@ export function ResumePage() {
   const [paste, setPaste] = useState(profile.resumeText)
 
   const recommended = (search?.matches ?? []).filter((m) => m.score >= 70).slice(0, 5)
+  const busy = phase === 'uploading' || phase === 'parsing' || phase === 'searching'
+  const status =
+    phase === 'uploading'
+      ? `Uploading ${fileName || 'your resume'}…`
+      : phase === 'parsing'
+        ? 'Reading your resume and updating your profile…'
+        : phase === 'searching'
+          ? 'Searching Remotive, Remote OK, career pages, and other authorized boards…'
+          : phase === 'done'
+            ? `Found ${search?.normalized ?? 0} roles. ${recommended.length} currently clear a 70% fit.`
+            : 'Upload a resume to fill your profile, then the agent searches platforms that fit you.'
 
   async function runSearch() {
     setPhase('searching')
+    setProgress((n) => Math.max(n, 78))
     const result = await api<SearchResult>('/api/agent/search', { method: 'POST', body: '{}' })
     setSearch(result)
     await qc.invalidateQueries({ queryKey: ['jobs'] })
     await qc.invalidateQueries({ queryKey: ['discovery'] })
+    setProgress(100)
     setPhase('done')
     return result
   }
 
+  async function sendToApi(file: File, onPct: (n: number) => void) {
+    const form = new FormData()
+    form.append('file', file)
+    return apiUpload<{ parsed: ParsedResume }>('/api/resume/upload', form, onPct)
+  }
+
+  async function sendViaStorage(file: File, onPct: (n: number) => void) {
+    const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
+    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+    if (!supabase || !user?.id || !url || !anon) return sendToApi(file, onPct)
+    const auth = await authHeader()
+    const token = auth.Authorization?.replace(/^Bearer\s+/i, '')
+    if (!token || token === 'demo' || token === 'employer') return sendToApi(file, onPct)
+
+    const objectPath = `${user.id}/${Date.now()}-${safeName(file.name)}`
+    const endpoint = `${url.replace(/\/$/, '')}/storage/v1/object/resumes/${objectPath}`
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', endpoint)
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+        xhr.setRequestHeader('apikey', anon)
+        xhr.setRequestHeader('x-upsert', 'true')
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+        xhr.timeout = 120_000
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) onPct(Math.round((event.loaded / event.total) * 100))
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve()
+            return
+          }
+          reject(new Error('storage'))
+        }
+        xhr.onerror = () => reject(new Error('storage'))
+        xhr.ontimeout = () => reject(new Error('storage'))
+        xhr.send(file)
+      })
+    } catch {
+      return sendToApi(file, onPct)
+    }
+
+    return api<{ parsed: ParsedResume }>('/api/resume/from-storage', {
+      method: 'POST',
+      body: JSON.stringify({
+        path: objectPath,
+        fileName: file.name,
+        mimeType: file.type,
+      }),
+    })
+  }
+
   async function onFile(file: File) {
-    setPhase('parsing')
+    if (!fileLooksLikeResume(file)) {
+      setError('Use a PDF, DOCX, or TXT file.')
+      return
+    }
+    if (!file.size) {
+      setError('That file is empty.')
+      return
+    }
+    if (file.size > MAX_BYTES) {
+      setError('Keep the file under 8 MB.')
+      return
+    }
+
+    setFileName(file.name)
+    setPhase('uploading')
+    setProgress(4)
     setError('')
     setSearch(null)
     try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await api<{ parsed: ParsedResume }>('/api/resume/upload', { method: 'POST', body: form })
+      const res = await sendViaStorage(file, (pct) => {
+        setProgress(Math.max(4, Math.round(pct * 0.62)))
+      })
       setParsed(res.parsed)
+      setPhase('parsing')
+      setProgress(70)
       await refreshProfile()
-      await runSearch()
+      setProgress(76)
+      try {
+        await runSearch()
+      } catch (searchErr) {
+        setError(searchErr instanceof Error ? searchErr.message : 'Resume saved, but job search failed.')
+        setPhase('done')
+        setProgress(100)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Upload failed')
       setPhase('idle')
+      setProgress(0)
+    } finally {
+      if (inputRef.current) inputRef.current.value = ''
     }
   }
 
   async function parsePasted() {
+    setFileName('')
     setPhase('parsing')
+    setProgress(20)
     setError('')
     setSearch(null)
     try {
@@ -67,6 +203,7 @@ export function ResumePage() {
         method: 'POST',
         body: JSON.stringify({ text: paste }),
       })
+      setProgress(55)
       setParsed(res.parsed)
       await saveProfile({
         resumeText: paste,
@@ -83,6 +220,7 @@ export function ResumePage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Parse failed')
       setPhase('idle')
+      setProgress(0)
     }
   }
 
@@ -104,18 +242,9 @@ export function ResumePage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Search failed')
       setPhase('idle')
+      setProgress(0)
     }
   }
-
-  const busy = phase === 'parsing' || phase === 'searching'
-  const status =
-    phase === 'parsing'
-      ? 'Reading your resume and updating your profile…'
-      : phase === 'searching'
-        ? 'Searching Remotive, Remote OK, career pages, and other authorized boards…'
-        : phase === 'done'
-          ? `Found ${search?.normalized ?? 0} roles. ${recommended.length} currently clear a 70% fit.`
-          : 'Upload a resume to fill your profile, then the agent searches platforms that fit you.'
 
   return (
     <div className="space-y-6">
@@ -127,13 +256,32 @@ export function ResumePage() {
 
       <Card>
         <p className="text-sm leading-relaxed">{status}</p>
+        {busy ? (
+          <div className="mt-4">
+            <UploadProgress
+              value={progress}
+              label={
+                phase === 'uploading'
+                  ? `Uploading${fileName ? ` ${fileName}` : ''}`
+                  : phase === 'parsing'
+                    ? 'Reading resume'
+                    : 'Finding jobs'
+              }
+            />
+          </div>
+        ) : null}
       </Card>
 
       <Card className="space-y-3">
         <h2>Upload a file</h2>
-        <p className="text-sm text-muted-foreground">PDF, DOCX, or TXT. Parsing runs on the server, then matching starts automatically.</p>
+        <p className="text-sm text-muted-foreground">
+          PDF, DOCX, or TXT, up to 8 MB. Parsing runs on the server, then matching starts automatically.
+        </p>
         <label
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-10 text-sm ${dragOver ? 'border-[var(--copper)] bg-muted/60' : 'border-border bg-background hover:border-primary'}`}
+          htmlFor="resume-file"
+          className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-10 text-center text-sm ${
+            dragOver ? 'border-[var(--copper)] bg-muted/60' : 'border-border bg-background hover:border-primary'
+          } ${busy ? 'pointer-events-none opacity-70' : ''}`}
           onDragOver={(e) => {
             e.preventDefault()
             setDragOver(true)
@@ -146,12 +294,21 @@ export function ResumePage() {
             if (f) void onFile(f)
           }}
         >
-          <span className="font-medium">{busy ? (phase === 'searching' ? 'Finding jobs…' : 'Processing…') : 'Choose a resume file'}</span>
-          <span className="mt-1 text-muted-foreground">or drop it on this box</span>
+          <span className="font-medium">
+            {busy ? (phase === 'searching' ? 'Finding jobs…' : phase === 'parsing' ? 'Reading resume…' : 'Uploading…') : 'Choose a resume file'}
+          </span>
+          <span className="mt-1 text-muted-foreground">
+            {fileName && busy ? fileName : 'or drop it on this box'}
+          </span>
+          <span className="mt-4 inline-flex h-10 items-center rounded-xl border border-border px-4 text-sm font-medium">
+            Browse files
+          </span>
           <input
+            id="resume-file"
+            ref={inputRef}
             className="sr-only"
             type="file"
-            accept=".pdf,.docx,.txt,application/pdf"
+            accept={ACCEPT}
             disabled={busy}
             onChange={(e) => {
               const f = e.target.files?.[0]

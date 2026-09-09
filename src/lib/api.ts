@@ -35,3 +35,37 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   return res.json() as Promise<T>
 }
+
+export async function apiUpload<T>(
+  path: string,
+  body: FormData,
+  onProgress?: (pct: number) => void,
+): Promise<T> {
+  const auth = await authHeader()
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', path)
+    for (const [k, v] of Object.entries(auth)) xhr.setRequestHeader(k, v)
+    xhr.timeout = 120_000
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100))
+      }
+    }
+    xhr.onload = () => {
+      try {
+        const json = JSON.parse(xhr.responseText || '{}') as { error?: string }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(json as T)
+          return
+        }
+        reject(new Error(json.error || xhr.statusText || 'Upload failed'))
+      } catch {
+        reject(new Error(xhr.statusText || 'Upload failed'))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Upload failed. Check your connection and try again.'))
+    xhr.ontimeout = () => reject(new Error('Upload timed out. Try a smaller file.'))
+    xhr.send(body)
+  })
+}

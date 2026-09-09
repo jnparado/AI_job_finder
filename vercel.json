@@ -6,6 +6,11 @@
       "permanent": true
     }
   ],
+  "functions": {
+    "api/[...route].ts": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/((?!api/|films/|ads/|brand/|favicon.svg$|sitemap.xml$|robots.txt$|googled5f79ee15542f52d.html$).*)",

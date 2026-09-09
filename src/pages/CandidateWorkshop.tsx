@@ -181,6 +181,17 @@ export function CandidateWorkshop() {
     setStep(Math.min(TOTAL, Math.max(1, n)))
   }
 
+  function resetWorkshop() {
+    sessionStorage.removeItem(DRAFT_KEY)
+    sessionStorage.removeItem(STEP_KEY)
+    setD(emptyDraft())
+    setStep(1)
+    setSkillInput('')
+    setMoreIndustries(false)
+    setPassword('')
+    setError('')
+  }
+
   function pickAndGo(apply: () => void) {
     apply()
     window.setTimeout(() => go(step + 1), 120)
@@ -239,7 +250,7 @@ export function CandidateWorkshop() {
               type="button"
               aria-label="Close"
               className="grid size-11 place-items-center rounded-full text-foreground hover:bg-muted sm:size-10"
-              onClick={() => navigate('/')}
+              onClick={resetWorkshop}
             >
               <X className="size-5" />
             </button>

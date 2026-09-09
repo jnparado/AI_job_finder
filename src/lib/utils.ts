@@ -36,3 +36,51 @@ export function initials(name: string): string {
 export function prettyStatus(status: string): string {
   return status.replaceAll('_', ' ')
 }
+
+export function profileCompleteness(profile: {
+  firstName: string
+  lastName: string
+  desiredTitle: string
+  currentTitle: string
+  yearsExperience: number
+  industry: string
+  skills: string[]
+  aiSkills: string[]
+  careerGoals: string
+  city: string
+  country: string
+  locations: string[]
+  resumeText: string
+  parsedProfile?: unknown
+}): number {
+  const checks = [
+    Boolean(profile.firstName && profile.lastName),
+    Boolean(profile.desiredTitle || profile.currentTitle),
+    profile.yearsExperience > 0,
+    Boolean(profile.industry),
+    profile.skills.length >= 4,
+    profile.aiSkills.length > 0,
+    Boolean(profile.careerGoals),
+    Boolean(profile.city || profile.country),
+    profile.locations.length > 0,
+    Boolean(profile.resumeText || profile.parsedProfile),
+  ]
+  return Math.round((checks.filter(Boolean).length / checks.length) * 100)
+}
+
+export function postedLabel(postedAt?: string): string {
+  if (!postedAt) return 'Listed recently'
+  const then = new Date(postedAt).getTime()
+  if (Number.isNaN(then)) return 'Listed recently'
+  const days = Math.round((Date.now() - then) / 86_400_000)
+  if (days <= 0) return 'Listed today'
+  if (days === 1) return 'Listed yesterday'
+  if (days < 21) return `Listed ${days} days ago`
+  return `Listed ${new Date(postedAt).toLocaleDateString()}`
+}
+
+export function textSnippet(value: string, max = 220): string {
+  const clean = value.replace(/\s+/g, ' ').trim()
+  if (clean.length <= max) return clean
+  return `${clean.slice(0, max).replace(/\s+\S*$/, '')}…`
+}
