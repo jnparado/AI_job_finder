@@ -9,7 +9,7 @@
   "functions": {
     "api/[...route].ts": {
       "maxDuration": 60,
-      "includeFiles": "{server,shared}/**"
+      "includeFiles": "dist-api/**"
     }
   },
   "rewrites": [
