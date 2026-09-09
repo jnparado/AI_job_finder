@@ -11,14 +11,20 @@ async function loadApp(): Promise<App> {
   return loaded.app as App
 }
 
-export default {
-  async fetch(request: Request) {
-    try {
-      const app = await loadApp()
-      return await app.fetch(request)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'API failed'
-      return Response.json({ ok: false, error: message }, { status: 500 })
-    }
-  },
+async function handle(request: Request) {
+  try {
+    const app = await loadApp()
+    return await app.fetch(request)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'API failed'
+    return Response.json({ ok: false, error: message }, { status: 500 })
+  }
 }
+
+export default { fetch: handle }
+export const GET = handle
+export const POST = handle
+export const PUT = handle
+export const PATCH = handle
+export const DELETE = handle
+export const OPTIONS = handle
