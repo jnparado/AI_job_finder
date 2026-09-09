@@ -68,26 +68,26 @@ export function LoadingScreen({ label = 'Loading…' }: { label?: string }) {
   )
 }
 
-export function BrandMark({ light = false }: { light?: boolean }) {
+export function BrandMark({ light = false, compact = false }: { light?: boolean; compact?: boolean }) {
   return (
-    <div className="flex items-center gap-2.5">
+    <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
       <img
         src="/brand/atelier-logo.jpg"
         alt=""
         width={40}
         height={40}
-        className="size-10 rounded-xl object-cover shadow-[0_0_0_1px_rgba(198,161,91,0.28)]"
+        className={`${compact ? 'size-8 sm:size-10' : 'size-10'} shrink-0 rounded-xl object-cover shadow-[0_0_0_1px_rgba(198,161,91,0.28)]`}
       />
-      <div>
+      <div className="min-w-0">
         <div
-          className={`font-serif text-lg leading-none ${
+          className={`font-serif leading-none ${compact ? 'text-base sm:text-lg' : 'text-lg'} ${
             light ? 'text-white [text-shadow:0_1px_12px_rgba(0,0,0,0.55)]' : ''
           }`}
         >
           Atelier
         </div>
         <div
-          className={`mt-1 text-[0.58rem] font-semibold uppercase tracking-[0.12em] ${
+          className={`mt-1 font-semibold uppercase tracking-[0.12em] ${compact ? 'hidden text-[0.52rem] sm:block' : 'text-[0.58rem]'} ${
             light ? 'text-[#e4c98a] [text-shadow:0_1px_10px_rgba(0,0,0,0.6)]' : 'text-muted-foreground'
           }`}
         >

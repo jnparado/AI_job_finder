@@ -223,40 +223,50 @@ export function CandidateWorkshop() {
   const industries = moreIndustries ? [...INDUSTRIES, ...MORE_INDUSTRIES] : INDUSTRIES
 
   return (
-    <div className="min-h-svh bg-white text-foreground">
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-4">
+    <div className="min-h-svh overflow-x-hidden bg-white text-foreground">
+      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur pt-[max(0.5rem,env(safe-area-inset-top))]">
+        <div className="mx-auto flex max-w-2xl items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-4">
           <button
             type="button"
             aria-label="Back"
-            className="grid size-10 place-items-center rounded-full text-foreground hover:bg-muted"
+            className="grid size-11 shrink-0 place-items-center rounded-full text-foreground hover:bg-muted sm:size-10"
             onClick={() => (step > 1 ? go(step - 1) : navigate('/'))}
           >
             <ArrowLeft className="size-5" />
           </button>
-          <Link to="/" aria-label="Atelier home">
-            <BrandMark />
+          <Link to="/" aria-label="Atelier home" className="min-w-0 flex-1">
+            <span className="mx-auto flex w-fit max-w-full justify-center">
+              <BrandMark compact />
+            </span>
           </Link>
-          <div className="flex items-center gap-1">
-            <span className="grid size-10 place-items-center rounded-full border border-border text-xs font-medium">
+          <div className="flex shrink-0 items-center">
+            <span className="hidden tabular-nums text-xs font-medium text-muted-foreground sm:grid sm:size-10 sm:place-items-center sm:rounded-full sm:border sm:border-border sm:text-foreground">
               {step}/{TOTAL}
             </span>
             <button
               type="button"
               aria-label="Close"
-              className="grid size-10 place-items-center rounded-full text-foreground hover:bg-muted"
+              className="grid size-11 place-items-center rounded-full text-foreground hover:bg-muted sm:size-10"
               onClick={() => navigate('/')}
             >
               <X className="size-5" />
             </button>
           </div>
         </div>
-        <div className="h-0.5 bg-muted">
+        <div className="flex items-center gap-2 px-3 pb-2 sm:hidden">
+          <div className="h-0.5 flex-1 bg-muted">
+            <div className="h-full bg-[var(--forest)] transition-[width]" style={{ width: `${(step / TOTAL) * 100}%` }} />
+          </div>
+          <span className="shrink-0 tabular-nums text-[0.7rem] font-medium text-muted-foreground">
+            {step}/{TOTAL}
+          </span>
+        </div>
+        <div className="hidden h-0.5 bg-muted sm:block">
           <div className="h-full bg-[var(--forest)] transition-[width]" style={{ width: `${(step / TOTAL) * 100}%` }} />
         </div>
       </header>
 
-      <main className="mx-auto flex min-h-[calc(100svh-5.5rem)] max-w-xl flex-col px-4 py-10 sm:py-14">
+      <main className="mx-auto flex min-h-[calc(100svh-5.5rem)] max-w-xl flex-col px-3 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-14">
         <div className="flex-1">
           {step === 1 ? (
             <Ask title="Where are you in your work life right now?">
@@ -391,7 +401,7 @@ export function CandidateWorkshop() {
                       type="button"
                       onClick={() => patch({ anyIndustry: false, industries: toggle(d.industries, name) })}
                       className={cn(
-                        'rounded-2xl border px-3 py-3 text-sm',
+                        'min-h-12 break-words rounded-2xl border px-2 py-3 text-sm leading-snug sm:px-3',
                         on ? 'border-[var(--forest)] bg-[#eef1ee]' : 'border-border bg-white hover:border-[var(--forest)]',
                       )}
                     >
@@ -650,9 +660,9 @@ export function CandidateWorkshop() {
 function Ask({ title, lead, children }: { title: string; lead?: string; children: React.ReactNode }) {
   return (
     <div className="mx-auto max-w-lg text-center">
-      <h1 className="text-3xl leading-tight sm:text-4xl">{title}</h1>
-      {lead ? <p className="mt-3 text-muted-foreground">{lead}</p> : null}
-      <div className="mt-8">{children}</div>
+      <h1 className="text-[1.65rem] leading-[1.15] sm:text-4xl">{title}</h1>
+      {lead ? <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">{lead}</p> : null}
+      <div className="mt-6 sm:mt-8">{children}</div>
     </div>
   )
 }
@@ -691,7 +701,7 @@ function Choices({
             type="button"
             onClick={() => (multi ? onToggle?.(item.value) : onPick?.(item.value))}
             className={cn(
-              'flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-colors',
+              'flex min-h-12 w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left text-sm transition-colors sm:px-4 sm:py-3.5 sm:text-base',
               selected ? 'border-[var(--forest)] bg-[#eef1ee]' : 'border-border bg-white hover:border-[var(--forest)]',
             )}
           >
