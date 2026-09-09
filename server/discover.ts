@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { officialApplyLinks } from '../shared/applyBoards'
 import { JOB_CATALOG } from '../shared/jobs'
 import { asJob, inferCurrency, inferEmployment, inferSeniority, parseSalary, postedAt } from '../shared/engine/jobFields'
 import type { CandidateProfile, DiscoveryProvider, DiscoveryReport, Job, MarketSalary, OfficialBoard } from '../shared/types'
@@ -33,14 +34,7 @@ function searchQuery(profile: CandidateProfile): string {
 }
 
 export function officialSearchUrls(query: string): OfficialBoard[] {
-  const q = encodeURIComponent(query)
-  return [
-    { source: 'linkedin', label: 'LinkedIn', url: `https://www.linkedin.com/jobs/search/?keywords=${q}` },
-    { source: 'indeed', label: 'Indeed', url: `https://www.indeed.com/jobs?q=${q}` },
-    { source: 'upwork', label: 'Upwork', url: `https://www.upwork.com/nx/search/jobs/?q=${q}` },
-    { source: 'freelancer', label: 'Freelancer', url: `https://www.freelancer.com/jobs/?keyword=${q}` },
-    { source: 'glassdoor', label: 'Glassdoor', url: `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${q}` },
-  ]
+  return officialApplyLinks({ title: query })
 }
 
 export function configuredProviders() {

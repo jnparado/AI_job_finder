@@ -1,4 +1,5 @@
 import type { Subscription } from '../shared/billing'
+import type { LedgerEntry } from '../shared/finances'
 import type { CandidateProfile, DiscoverySummary, Job, JobMatch, PreparedPacket, ThreadMessage } from '../shared/types'
 import { emptyProfile } from '../shared/types'
 
@@ -50,6 +51,7 @@ const jobs = new Map<string, Job>()
 const discovery = new Map<string, DiscoverySummary>()
 const subscriptions = new Map<string, Subscription>()
 const threadMessages = new Map<string, ThreadMessage[]>()
+const ledger: LedgerEntry[] = []
 
 export const memory = {
   getProfile(userId: string) {
@@ -159,5 +161,17 @@ export const memory = {
   setSubscription(row: Subscription) {
     subscriptions.set(row.userId, row)
     return row
+  },
+  addLedger(row: LedgerEntry) {
+    const i = ledger.findIndex((e) => e.id === row.id)
+    if (i >= 0) ledger[i] = row
+    else ledger.unshift(row)
+    return row
+  },
+  getLedgerForCandidate(candidateId: string) {
+    return ledger.filter((e) => e.candidateId === candidateId)
+  },
+  getLedgerForEmployer(employerId: string) {
+    return ledger.filter((e) => e.employerId === employerId)
   },
 }

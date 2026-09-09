@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Bell,
   CircleHelp,
-  CreditCard,
   FileText,
   Home,
   LineChart,
@@ -16,6 +15,7 @@ import {
   Search,
   Settings,
   User,
+  Wallet,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
@@ -183,7 +183,7 @@ export function AppShell() {
                 <div className="p-2">
                   <MenuLink to="/app/profile" icon={User} label="Your studio" onClick={() => setMoreOpen(false)} />
                   <MenuLink to="/app/interview" icon={MessageSquare} label="Interview" onClick={() => setMoreOpen(false)} />
-                  <MenuLink to="/app/billing" icon={CreditCard} label="Plan" onClick={() => setMoreOpen(false)} />
+                  <MenuLink to="/app/finances" icon={Wallet} label="Finances" onClick={() => setMoreOpen(false)} />
                   <MenuLink to="/app/settings" icon={Settings} label="Settings" onClick={() => setMoreOpen(false)} />
                   <MenuLink to="/support" icon={CircleHelp} label="Help" onClick={() => setMoreOpen(false)} />
                 </div>

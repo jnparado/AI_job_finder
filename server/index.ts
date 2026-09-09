@@ -26,6 +26,8 @@ import { DEMO_EMPLOYER, DEMO_USER, memory, type StoredApplication } from './memo
 import { extractFileText, parseResumeSmart } from './resume'
 import { confirmUserEmail, ensureProfileRow, registerUser } from './authUsers'
 import { supabaseAdmin, supabaseAuth } from './supabase'
+import { emptyFinance, summarizeLedger } from '../shared/finances'
+import type { LedgerEntry } from '../shared/finances'
 import { PLANS, defaultPlanId, isPaidPlan, planById, plansFor } from '../shared/billing'
 import type { BillingInterval, BillingProvider, BillingRole } from '../shared/billing'
 import {
@@ -1511,6 +1513,106 @@ app.patch('/api/employer/applications/:id', async (c) => {
   return c.json({ ...row, job })
 })
 
+async function persistLedger(row: LedgerEntry) {
+  memory.addLedger(row)
+  if (!supabaseAdmin) return
+  const { error } = await supabaseAdmin.from('ledger_entries').insert({
+    id: row.id,
+    candidate_id: row.candidateId,
+    employer_id: row.employerId ?? null,
+    application_id: row.applicationId ?? null,
+    job_title: row.jobTitle ?? null,
+    company: row.company ?? null,
+    kind: row.kind,
+    status: row.status,
+    amount: row.amount,
+    currency: row.currency,
+    note: row.note ?? null,
+    created_at: row.createdAt,
+  })
+  if (error) console.warn('ledger row', error.message)
+}
+
+function financeFor(candidateId: string, currency: Currency = 'USD') {
+  return summarizeLedger(memory.getLedgerForCandidate(candidateId), currency)
+}
+
+app.get('/api/finances', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role === 'employer') {
+    return c.json({
+      role: 'employer',
+      sent: memory.getLedgerForEmployer(user.id),
+      overview: emptyFinance(profile.currency),
+    })
+  }
+  return c.json({
+    role: 'candidate',
+    overview: financeFor(user.id, profile.currency),
+  })
+})
+
+app.post('/api/finances/withdraw', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role === 'employer') return c.json({ error: 'Employer accounts send pay, they do not withdraw it.' }, 403)
+  const body = (await c.req.json().catch(() => ({}))) as { amount?: number }
+  const amount = Math.round(Number(body.amount) || 0)
+  const desk = financeFor(user.id, profile.currency)
+  if (amount < 20) return c.json({ error: 'Withdraw at least 20.' }, 400)
+  if (amount > desk.available) return c.json({ error: 'That is more than your available balance.' }, 400)
+  const row: LedgerEntry = {
+    id: crypto.randomUUID(),
+    candidateId: user.id,
+    kind: 'withdraw',
+    status: 'sent',
+    amount,
+    currency: profile.currency,
+    note: 'Payout requested from your Atelier desk.',
+    createdAt: new Date().toISOString(),
+  }
+  await persistLedger(row)
+  return c.json({ overview: financeFor(user.id, profile.currency), entry: row })
+})
+
+app.post('/api/employer/applications/:id/pay', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+  const appRow = memory.getApplicationById(c.req.param('id'))
+  const job = appRow ? memory.getJob(appRow.jobId) : undefined
+  if (!appRow || job?.employerId !== user.id) return c.json({ error: 'Not found' }, 404)
+  const body = (await c.req.json().catch(() => ({}))) as { amount?: number; note?: string }
+  const amount = Math.round(Number(body.amount) || 0)
+  if (amount < 20) return c.json({ error: 'Send at least 20.' }, 400)
+  const row: LedgerEntry = {
+    id: crypto.randomUUID(),
+    candidateId: appRow.userId,
+    employerId: user.id,
+    applicationId: appRow.id,
+    jobTitle: job?.title,
+    company: job?.company || profile.companyName,
+    kind: 'from_employer',
+    status: 'available',
+    amount,
+    currency: job?.currency || profile.currency || 'USD',
+    note: String(body.note ?? '').trim() || `Pay for ${job?.title ?? 'your Atelier role'}`,
+    createdAt: new Date().toISOString(),
+  }
+  await persistLedger(row)
+  await notifyUser(
+    appRow.userId,
+    `${job?.company ?? 'An employer'} sent you ${amount} ${row.currency}`,
+    row.note || 'Open Finances to withdraw.',
+    '/app/finances',
+  )
+  return c.json({ entry: row })
+})
+
 app.get('/api/career', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
@@ -1792,6 +1894,20 @@ memory.addMessage({
   senderId: DEMO_USER,
   senderRole: 'candidate',
   body: 'Hi Sam — I sent my packet for the Full Stack role. Happy to walk through the matching and packet work whenever you have time.',
+  createdAt: new Date().toISOString(),
+})
+memory.addLedger({
+  id: 'a0000000-0000-4000-8000-000000000021',
+  candidateId: DEMO_USER,
+  employerId: DEMO_EMPLOYER,
+  applicationId: demoAppId,
+  jobTitle: 'Full Stack Engineer',
+  company: 'Atelier Labs',
+  kind: 'from_employer',
+  status: 'available',
+  amount: 2400,
+  currency: 'USD',
+  note: 'First milestone for matching work.',
   createdAt: new Date().toISOString(),
 })
 

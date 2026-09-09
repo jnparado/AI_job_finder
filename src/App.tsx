@@ -15,7 +15,7 @@ import { ResumePage } from '@/pages/Resume'
 import { ProfilePage } from '@/pages/Profile'
 import { CareerPage } from '@/pages/Career'
 import { InterviewPage, SettingsPage } from '@/pages/Settings'
-import { BillingPage } from '@/pages/Billing'
+import { FinancesPage } from '@/pages/Finances'
 import { RequireEmployer, RequireOnboarding, RequireSession, RequireStaff } from '@/pages/guards'
 import { EmployerShell } from '@/components/layout/EmployerShell'
 import {
@@ -76,7 +76,8 @@ export default function App() {
                 <Route path="interview" element={<InterviewPage />} />
                 <Route path="career" element={<CareerPage />} />
                 <Route path="settings" element={<SettingsPage />} />
-                <Route path="billing" element={<BillingPage />} />
+                <Route path="finances" element={<FinancesPage />} />
+                <Route path="billing" element={<Navigate to="/app/finances" replace />} />
               </Route>
             </Route>
             <Route element={<RequireEmployer />}>
@@ -88,7 +89,8 @@ export default function App() {
                 <Route path="inbox/:id" element={<EmployerApplicationPage />} />
                 <Route path="messages" element={<EmployerMessagesPage />} />
                 <Route path="messages/:id" element={<EmployerThreadPage />} />
-                <Route path="billing" element={<BillingPage />} />
+                <Route path="finances" element={<FinancesPage />} />
+                <Route path="billing" element={<Navigate to="/employer/finances" replace />} />
               </Route>
             </Route>
             <Route element={<RequireStaff />}>

@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/feedback'
 import { MatchCard } from '@/components/jobs/MatchCard'
 import { ScoreBadge } from '@/components/jobs/ScoreBadge'
 import { SocialShare } from '@/components/social/SocialLinks'
+import { ApplyOnPlatforms } from '@/components/jobs/ApplyOnPlatforms'
 
 const FILTERS: { id: MatchCategory | 'all' | '70'; label: string }[] = [
   { id: '70', label: 'Recommended' },
@@ -351,15 +352,7 @@ export function JobDetailsPage() {
               </a>
             </Button>
           ) : null}
-          {(m.job.sources ?? [])
-            .filter((s) => s.url && s.url !== m.job.applicationUrl)
-            .map((s) => (
-              <Button key={s.source + s.url} variant="outline" asChild>
-                <a href={s.url} target="_blank" rel="noreferrer">
-                  {sourceLabel(s.source)}
-                </a>
-              </Button>
-            ))}
+          {atelier ? null : <ApplyOnPlatforms job={m.job} compact boardsOnly />}
         </div>
       </div>
     </div>

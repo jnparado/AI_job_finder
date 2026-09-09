@@ -52,11 +52,11 @@ export function SettingsPage() {
       />
       <Card className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2>Subscription</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Card (Stripe), PayPal, Apple Pay, and Google Pay.</p>
+          <h2>Finances</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Pay from Atelier employers, ledger, and withdraw.</p>
         </div>
-        <Link to="/app/billing" className="text-sm font-medium text-[var(--copper)]">
-          Manage billing
+        <Link to="/app/finances" className="text-sm font-medium text-[var(--copper)]">
+          Open finances
         </Link>
       </Card>
       <Card className="space-y-3">

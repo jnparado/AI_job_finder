@@ -11,6 +11,7 @@ import { Card, Badge } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/card'
 import { EmptyState, PageHeader } from '@/components/ui/feedback'
 import { ThreadPanel } from '@/components/messages/ThreadPanel'
+import { ApplyOnPlatforms } from '@/components/jobs/ApplyOnPlatforms'
 
 interface ApplicationRow {
   id: string
@@ -242,13 +243,30 @@ export function ApplicationDetailsPage() {
         </div>
       ) : null}
 
+      {a.match?.job && !a.directToEmployer ? (
+        <Card className="space-y-3">
+          <h2>Apply on other platforms</h2>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" type="button" onClick={() => copyText('letter', p.coverLetter)}>
+              <Copy className="size-3.5" />
+              {copied === 'letter' ? 'Copied' : 'Copy cover letter'}
+            </Button>
+            <Button variant="outline" size="sm" type="button" onClick={() => copyText('resume', p.tailoredResume)}>
+              <Copy className="size-3.5" />
+              {copied === 'resume' ? 'Copied' : 'Copy resume'}
+            </Button>
+          </div>
+          <ApplyOnPlatforms job={a.match.job} />
+        </Card>
+      ) : null}
+
       {a.status === 'draft' || a.status === 'ready' ? (
         <Card className="space-y-3">
           <p className="text-sm text-muted-foreground">
             {a.directToEmployer
               ? 'This role is on Atelier. Approving sends the packet to the employer inbox.'
               : officialUrl
-                ? `This role is on ${platform}. Atelier prepares the materials. You paste them and submit on the official listing — LinkedIn, Indeed, Upwork, and similar sites do not allow us to click Apply for you.`
+                ? `This role is on ${platform}. Copy the letter, approve the packet, then paste and submit on the official listing.`
                 : `This role uses ${a.channel}. Approve the packet, then submit through that channel.`}
           </p>
           <label className="flex items-start gap-2 text-sm">

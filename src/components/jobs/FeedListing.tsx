@@ -73,7 +73,7 @@ export function FeedListing({
           </Button>
           {onApply ? (
             <Button variant="copper" size="sm" disabled={applying} onClick={onApply}>
-              {applying ? 'Preparing…' : atelier ? 'Send packet' : 'Prepare packet'}
+              {applying ? 'Preparing…' : atelier ? 'Send packet' : `Apply on ${sourceLabel(job.source)}`}
             </Button>
           ) : null}
         </div>

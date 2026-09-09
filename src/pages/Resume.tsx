@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/lib/auth'
 import { api, apiUpload } from '@/lib/api'
+import { useApplyToJob } from '@/lib/useApplyToJob'
 import { resumeMime, saveResumeToSupabase } from '@/lib/resumeStorage'
 import { Button } from '@/components/ui/button'
 import { Card, Badge, Textarea } from '@/components/ui/card'
@@ -78,6 +79,7 @@ export function ResumePage() {
   const [dragOver, setDragOver] = useState(false)
   const [paste, setPaste] = useState(profile.resumeText)
 
+  const apply = useApplyToJob()
   const recommended = (search?.matches ?? []).filter((m) => m.score >= 70).slice(0, 5)
   const busy = phase === 'uploading' || phase === 'parsing' || phase === 'searching'
   const status =
@@ -374,15 +376,20 @@ export function ResumePage() {
               <Link to="/app/jobs">See all matches</Link>
             </Button>
           </div>
-          {search.discovery?.officialSearch?.length ? (
-            <p className="text-sm text-muted-foreground">
-              LinkedIn, Indeed, and Upwork open on their official sites from the Jobs page.
-            </p>
-          ) : null}
+          <p className="text-sm text-muted-foreground">
+            Prepare a packet here, then apply on the official listing. Atelier never submits for you on LinkedIn,
+            Indeed, Upwork, or similar boards.
+          </p>
+          {apply.error ? <p className="text-[var(--copper)]">{apply.error}</p> : null}
           {recommended.length ? (
             <div className="space-y-3">
               {recommended.map((m) => (
-                <MatchCard key={m.job.id} match={m} />
+                <MatchCard
+                  key={m.job.id}
+                  match={m}
+                  applying={apply.applying && apply.applyingId === m.job.id}
+                  onApply={() => apply.applyToJob(m.job.id)}
+                />
               ))}
             </div>
           ) : (
