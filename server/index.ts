@@ -1484,14 +1484,16 @@ app.patch('/api/employer/applications/:id', async (c) => {
 app.get('/api/career', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  await hydrateApplications({ userId: user.id })
+  const profile = await loadProfile(user)
   const apps = memory.getApplications(user.id)
   const matches = memory.getMatches(user.id)
   const rows = apps.map((a) => ({
     status: a.status,
-    title: matches.find((m) => m.job.id === a.jobId)?.job.title ?? '',
+    title: memory.getJob(a.jobId)?.title ?? matches.find((m) => m.job.id === a.jobId)?.job.title ?? '',
   }))
-  const local = careerInsights(rows)
-  return c.json(await strategizeCareer(local, await loadProfile(user), rows))
+  const local = careerInsights(rows, profile, matches)
+  return c.json(await strategizeCareer(local, profile, rows))
 })
 
 app.get('/api/interview', async (c) => {

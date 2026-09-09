@@ -277,7 +277,7 @@ export async function strategizeCareer(
   if (!openaiReady()) return local
   const json = await completeJson<{ headline?: string; advice?: string[]; strategy?: string }>(
     'career_strategy',
-    'Give a concise career strategy from actual applications. JSON: { "headline", "advice": string[], "strategy" }. Be specific. Do not invent outcomes.',
+    'Give a concise career strategy. Use the profile, scored matches, and any applications. JSON: { "headline", "advice": string[], "strategy" }. Be specific. Do not invent interviews, offers, or skills the candidate did not list.',
     JSON.stringify({
       profile: profileSnapshot(profile),
       applications,

@@ -192,6 +192,13 @@ export interface CareerInsights {
   advice: string[]
   strategy?: string
   aiLane?: 'luna' | 'terra' | 'sol'
+  readiness?: number
+  appliedCount?: number
+  interviewCount?: number
+  matchCount?: number
+  nextActions?: { label: string; href: string; done?: boolean }[]
+  gaps?: string[]
+  focusTitle?: string
 }
 
 export function matchCategory(score: number): MatchCategory {

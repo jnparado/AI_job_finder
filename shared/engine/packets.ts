@@ -136,33 +136,118 @@ export function interviewQuestions(match: JobMatch, profile: CandidateProfile): 
 
 export function careerInsights(
   applications: { status: string; title: string }[],
+  profile?: CandidateProfile,
+  matches: JobMatch[] = [],
 ): CareerInsights {
+  const responded = new Set([
+    'under_review',
+    'interview',
+    'technical_interview',
+    'hr_interview',
+    'final_interview',
+    'offer',
+  ])
   const buckets = [
-    { label: 'Frontend roles', re: /frontend|react engineer|web engineer/i },
-    { label: 'Full Stack roles', re: /full stack/i },
-    { label: 'AI Engineer roles', re: /ai |automation|ml /i },
+    { label: 'Frontend', re: /frontend|front-end|react|ui engineer|web engineer/i },
+    { label: 'Full stack', re: /full stack|fullstack|software engineer/i },
+    { label: 'AI / automation', re: /ai |machine learning|\bml\b|llm|rag|automation/i },
   ]
+
+  const fromApps = applications.length > 0
   const rates = buckets.map((b) => {
-    const subset = applications.filter((a) => b.re.test(a.title))
-    const responses = subset.filter((a) =>
-      ['under_review', 'interview', 'technical_interview', 'hr_interview', 'final_interview', 'offer'].includes(
-        a.status,
-      ),
-    )
+    if (fromApps) {
+      const subset = applications.filter((a) => b.re.test(a.title))
+      const hits = subset.filter((a) => responded.has(a.status))
+      return {
+        label: `${b.label} replies`,
+        rate: subset.length ? Math.round((hits.length / subset.length) * 100) : 0,
+      }
+    }
+    const subset = matches.filter((m) => b.re.test(`${m.job.title} ${m.job.company}`))
+    const strong = subset.filter((m) => m.score >= 70)
     return {
-      label: b.label,
-      rate: subset.length ? Math.round((responses.length / subset.length) * 100) : 0,
+      label: `${b.label} fit`,
+      rate: subset.length ? Math.round((strong.length / subset.length) * 100) : 0,
     }
   })
-  const best = [...rates].sort((a, b) => b.rate - a.rate)[0]
+
+  const interviewCount = applications.filter((a) =>
+    /interview|offer/.test(a.status),
+  ).length
+  const missing = [...new Set(matches.flatMap((m) => m.missingSkills ?? []))].slice(0, 6)
+  const top = [...matches].sort((a, b) => b.score - a.score)[0]
+  const title = profile?.desiredTitle || profile?.headline || profile?.currentTitle || 'your next role'
+  const hasResume = Boolean(profile?.resumeText || profile?.parsedProfile)
+  const skillCount = profile?.skills.length ?? 0
+  const readinessChecks = [
+    Boolean(profile?.firstName && profile?.lastName),
+    Boolean(title && title !== 'your next role'),
+    (profile?.yearsExperience ?? 0) > 0,
+    skillCount >= 4,
+    hasResume,
+    Boolean(profile?.careerGoals),
+    Boolean(profile?.city || profile?.country || profile?.remoteWorldwide),
+    matches.some((m) => m.score >= 70),
+  ]
+  const readiness = Math.round((readinessChecks.filter(Boolean).length / readinessChecks.length) * 100)
+
+  const advice: string[] = []
+  if (!hasResume) advice.push('Upload a resume so scores use your real skills instead of a thin profile.')
+  if (!profile?.desiredTitle) advice.push('Set a target title. The matcher weights title overlap heavily.')
+  if (skillCount < 4) advice.push('Add at least four core skills you can defend in an interview.')
+  if (profile && !profile.aiSkills.length) {
+    advice.push('If you want AI roles, list only AI skills you have actually used — the packet will not invent them.')
+  }
+  if (missing.length) {
+    advice.push(`Top listings still ask for ${missing.slice(0, 3).join(', ')}. Add them only after you have a real example.`)
+  }
+  if (!applications.length) {
+    advice.push('Prepare a packet on a 70%+ match. Nothing is sent until you approve.')
+  } else {
+    const best = [...rates].sort((a, b) => b.rate - a.rate)[0]
+    advice.push(`Lean into ${best?.label ?? 'your strongest cluster'} while you close the gaps above.`)
+  }
+  if (profile?.careerGoals) {
+    advice.push(`Keep applications aligned with: ${profile.careerGoals.slice(0, 140)}.`)
+  }
+  if (advice.length < 3) {
+    advice.push('Follow up only on packets you already approved. Do not spray the same letter across boards.')
+  }
+
+  const nextActions = [
+    { label: hasResume ? 'Update resume' : 'Upload a resume', href: '/app/resume', done: hasResume },
+    { label: 'Score live roles', href: '/app/jobs', done: matches.length > 0 },
+    {
+      label: applications.length ? 'Review packets' : 'Prepare a packet',
+      href: applications.length ? '/app/applications' : '/app/jobs',
+      done: applications.length > 0,
+    },
+    { label: 'Rehearse interview', href: '/app/interview', done: false },
+  ]
+
+  const headline = fromApps
+    ? `You have ${applications.length} packet${applications.length === 1 ? '' : 's'} in motion. ${
+        interviewCount
+          ? `${interviewCount} reached interview or offer.`
+          : 'Watch reply patterns as statuses move — we do not invent outcomes.'
+      }`
+    : matches.length
+      ? `No packets sent yet. ${matches.filter((m) => m.score >= 70).length} scored roles already clear 70% for ${title}.`
+      : `Your studio is ${readiness}% ready. Score authorized boards, then coach against real matches.`
+
   return {
-    headline: `You applied to ${applications.length} jobs. Strongest response so far: ${best?.label ?? 'n/a'}.`,
+    headline,
     rates,
-    advice: [
-      'Add 2 AI projects to your portfolio if you want AI Engineer response rates to rise.',
-      'Keep Python and RAG work visible on the resume when targeting agent roles.',
-      'Do not invent AWS/Docker experience — list it only after you have a real example.',
-      `Lean into ${best?.label ?? 'your highest-response cluster'} while you close skill gaps.`,
-    ],
+    advice: advice.slice(0, 6),
+    strategy: top
+      ? `Nearest listing: ${top.job.title} at ${top.job.company} (${top.score}% fit). Use that packet as the rehearsal, then apply on Atelier or on their official page.`
+      : 'Complete the profile, score boards, then this coach tracks replies from roles you actually touched.',
+    readiness,
+    appliedCount: applications.length,
+    interviewCount,
+    matchCount: matches.length,
+    nextActions,
+    gaps: missing,
+    focusTitle: title,
   }
 }
