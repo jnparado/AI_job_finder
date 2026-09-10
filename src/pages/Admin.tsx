@@ -285,7 +285,6 @@ const NAV: NavSection[] = [
       { id: 'packets', label: 'Packets', icon: FileText },
       { id: 'contracts', label: 'Contracts', icon: FileSignature },
       { id: 'invite', label: 'Invite employers', icon: Mail },
-      { id: 'candidates', label: 'Invite candidates', icon: UserPlus },
     ],
   },
   {
@@ -394,6 +393,7 @@ export function AdminPage() {
   const [range, setRange] = useState<'7D' | '30D' | '3M' | '1Y'>('30D')
   const [helpOpen, setHelpOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [alertsOpen, setAlertsOpen] = useState(false)
   const [staffEmail, setStaffEmail] = useState('')
   const [staffQuery, setStaffQuery] = useState('')
   const [staffMenu, setStaffMenu] = useState('')
@@ -1199,6 +1199,7 @@ export function AdminPage() {
     setNavOpen(false)
     setHelpOpen(false)
     setAccountOpen(false)
+    setAlertsOpen(false)
     setStaffMenu('')
     setQuery('')
     if (next === 'employers') setEmployerPage(0)
@@ -1329,23 +1330,125 @@ export function AdminPage() {
             />
           </label>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="relative grid size-10 place-items-center rounded-full text-[#5c635f] hover:bg-[#f3f5f4]"
-              aria-label="Alerts"
-              onClick={() => {
-                setHelpOpen(false)
-                setAccountOpen(false)
-                go(counts?.companiesToInvite ? 'invite' : 'inbox')
-              }}
-            >
-              <Bell className="size-5" />
-              {alertCount > 0 ? (
-                <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#ef4444] px-1 text-[0.65rem] font-semibold leading-none text-white">
-                  {alertCount > 99 ? '99+' : alertCount}
-                </span>
+            <div className="relative">
+              <button
+                type="button"
+                className="relative grid size-10 place-items-center rounded-full text-[#5c635f] hover:bg-[#f3f5f4]"
+                aria-label="Alerts"
+                onClick={() => {
+                  setHelpOpen(false)
+                  setAccountOpen(false)
+                  setAlertsOpen((v) => !v)
+                }}
+              >
+                <Bell className="size-5" />
+                {alertCount > 0 ? (
+                  <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#ef4444] px-1 text-[0.65rem] font-semibold leading-none text-white">
+                    {alertCount > 99 ? '99+' : alertCount}
+                  </span>
+                ) : null}
+              </button>
+              {alertsOpen ? (
+                <div className="absolute right-0 top-12 z-40 w-[22rem] overflow-hidden rounded-2xl border border-[#e4e8e5] bg-white shadow-[0_12px_32px_rgba(19,38,31,0.12)]">
+                  <div className="flex items-center justify-between border-b border-[#eef1ee] px-4 py-3">
+                    <p className="text-sm font-medium">Notifications</p>
+                    <span className="text-xs text-[#8a918c]">{alertCount} waiting</span>
+                  </div>
+                  <div className="max-h-[24rem] overflow-y-auto py-1">
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-[#f7f8f7]"
+                      onClick={() => {
+                        copyCandidateInvite('link')
+                      }}
+                    >
+                      <span className="mt-0.5 grid size-8 place-items-center rounded-full bg-[#ede9fe] text-[#7c3aed]">
+                        <UserPlus className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">Invite candidates</span>
+                        <span className="mt-0.5 block text-xs leading-relaxed text-[#8a918c]">
+                          {candidateCopied === 'link' ? 'Join link copied. Share it — Atelier does not email them.' : 'Copy a join link. Packets leave only after they approve.'}
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-[#f7f8f7]"
+                      onClick={() => {
+                        setAlertsOpen(false)
+                        go('candidates')
+                      }}
+                    >
+                      <span className="mt-0.5 grid size-8 place-items-center rounded-full bg-[#e8f6ee] text-[#147a48]">
+                        <User className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">Open candidates</span>
+                        <span className="mt-0.5 block text-xs text-[#8a918c]">
+                          {(data?.candidates ?? []).length} signed up · {(data?.candidates ?? []).filter((row) => row.status === 'pending').length} pending
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-[#f7f8f7]"
+                      onClick={() => {
+                        setAlertsOpen(false)
+                        go('invite')
+                      }}
+                    >
+                      <span className="mt-0.5 grid size-8 place-items-center rounded-full bg-[#fef3c7] text-[#b45309]">
+                        <Mail className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">Invite employers</span>
+                        <span className="mt-0.5 block text-xs text-[#8a918c]">
+                          {counts?.companiesToInvite ?? 0} companies waiting on a join link
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-[#f7f8f7]"
+                      onClick={() => {
+                        setAlertsOpen(false)
+                        go('inbox')
+                      }}
+                    >
+                      <span className="mt-0.5 grid size-8 place-items-center rounded-full bg-[#dbeafe] text-[#1d4ed8]">
+                        <MessagesSquare className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">Inbox</span>
+                        <span className="mt-0.5 block text-xs text-[#8a918c]">{counts?.messages ?? 0} studio messages</span>
+                      </span>
+                    </button>
+                  </div>
+                  <div className="flex gap-2 border-t border-[#eef1ee] px-4 py-3">
+                    <Button
+                      className="flex-1"
+                      type="button"
+                      onClick={() => {
+                        copyCandidateInvite('link')
+                      }}
+                    >
+                      <Copy className="size-4" />
+                      {candidateCopied === 'link' ? 'Copied' : 'Copy candidate link'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() => {
+                        copyCandidateInvite('note')
+                      }}
+                    >
+                      {candidateCopied === 'note' ? 'Copied' : 'Copy note'}
+                    </Button>
+                  </div>
+                </div>
               ) : null}
-            </button>
+            </div>
             <div className="relative">
               <button
                 type="button"
@@ -1353,6 +1456,7 @@ export function AdminPage() {
                 aria-label="Help"
                 onClick={() => {
                   setAccountOpen(false)
+                  setAlertsOpen(false)
                   setHelpOpen((v) => !v)
                 }}
               >
@@ -1383,6 +1487,7 @@ export function AdminPage() {
                 className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 hover:bg-[#f3f5f4]"
                 onClick={() => {
                   setHelpOpen(false)
+                  setAlertsOpen(false)
                   setAccountOpen((v) => !v)
                 }}
               >
