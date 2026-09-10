@@ -28,6 +28,7 @@ const CallbackPage = lazyNamed(() => import('@/pages/Auth'), 'CallbackPage')
 const ForgotPasswordPage = lazyNamed(() => import('@/pages/Auth'), 'ForgotPasswordPage')
 const LoginPage = lazyNamed(() => import('@/pages/Auth'), 'LoginPage')
 const RegisterPage = lazyNamed(() => import('@/pages/Auth'), 'RegisterPage')
+const JoinEmployerPage = lazyNamed(() => import('@/pages/JoinEmployer'), 'JoinEmployerPage')
 const ResetPasswordPage = lazyNamed(() => import('@/pages/Auth'), 'ResetPasswordPage')
 const VerifyPage = lazyNamed(() => import('@/pages/Auth'), 'VerifyPage')
 const OnboardingPage = lazyNamed(() => import('@/pages/Onboarding'), 'OnboardingPage')
@@ -88,6 +89,7 @@ export default function App() {
               <Route path="/login/employer" element={<Navigate to="/login?role=employer" replace />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/register/employer" element={<Navigate to="/register?role=employer" replace />} />
+              <Route path="/join" element={<JoinEmployerPage />} />
               <Route path="/verify" element={<VerifyPage />} />
               <Route path="/forgot" element={<ForgotPasswordPage />} />
               <Route path="/auth/reset" element={<ResetPasswordPage />} />

@@ -9,7 +9,7 @@ import { BrandMark } from '@/components/ui/feedback'
 import { useAuth } from '@/lib/auth'
 import { rememberIntendedAccount, supabase, takeIntendedAccount, upsertOwnProfile } from '@/lib/supabase'
 import { authHero, brandSrc, localBrandPath } from '@/lib/brandAssets'
-import { emptyProfile, isStaffRole } from '@shared/types'
+import { emptyProfile, isStaffRole, sourceLabel } from '@shared/types'
 import type { CandidateProfile } from '@shared/types'
 import { SocialAuth } from '@/components/social/SocialAuth'
 import { api } from '@/lib/api'
@@ -150,10 +150,13 @@ function EmployerRegisterPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const { signUpEmail, configured, destinationFor, user, loading } = useAuth()
+  const invitedCompany = (params.get('company') ?? '').trim()
+  const invitedFrom = params.get('from') ?? ''
+  const invitedListing = (params.get('listing') ?? '').trim()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [companyName, setCompanyName] = useState('')
+  const [companyName, setCompanyName] = useState(invitedCompany)
   const [role, setRole] = useState<'candidate' | 'employer'>(params.get('role') === 'employer' ? 'employer' : 'candidate')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -194,7 +197,13 @@ function EmployerRegisterPage() {
         role={role}
         onChange={(next) => {
           setRole(next)
-          navigate(next === 'employer' ? '/register?role=employer' : '/register', { replace: true })
+          if (next === 'employer') {
+            const nextParams = new URLSearchParams(params)
+            nextParams.set('role', 'employer')
+            navigate(`/register?${nextParams.toString()}`, { replace: true })
+          } else {
+            navigate('/register', { replace: true })
+          }
         }}
       />
       <form className="space-y-4" onSubmit={(e) => void onSubmit(e)}>
@@ -221,6 +230,20 @@ function EmployerRegisterPage() {
           <Field label="Company name">
             <Input placeholder="Company name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} required />
           </Field>
+        ) : null}
+        {role === 'employer' && invitedCompany ? (
+          <div className="rounded-2xl border border-[#c6a15b55] bg-[#f7f1e4] px-4 py-3 text-sm text-[var(--forest)]">
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[var(--copper)]">
+              Invited to Atelier
+            </p>
+            <p className="mt-1 font-medium">
+              Create a hiring account for {invitedCompany}
+              {invitedFrom ? ` · found on ${sourceLabel(invitedFrom)}` : ''}.
+            </p>
+            {invitedListing ? (
+              <p className="mt-1 text-[var(--forest)]/75">Matched listing: {invitedListing}</p>
+            ) : null}
+          </div>
         ) : null}
         {role === 'employer' ? (
           <div className="rounded-2xl border border-[#c6a15b55] bg-[var(--forest)] px-4 py-3 text-sm text-[var(--paper)]">

@@ -13,6 +13,7 @@ import { MatchCard } from '@/components/jobs/MatchCard'
 import { ScoreBadge } from '@/components/jobs/ScoreBadge'
 import { SocialShare } from '@/components/social/SocialLinks'
 import { ApplyOnPlatforms } from '@/components/jobs/ApplyOnPlatforms'
+import { InviteEmployer } from '@/components/jobs/InviteEmployer'
 import { listingUrl } from '@shared/applyBoards'
 
 const FILTERS: { id: MatchCategory | 'all' | '70'; label: string }[] = [
@@ -339,6 +340,8 @@ export function JobDetailsPage() {
           <SocialShare text={`${m.job.title} at ${m.job.company} — scored on Atelier`} />
         </div>
       </Card>
+
+      <InviteEmployer job={m.job} />
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 p-3 backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:p-0">
         <div className="mx-auto flex max-w-5xl flex-wrap gap-2">

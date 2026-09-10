@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/card'
 import { EmptyState, PageHeader } from '@/components/ui/feedback'
 import { ThreadPanel } from '@/components/messages/ThreadPanel'
 import { ApplyOnPlatforms } from '@/components/jobs/ApplyOnPlatforms'
+import { InviteEmployer } from '@/components/jobs/InviteEmployer'
 
 interface ApplicationRow {
   id: string
@@ -260,6 +261,8 @@ export function ApplicationDetailsPage() {
           <ApplyOnPlatforms job={a.match.job} />
         </Card>
       ) : null}
+
+      {a.match?.job ? <InviteEmployer job={a.match.job} /> : null}
 
       {a.status === 'draft' || a.status === 'ready' ? (
         <Card className="space-y-3">

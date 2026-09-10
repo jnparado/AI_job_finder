@@ -5,6 +5,7 @@ import { moneyBand } from '@/lib/utils'
 import { ScoreBadge } from './ScoreBadge'
 import { Badge } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { InviteEmployer } from '@/components/jobs/InviteEmployer'
 
 export function MatchCard({
   match,
@@ -42,11 +43,14 @@ export function MatchCard({
           ) : null}
         </div>
       </Link>
-      {onApply ? (
-        <Button variant="copper" size="sm" className="shrink-0 self-start sm:self-center" disabled={applying} onClick={onApply}>
-          {applying ? 'Preparing…' : atelier ? 'Send to employer' : `Apply on ${sourceLabel(match.job.source)}`}
-        </Button>
-      ) : null}
+      <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+        {onApply ? (
+          <Button variant="copper" size="sm" disabled={applying} onClick={onApply}>
+            {applying ? 'Preparing…' : atelier ? 'Send to employer' : `Apply on ${sourceLabel(match.job.source)}`}
+          </Button>
+        ) : null}
+        <InviteEmployer job={match.job} compact />
+      </div>
     </div>
   )
 }

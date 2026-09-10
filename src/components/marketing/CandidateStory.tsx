@@ -524,6 +524,10 @@ export const CANDIDATE_FAQ = [
     a: 'Yes. Match, prepare, and copy the letter. Then apply on the official URL. We track it in your workshop so replies and interviews stay in one place.',
   },
   {
+    q: 'Can I invite that employer to Atelier?',
+    a: 'Yes. Every listing from Himalayas, a career page, LinkedIn, or another board has an invite. Send them a join link so they can create a hiring account and receive approved packets here. Atelier jobs already have an inbox — no invite needed.',
+  },
+  {
     q: 'Where do the jobs come from?',
     a: 'Licensed APIs, public career pages, and roles employers post on Atelier. We do not scrape LinkedIn, Indeed, or Upwork. If a board has no public API, we open their official search so you can apply there.',
   },

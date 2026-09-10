@@ -3,6 +3,7 @@ const loaders: Record<string, () => Promise<unknown>> = {
   '/employers': () => import('@/pages/Landing'),
   '/login': () => import('@/pages/Auth'),
   '/register': () => import('@/pages/Auth'),
+  '/join': () => import('@/pages/JoinEmployer'),
   '/app': () => import('@/pages/Dashboard'),
   '/app/jobs': () => import('@/pages/Jobs'),
   '/app/applications': () => import('@/pages/Applications'),

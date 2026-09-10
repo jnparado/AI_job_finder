@@ -4,6 +4,7 @@ import { sourceLabel } from '@shared/types'
 import { moneyBand, postedLabel, textSnippet } from '@/lib/utils'
 import { Badge } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { InviteEmployer } from '@/components/jobs/InviteEmployer'
 
 export function FeedListing({
   match,
@@ -67,7 +68,8 @@ export function FeedListing({
           {atelier ? <Badge tone="copper">Atelier desk</Badge> : <Badge>{sourceLabel(job.source)}</Badge>}
           {job.remote ? <Badge>Remote</Badge> : null}
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <InviteEmployer job={job} compact />
           <Button variant="outline" size="sm" asChild>
             <Link to={`/app/jobs/${job.id}`}>Why it fits</Link>
           </Button>
