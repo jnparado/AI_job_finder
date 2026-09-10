@@ -1524,6 +1524,25 @@ app.patch('/api/employer/applications/:id', async (c) => {
   return c.json({ ...row, job })
 })
 
+function ledgerFromRow(row: Record<string, unknown>): LedgerEntry {
+  const status = row.status
+  const kind = row.kind === 'withdraw' ? 'withdraw' : 'from_employer'
+  return {
+    id: String(row.id),
+    candidateId: String(row.candidate_id ?? ''),
+    employerId: row.employer_id ? String(row.employer_id) : undefined,
+    applicationId: row.application_id ? String(row.application_id) : undefined,
+    jobTitle: row.job_title ? String(row.job_title) : undefined,
+    company: row.company ? String(row.company) : undefined,
+    kind,
+    status: status === 'available' || status === 'sent' || status === 'failed' ? status : 'pending',
+    amount: Number(row.amount ?? 0),
+    currency: (row.currency as Currency) || 'USD',
+    note: row.note ? String(row.note) : undefined,
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+  }
+}
+
 async function persistLedger(row: LedgerEntry) {
   memory.addLedger(row)
   if (!supabaseAdmin) return
@@ -1563,12 +1582,12 @@ function sessionFromRow(row: Record<string, unknown>): TrackerSession {
   }
 }
 
-async function hydrateTracker(filter: { candidateId?: string; employerId?: string }) {
+async function hydrateTracker(filter: { candidateId?: string; employerId?: string } = {}) {
   if (!supabaseAdmin) return
   let q = supabaseAdmin.from('ateliar_sessions').select('*')
   if (filter.candidateId) q = q.eq('candidate_id', filter.candidateId)
   if (filter.employerId) q = q.eq('employer_id', filter.employerId)
-  const { data, error } = await q
+  const { data, error } = await q.order('started_at', { ascending: false }).limit(200)
   if (error) {
     console.warn('hydrateTracker', error.message)
     return
@@ -2044,10 +2063,136 @@ app.get('/api/admin/dashboard', async (c) => {
   }
 
   let packets = 0
+  let hired = memory.allApplications().filter((a) => isHiredStatus(a.status)).length
+  let appRows: { id: string; status: string; jobId: string; userId: string; createdAt: string }[] = memory
+    .allApplications()
+    .slice(0, 50)
+    .map((a) => ({
+      id: a.id,
+      status: a.status,
+      jobId: a.jobId,
+      userId: a.userId,
+      createdAt: a.createdAt,
+    }))
+
+  await hydrateTracker()
   if (supabaseAdmin) {
     const { count, error } = await supabaseAdmin.from('applications').select('id', { count: 'exact', head: true })
     if (error) console.warn('admin packets', error.message)
     else packets = count ?? 0
+
+    const hiredRes = await supabaseAdmin.from('applications').select('id', { count: 'exact', head: true }).in('status', ['hired', 'offer'])
+    if (hiredRes.error) console.warn('admin hired', hiredRes.error.message)
+    else hired = hiredRes.count ?? hired
+
+    const { data: apps, error: appsErr } = await supabaseAdmin
+      .from('applications')
+      .select('id, status, job_id, user_id, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50)
+    if (appsErr) console.warn('admin applications', appsErr.message)
+    else if (apps?.length) {
+      appRows = apps.map((row) => ({
+        id: String(row.id),
+        status: String(row.status ?? ''),
+        jobId: String(row.job_id ?? ''),
+        userId: String(row.user_id ?? ''),
+        createdAt: row.created_at ? String(row.created_at) : '',
+      }))
+    }
+
+    const { data: led, error: ledErr } = await supabaseAdmin
+      .from('ledger_entries')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    if (ledErr) console.warn('admin ledger', ledErr.message)
+    else for (const row of led ?? []) memory.addLedger(ledgerFromRow(row as Record<string, unknown>))
+  } else {
+    packets = memory.allApplications().length
+  }
+
+  const peopleById = new Map(accounts.map((row) => [row.id, row]))
+  const jobsById = new Map(jobs.map((job) => [job.id, job]))
+
+  const packetsList = appRows.map((row) => {
+    const job = jobsById.get(row.jobId) ?? memory.getJob(row.jobId)
+    const person = peopleById.get(row.userId)
+    return {
+      id: row.id,
+      status: row.status,
+      jobTitle: job?.title ?? 'Role',
+      company: job?.company ?? '',
+      candidate: person?.name || person?.email || 'Candidate',
+      createdAt: row.createdAt,
+    }
+  })
+
+  const trackerSessions = memory.allTrackerSessions().map((row) => {
+    const person = peopleById.get(row.candidateId)
+    const live = !row.endedAt
+    const seconds = sessionSeconds(row)
+    return {
+      id: row.id,
+      jobTitle: row.jobTitle,
+      company: row.company,
+      candidate: person?.name || person?.email || 'Candidate',
+      startedAt: row.startedAt,
+      endedAt: row.endedAt ?? '',
+      seconds,
+      live,
+    }
+  })
+  const tracker = {
+    live: trackerSessions.filter((row) => row.live).length,
+    hours: trackerSessions.reduce((n, row) => n + row.seconds, 0),
+    sessions: trackerSessions.slice(0, 40),
+  }
+
+  const financeOverview = summarizeLedger(memory.allLedger())
+  const finance = {
+    received: financeOverview.received,
+    pending: financeOverview.pending,
+    available: financeOverview.available,
+    withdrawn: financeOverview.withdrawn,
+    currency: financeOverview.currency,
+    entries: financeOverview.entries.slice(0, 40).map((row) => ({
+      id: row.id,
+      company: row.company ?? '',
+      jobTitle: row.jobTitle ?? '',
+      amount: row.amount,
+      status: row.status,
+      kind: row.kind,
+      createdAt: row.createdAt,
+    })),
+  }
+
+  let inboxRecent: { id: string; body: string; at: string; applicationId: string; senderRole: string }[] = []
+  let messageCount = 0
+  if (supabaseAdmin) {
+    const counted = await supabaseAdmin.from('thread_messages').select('id', { count: 'exact', head: true })
+    if (counted.error) console.warn('admin messages', counted.error.message)
+    else messageCount = counted.count ?? 0
+    const { data: msgs, error: msgErr } = await supabaseAdmin
+      .from('thread_messages')
+      .select('id, body, created_at, application_id, sender_role')
+      .order('created_at', { ascending: false })
+      .limit(20)
+    if (msgErr) console.warn('admin inbox', msgErr.message)
+    else {
+      inboxRecent = (msgs ?? []).map((row) => ({
+        id: String(row.id),
+        body: String(row.body ?? ''),
+        at: row.created_at ? String(row.created_at) : '',
+        applicationId: String(row.application_id ?? ''),
+        senderRole: String(row.sender_role ?? ''),
+      }))
+    }
+  }
+  const inbox = {
+    messages: messageCount || inboxRecent.length,
+    threads: new Set(inboxRecent.map((row) => row.applicationId)).size,
+    recent: inboxRecent,
   }
 
   const boardMap = new Map<string, number>()
@@ -2092,6 +2237,11 @@ app.get('/api/admin/dashboard', async (c) => {
     companiesToInvite: invites.length,
     packets,
     people: accounts.length,
+    hired,
+    messages: inbox.messages,
+    liveClocks: tracker.live,
+    trackerHours: tracker.hours,
+    financeReceived: finance.received,
   }
 
   return c.json({
@@ -2104,6 +2254,10 @@ app.get('/api/admin/dashboard', async (c) => {
     boards,
     listings,
     activity,
+    packetsList,
+    tracker,
+    finance,
+    inbox,
     promoteSql: "update public.profiles set role = 'admin' where email = 'you@example.com';",
   })
 })

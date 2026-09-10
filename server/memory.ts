@@ -191,4 +191,10 @@ export const memory = {
   getTrackerForEmployer(employerId: string) {
     return trackerSessions.filter((s) => s.employerId === employerId)
   },
+  allTrackerSessions() {
+    return [...trackerSessions]
+  },
+  allLedger() {
+    return [...ledger]
+  },
 }

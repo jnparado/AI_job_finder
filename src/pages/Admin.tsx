@@ -1,25 +1,31 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  BarChart3,
   Bell,
   Briefcase,
   Building2,
   Calendar,
+  ChevronRight,
   FileText,
   LayoutDashboard,
   LogOut,
   Mail,
+  MessagesSquare,
   Search,
   Settings,
+  Timer,
   User,
   Users,
+  Wallet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { InviteEmployer } from '@/components/jobs/InviteEmployer'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
-import { initials } from '@/lib/utils'
+import { initials, money, prettyStatus } from '@/lib/utils'
+import { formatHoursMinutes } from '@shared/tracker'
 import { sourceLabel, type AccountRole } from '@shared/types'
 import type { LucideIcon } from 'lucide-react'
 
@@ -52,6 +58,11 @@ interface AdminDashboard {
     companiesToInvite: number
     packets: number
     people: number
+    hired: number
+    messages: number
+    liveClocks: number
+    trackerHours: number
+    financeReceived: number
   }
   accounts: AdminAccount[]
   invites: AdminInvite[]
@@ -65,22 +76,108 @@ interface AdminDashboard {
     postedAt: string
     atelier: boolean
   }[]
+  packetsList: {
+    id: string
+    status: string
+    jobTitle: string
+    company: string
+    candidate: string
+    createdAt: string
+  }[]
+  tracker: {
+    live: number
+    hours: number
+    sessions: {
+      id: string
+      jobTitle: string
+      company: string
+      candidate: string
+      startedAt: string
+      endedAt: string
+      seconds: number
+      live: boolean
+    }[]
+  }
+  finance: {
+    received: number
+    pending: number
+    available: number
+    withdrawn: number
+    currency: string
+    entries: {
+      id: string
+      company: string
+      jobTitle: string
+      amount: number
+      status: string
+      kind: string
+      createdAt: string
+    }[]
+  }
+  inbox: {
+    messages: number
+    threads: number
+    recent: { id: string; body: string; at: string; applicationId: string; senderRole: string }[]
+  }
   activity: { kind: 'person' | 'invite'; title: string; body: string; at: string }[]
   promoteSql: string
 }
 
-type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets'
+type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'tracker' | 'inbox' | 'finances' | 'reports'
+type PeopleFilter = 'all' | AccountRole
 
-const NAV: { id: DeskView; label: string; icon: LucideIcon; role?: AccountRole }[] = [
-  { id: 'pulse', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'people', label: 'Users', icon: Users },
-  { id: 'people', label: 'Candidates', icon: User, role: 'candidate' },
-  { id: 'people', label: 'Employers', icon: Building2, role: 'employer' },
-  { id: 'listings', label: 'Jobs', icon: Briefcase },
-  { id: 'packets', label: 'Packets', icon: FileText },
-  { id: 'invite', label: 'Invite', icon: Mail },
-  { id: 'keys', label: 'Settings', icon: Settings },
+interface NavLinkItem {
+  kind: 'link'
+  id: DeskView
+  label: string
+  icon: LucideIcon
+  people?: PeopleFilter
+}
+
+interface NavGroupItem {
+  kind: 'group'
+  id: string
+  label: string
+  icon: LucideIcon
+  children: NavLinkItem[]
+}
+
+type NavEntry = NavLinkItem | NavGroupItem
+
+const NAV: NavEntry[] = [
+  { kind: 'link', id: 'pulse', label: 'Dashboard', icon: LayoutDashboard },
+  {
+    kind: 'group',
+    id: 'users',
+    label: 'Users',
+    icon: Users,
+    children: [
+      { kind: 'link', id: 'people', label: 'Candidates', icon: User, people: 'candidate' },
+      { kind: 'link', id: 'people', label: 'Employers', icon: Building2, people: 'employer' },
+      { kind: 'link', id: 'people', label: 'All users', icon: Users, people: 'all' },
+    ],
+  },
+  {
+    kind: 'group',
+    id: 'work',
+    label: 'Jobs & Projects',
+    icon: Briefcase,
+    children: [
+      { kind: 'link', id: 'listings', label: 'Jobs', icon: Briefcase },
+      { kind: 'link', id: 'packets', label: 'Packets', icon: FileText },
+      { kind: 'link', id: 'invite', label: 'Invite', icon: Mail },
+    ],
+  },
+  { kind: 'link', id: 'inbox', label: 'Inbox', icon: MessagesSquare },
+  { kind: 'link', id: 'tracker', label: 'Tracker', icon: Timer },
+  { kind: 'link', id: 'finances', label: 'Finances', icon: Wallet },
+  { kind: 'link', id: 'reports', label: 'Reports', icon: BarChart3 },
+  { kind: 'link', id: 'keys', label: 'Settings', icon: Settings },
 ]
+
+const MOBILE_NAV: { id: DeskView; label: string; people?: PeopleFilter }[] = NAV.flatMap((item) =>
+  item.kind === 'group' ? item.children.map((child) => ({ id: child.id, label: child.label, people: child.people })) : [{ id: item.id, label: item.label, people: item.people }],
+)
 
 export function AdminPage() {
   const { profile, signOut } = useAuth()
@@ -90,12 +187,13 @@ export function AdminPage() {
   const [query, setQuery] = useState('')
   const [source, setSource] = useState('all')
   const [peopleQuery, setPeopleQuery] = useState('')
-  const [peopleRole, setPeopleRole] = useState<'all' | AccountRole>('all')
+  const [peopleRole, setPeopleRole] = useState<PeopleFilter>('all')
   const [email, setEmail] = useState('')
   const [nextRole, setNextRole] = useState<'admin' | 'employer' | 'candidate'>('admin')
   const [copied, setCopied] = useState(false)
   const [picked, setPicked] = useState('')
   const [range, setRange] = useState<'7D' | '30D' | '3M' | '1Y'>('30D')
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ users: true, work: true })
   const dash = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: () => api<AdminDashboard>('/api/admin/dashboard'),
@@ -148,6 +246,38 @@ export function AdminPage() {
     })
   }, [data?.listings, query])
 
+  const packets = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return (data?.packetsList ?? []).filter((row) => {
+      if (!q) return true
+      return `${row.candidate} ${row.jobTitle} ${row.company} ${row.status}`.toLowerCase().includes(q)
+    })
+  }, [data?.packetsList, query])
+
+  const sessions = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return (data?.tracker?.sessions ?? []).filter((row) => {
+      if (!q) return true
+      return `${row.candidate} ${row.jobTitle} ${row.company}`.toLowerCase().includes(q)
+    })
+  }, [data?.tracker?.sessions, query])
+
+  const ledger = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return (data?.finance?.entries ?? []).filter((row) => {
+      if (!q) return true
+      return `${row.company} ${row.jobTitle} ${row.status} ${row.kind}`.toLowerCase().includes(q)
+    })
+  }, [data?.finance?.entries, query])
+
+  const messages = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return (data?.inbox?.recent ?? []).filter((row) => {
+      if (!q) return true
+      return `${row.body} ${row.senderRole}`.toLowerCase().includes(q)
+    })
+  }, [data?.inbox?.recent, query])
+
   const candidates = (data?.accounts ?? []).filter((a) => a.role === 'candidate')
 
   function onPromote(e: FormEvent) {
@@ -162,18 +292,40 @@ export function AdminPage() {
     })
   }
 
-  function go(next: DeskView, role: 'all' | AccountRole = 'all') {
+  function go(next: DeskView, role: PeopleFilter = 'all') {
     setView(next)
     if (next === 'people') setPeopleRole(role)
+    if (next === 'people') setOpenGroups((g) => ({ ...g, users: true }))
+    if (next === 'listings' || next === 'packets' || next === 'invite') setOpenGroups((g) => ({ ...g, work: true }))
     setNavOpen(false)
     setQuery('')
   }
 
+  function toggleGroup(id: string) {
+    setOpenGroups((g) => ({ ...g, [id]: !g[id] }))
+  }
+
+  function linkActive(item: NavLinkItem) {
+    if (item.people) return view === 'people' && peopleRole === item.people
+    if (item.id === 'people') return view === 'people' && peopleRole === 'all'
+    return view === item.id
+  }
+
   const searchValue = view === 'people' ? peopleQuery : query
   const onSearch = (value: string) => (view === 'people' ? setPeopleQuery(value) : setQuery(value))
+  const searchHint =
+    view === 'tracker'
+      ? 'Search tracker sessions'
+      : view === 'finances'
+        ? 'Search pay ledger'
+        : view === 'inbox'
+          ? 'Search messages'
+          : view === 'packets'
+            ? 'Search packets'
+            : 'Search users, jobs, packets, or companies'
 
   return (
-    <div className="min-h-svh bg-[#f3f5f4] lg:grid lg:grid-cols-[240px_minmax(0,1fr)]">
+    <div className="min-h-svh bg-[#f3f5f4] lg:grid lg:grid-cols-[252px_minmax(0,1fr)]">
       <aside className="hidden bg-[#13261f] text-white lg:flex lg:flex-col">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <img src="/brand/atelier-logo.jpg" alt="Atelier" className="size-9 rounded-lg object-cover" />
@@ -182,22 +334,43 @@ export function AdminPage() {
             <p className="mt-1 text-[0.65rem] text-white/55">Admin Panel</p>
           </div>
         </div>
-        <nav className="flex flex-1 flex-col gap-0.5 px-3">
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3">
           {NAV.map((item) => {
-            const peopleAll = item.id === 'people' && !item.role && view === 'people' && peopleRole === 'all'
-            const on = item.role ? view === 'people' && peopleRole === item.role : item.id === 'people' ? peopleAll : view === item.id
+            if (item.kind === 'group') {
+              const open = Boolean(openGroups[item.id])
+              const childOn = item.children.some(linkActive)
+              return (
+                <div key={item.id}>
+                  <SideRow
+                    icon={item.icon}
+                    label={item.label}
+                    active={childOn && !open}
+                    open={open}
+                    onClick={() => toggleGroup(item.id)}
+                  />
+                  {open
+                    ? item.children.map((child) => (
+                        <SideRow
+                          key={`${child.label}-${child.people ?? ''}`}
+                          icon={child.icon}
+                          label={child.label}
+                          active={linkActive(child)}
+                          indent
+                          onClick={() => go(child.id, child.people ?? 'all')}
+                        />
+                      ))
+                    : null}
+                </div>
+              )
+            }
             return (
-              <button
-                key={`${item.label}-${item.role ?? ''}`}
-                type="button"
-                onClick={() => go(item.id, item.role ?? 'all')}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${
-                  on ? 'bg-[#1f3d32] text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </button>
+              <SideRow
+                key={item.label}
+                icon={item.icon}
+                label={item.label}
+                active={linkActive(item)}
+                onClick={() => go(item.id, item.people ?? 'all')}
+              />
             )
           })}
         </nav>
@@ -221,14 +394,14 @@ export function AdminPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
             <Input
               className="h-10 rounded-xl border-[#e4e8e5] bg-[#f7f8f7] pl-10"
-              placeholder="Search users, jobs, packets, or companies"
+              placeholder={searchHint}
               value={searchValue}
               onChange={(e) => onSearch(e.target.value)}
             />
           </label>
-          <button type="button" className="relative grid size-10 place-items-center rounded-full text-[#5c635f]" aria-label="Alerts" onClick={() => go('invite')}>
+          <button type="button" className="relative grid size-10 place-items-center rounded-full text-[#5c635f]" aria-label="Alerts" onClick={() => go('inbox')}>
             <Bell className="size-5" />
-            {counts?.companiesToInvite ? (
+            {counts?.messages || counts?.companiesToInvite ? (
               <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-[#b85c38]" />
             ) : null}
           </button>
@@ -243,11 +416,11 @@ export function AdminPage() {
 
         {navOpen ? (
           <div className="flex gap-1 overflow-x-auto bg-[#13261f] px-3 py-2 lg:hidden">
-            {NAV.map((item) => (
+            {MOBILE_NAV.map((item) => (
               <button
                 key={`${item.label}-m`}
                 type="button"
-                onClick={() => go(item.id, item.role ?? 'all')}
+                onClick={() => go(item.id, item.people ?? 'all')}
                 className="shrink-0 rounded-lg px-3 py-1.5 text-sm text-white/80"
               >
                 {item.label}
@@ -281,6 +454,10 @@ export function AdminPage() {
                 <MetricCard icon={Briefcase} tone="blue" label="Active Jobs" value={counts?.jobs ?? 0} hint="Scored listings" />
                 <MetricCard icon={FileText} tone="teal" label="Total Packets" value={counts?.packets ?? 0} hint="Applications in studio" />
                 <MetricCard icon={Mail} tone="gold" label="Invite Queue" value={counts?.companiesToInvite ?? 0} hint="Companies to invite" />
+                <MetricCard icon={Timer} tone="green" label="Tracker" value={formatHoursMinutes(counts?.trackerHours ?? 0)} hint={`${counts?.liveClocks ?? 0} live clocks`} />
+                <MetricCard icon={MessagesSquare} tone="blue" label="Inbox" value={counts?.messages ?? 0} hint="Studio messages" />
+                <MetricCard icon={Wallet} tone="gold" label="Finances" value={money(counts?.financeReceived ?? 0)} hint="Received from employers" />
+                <MetricCard icon={Briefcase} tone="teal" label="Hired" value={counts?.hired ?? 0} hint="Offers and hires" />
               </div>
 
               <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.7fr)_17.5rem]">
@@ -380,9 +557,9 @@ export function AdminPage() {
                       </div>
                       <ul className="mt-4 space-y-3 text-sm">
                         <NoteDot color="#ef4444" text={`${counts?.companiesToInvite ?? 0} companies waiting on an invite.`} />
-                        <NoteDot color="#22c55e" text={`${counts?.packets ?? 0} packets currently in the studio.`} />
-                        <NoteDot color="#3b82f6" text="Packets leave only after a candidate approves." />
-                        <NoteDot color="#14a35a" text="Invite is staff-only. Candidates apply on official listings." />
+                        <NoteDot color="#22c55e" text={`${counts?.liveClocks ?? 0} live tracker clocks · ${formatHoursMinutes(counts?.trackerHours ?? 0)} logged.`} />
+                        <NoteDot color="#3b82f6" text={`${counts?.messages ?? 0} studio messages · ${counts?.packets ?? 0} packets.`} />
+                        <NoteDot color="#14a35a" text="Packets leave only after a candidate approves." />
                       </ul>
                     </Panel>
                     <div className="overflow-hidden rounded-2xl bg-[#13261f] p-5 text-white">
@@ -402,10 +579,11 @@ export function AdminPage() {
                   <Panel className="bg-[#eef8f1]">
                     <h2 className="font-sans text-base font-semibold">Quick Actions</h2>
                     <div className="mt-3 divide-y divide-[#d7eadc]">
+                      <QuickRow label="Open tracker" onClick={() => go('tracker')} />
+                      <QuickRow label="Review inbox" onClick={() => go('inbox')} />
+                      <QuickRow label="Finances" onClick={() => go('finances')} />
                       <QuickRow label="Invite an employer" onClick={() => go('invite')} />
-                      <QuickRow label="Review users" onClick={() => go('people')} />
                       <QuickRow label="Manage jobs" onClick={() => go('listings')} />
-                      <QuickRow label="Open settings" onClick={() => go('keys')} />
                     </div>
                   </Panel>
                   <Panel>
@@ -515,35 +693,118 @@ export function AdminPage() {
             </div>
           ) : null}
 
-          {view === 'listings' || view === 'packets' ? (
+          {view === 'listings' ? (
             <Panel>
-              <h2 className="font-sans text-lg font-semibold">{view === 'packets' ? 'Packets' : 'Jobs'}</h2>
-              {view === 'packets' ? (
-                <p className="mt-2 text-sm text-[#5c635f]">{counts?.packets ?? 0} packets in the studio. Open a candidate packet from their application.</p>
-              ) : null}
-              <table className="mt-5 w-full min-w-[36rem] text-left text-sm">
-                <thead className="text-xs text-[#8a918c]">
-                  <tr>
-                    <th className="pb-2 font-medium">Job Title</th>
-                    <th className="pb-2 font-medium">Company</th>
-                    <th className="pb-2 font-medium">Board</th>
-                    <th className="pb-2 font-medium">Posted</th>
-                    <th className="pb-2 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {searchListings.map((row) => (
-                    <tr key={row.id} className="border-t border-[#eef1ee]">
-                      <td className="py-3 font-medium">{row.title}</td>
-                      <td className="py-3 text-[#5c635f]">{row.company}</td>
-                      <td className="py-3">{sourceLabel(row.source)}</td>
-                      <td className="py-3">{row.postedAt || '—'}</td>
-                      <td className="py-3">{row.atelier ? 'Atelier' : 'Open'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <h2 className="font-sans text-lg font-semibold">Jobs</h2>
+              <DeskTable
+                columns={['Job Title', 'Company', 'Board', 'Posted', 'Status']}
+                rows={searchListings.map((row) => [row.title, row.company, sourceLabel(row.source), row.postedAt || '—', row.atelier ? 'Atelier' : 'Open'])}
+                empty="No jobs match this search."
+              />
             </Panel>
+          ) : null}
+
+          {view === 'packets' ? (
+            <Panel>
+              <h2 className="font-sans text-lg font-semibold">Packets</h2>
+              <p className="mt-2 text-sm text-[#5c635f]">{counts?.packets ?? 0} packets in the studio.</p>
+              <DeskTable
+                columns={['Candidate', 'Role', 'Company', 'Status', 'Created']}
+                rows={packets.map((row) => [row.candidate, row.jobTitle, row.company || '—', prettyStatus(row.status), day(row.createdAt)])}
+                empty="No packets yet."
+              />
+            </Panel>
+          ) : null}
+
+          {view === 'tracker' ? (
+            <div className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <MetricCard icon={Timer} tone="green" label="Hours logged" value={formatHoursMinutes(data?.tracker?.hours ?? 0)} hint="Across hired roles" />
+                <MetricCard icon={Timer} tone="teal" label="Live clocks" value={data?.tracker?.live ?? 0} hint="Running now" />
+                <MetricCard icon={Briefcase} tone="gold" label="Hired roles" value={counts?.hired ?? 0} hint="Tracker opens after hire" />
+              </div>
+              <Panel>
+                <h2 className="font-sans text-lg font-semibold">Atelier time tracker</h2>
+                <p className="mt-1 text-sm text-[#5c635f]">Hours candidates log after an Atelier hire. Outside boards never see this clock.</p>
+                <DeskTable
+                  columns={['Candidate', 'Role', 'Company', 'Time', 'State']}
+                  rows={sessions.map((row) => [
+                    row.candidate,
+                    row.jobTitle,
+                    row.company,
+                    formatHoursMinutes(row.seconds),
+                    row.live ? 'Live' : 'Stopped',
+                  ])}
+                  empty="No tracker sessions yet."
+                />
+              </Panel>
+            </div>
+          ) : null}
+
+          {view === 'inbox' ? (
+            <Panel>
+              <h2 className="font-sans text-lg font-semibold">Inbox</h2>
+              <p className="mt-1 text-sm text-[#5c635f]">
+                {counts?.messages ?? 0} messages across {data?.inbox?.threads ?? 0} recent threads. Studio chat opens after a packet is sent.
+              </p>
+              <ul className="mt-5 divide-y divide-[#eef1ee]">
+                {messages.map((row) => (
+                  <li key={row.id} className="py-3">
+                    <p className="text-xs capitalize text-[#8a918c]">
+                      {row.senderRole || 'studio'} · {day(row.at)}
+                    </p>
+                    <p className="mt-1 text-sm text-[#161c19]">{row.body || '—'}</p>
+                  </li>
+                ))}
+                {!messages.length ? <li className="py-6 text-sm text-[#8a918c]">No studio messages yet.</li> : null}
+              </ul>
+            </Panel>
+          ) : null}
+
+          {view === 'finances' ? (
+            <div className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard icon={Wallet} tone="green" label="Received" value={money(data?.finance?.received ?? 0, data?.finance?.currency)} hint="From employers" />
+                <MetricCard icon={Wallet} tone="gold" label="Pending" value={money(data?.finance?.pending ?? 0, data?.finance?.currency)} hint="Not yet available" />
+                <MetricCard icon={Wallet} tone="teal" label="Available" value={money(data?.finance?.available ?? 0, data?.finance?.currency)} hint="Ready to withdraw" />
+                <MetricCard icon={Wallet} tone="blue" label="Withdrawn" value={money(data?.finance?.withdrawn ?? 0, data?.finance?.currency)} hint="Sent to candidates" />
+              </div>
+              <Panel>
+                <h2 className="font-sans text-lg font-semibold">Pay ledger</h2>
+                <p className="mt-1 text-sm text-[#5c635f]">Employer pay stays on Atelier. Outside boards are not involved.</p>
+                <DeskTable
+                  columns={['Company', 'Role', 'Amount', 'Kind', 'Status', 'Date']}
+                  rows={ledger.map((row) => [
+                    row.company || '—',
+                    row.jobTitle || '—',
+                    money(row.amount, data?.finance?.currency),
+                    prettyStatus(row.kind),
+                    prettyStatus(row.status),
+                    day(row.createdAt),
+                  ])}
+                  empty="No ledger entries yet."
+                />
+              </Panel>
+            </div>
+          ) : null}
+
+          {view === 'reports' ? (
+            <div className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard icon={Users} tone="green" label="People" value={counts?.people ?? 0} hint={`${counts?.candidates ?? 0} candidates`} />
+                <MetricCard icon={FileText} tone="teal" label="Packets" value={counts?.packets ?? 0} hint={`${counts?.hired ?? 0} hired`} />
+                <MetricCard icon={Timer} tone="gold" label="Tracker" value={formatHoursMinutes(counts?.trackerHours ?? 0)} hint={`${counts?.liveClocks ?? 0} live`} />
+                <MetricCard icon={Wallet} tone="blue" label="Received" value={money(counts?.financeReceived ?? 0)} hint="Pay on Atelier" />
+              </div>
+              <Panel>
+                <h2 className="font-sans text-lg font-semibold">Listings by board</h2>
+                <DeskTable
+                  columns={['Board', 'Listings']}
+                  rows={(data?.boards ?? []).map((row) => [sourceLabel(row.source), String(row.count)])}
+                  empty="No board mix yet."
+                />
+              </Panel>
+            </div>
           ) : null}
 
           {view === 'keys' ? (
@@ -562,6 +823,36 @@ export function AdminPage() {
   )
 }
 
+function SideRow({
+  icon: Icon,
+  label,
+  active,
+  open,
+  indent,
+  onClick,
+}: {
+  icon: LucideIcon
+  label: string
+  active?: boolean
+  open?: boolean
+  indent?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${
+        indent ? 'pl-9' : ''
+      } ${active ? 'bg-[#1f3d32] text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}
+    >
+      <Icon className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {!indent ? <ChevronRight className={`size-4 shrink-0 text-white/35 ${open ? 'rotate-90' : ''}`} /> : null}
+    </button>
+  )
+}
+
 function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return <section className={`rounded-2xl bg-white p-5 shadow-[0_1px_2px_rgba(19,38,31,0.06)] ${className}`}>{children}</section>
 }
@@ -575,7 +866,7 @@ function MetricCard({
 }: {
   icon: LucideIcon
   label: string
-  value: number
+  value: number | string
   hint: string
   tone: 'green' | 'blue' | 'teal' | 'gold'
 }) {
@@ -593,12 +884,49 @@ function MetricCard({
         </span>
         <div>
           <p className="text-sm text-[#5c635f]">{label}</p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">{value.toLocaleString()}</p>
+          <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">{typeof value === 'number' ? value.toLocaleString() : value}</p>
           <p className="mt-1 text-xs text-[#14a35a]">{hint}</p>
         </div>
       </div>
     </div>
   )
+}
+
+function DeskTable({ columns, rows, empty }: { columns: string[]; rows: (string | number)[][]; empty: string }) {
+  return (
+    <div className="mt-5 overflow-x-auto">
+      <table className="w-full min-w-[36rem] text-left text-sm">
+        <thead className="text-xs text-[#8a918c]">
+          <tr>
+            {columns.map((col) => (
+              <th key={col} className="pb-2 font-medium">
+                {col}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={`${row[0]}-${i}`} className="border-t border-[#eef1ee]">
+              {row.map((cell, j) => (
+                <td key={`${i}-${j}`} className={`py-3 ${j === 0 ? 'font-medium' : 'text-[#5c635f]'}`}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!rows.length ? <p className="py-6 text-sm text-[#8a918c]">{empty}</p> : null}
+    </div>
+  )
+}
+
+function day(iso?: string) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString()
 }
 
 function GrowthChart({ boards }: { boards: { source: string; count: number }[] }) {
