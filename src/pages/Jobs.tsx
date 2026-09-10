@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Check, CircleAlert, ExternalLink, Search } from 'lucide-react'
+import { ArrowLeft, Check, CircleAlert, ExternalLink, MapPin, Search, Wallet } from 'lucide-react'
 import type { DiscoverySummary, JobMatch, MatchCategory } from '@shared/types'
 import { categoryLabel, sourceLabel } from '@shared/types'
 import { api } from '@/lib/api'
@@ -14,6 +14,7 @@ import { ScoreBadge } from '@/components/jobs/ScoreBadge'
 import { SocialShare } from '@/components/social/SocialLinks'
 import { ApplyOnPlatforms } from '@/components/jobs/ApplyOnPlatforms'
 import { InviteEmployer } from '@/components/jobs/InviteEmployer'
+import { JobCopy } from '@/components/jobs/JobCopy'
 import { listingUrl } from '@shared/applyBoards'
 
 const FILTERS: { id: MatchCategory | 'all' | '70'; label: string }[] = [
@@ -243,26 +244,33 @@ export function JobDetailsPage() {
   const postingUrl = listingUrl(m.job)
 
   return (
-    <div className="space-y-6 pb-24">
+    <div className="space-y-6 pb-28">
       <Link to="/app/jobs" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> All matches
       </Link>
 
-      <section className="overflow-hidden rounded-3xl border border-border bg-[var(--forest)] text-[var(--paper)]">
+      <section className="overflow-hidden rounded-3xl border border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)] shadow-[0_16px_40px_rgba(13,27,22,0.12)]">
         <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-start sm:p-8">
           <ScoreBadge score={m.score} category={m.category} size="lg" />
           <div className="min-w-0 flex-1">
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">
-              {categoryLabel(m.category)}
+              {categoryLabel(m.category)} match
             </p>
             <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">{m.job.title}</h1>
             <p className="mt-2 text-lg text-[#e7e1d4]">{m.job.company}</p>
-            <p className="mt-1 text-sm text-[#c9c0ae]">
-              {m.job.remote ? 'Remote' : m.job.location} · {m.job.employmentType ?? 'Full-time'} ·{' '}
-              {moneyBand(m.job.salaryMin, m.job.salaryMax, m.job.currency)}
-            </p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <span className="rounded-full border border-[#c9c0ae33] px-2.5 py-1 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#c9c0ae33] px-2.5 py-1 text-xs text-[#e7e1d4]">
+                <MapPin className="size-3.5 opacity-80" />
+                {m.job.remote ? 'Remote' : m.job.location || 'Location open'}
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#c9c0ae33] px-2.5 py-1 text-xs text-[#e7e1d4]">
+                <Wallet className="size-3.5 opacity-80" />
+                {moneyBand(m.job.salaryMin, m.job.salaryMax, m.job.currency)}
+              </span>
+              <span className="rounded-full border border-[#c9c0ae33] px-2.5 py-1 text-xs text-[#e7e1d4]">
+                {m.job.employmentType ?? 'Full-time'}
+              </span>
+              <span className="rounded-full border border-[#c9c0ae33] px-2.5 py-1 text-xs text-[#e7e1d4]">
                 {sourceLabel(m.job.source)}
               </span>
               {atelier ? (
@@ -276,51 +284,62 @@ export function JobDetailsPage() {
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="bg-[#f4f8f5]">
           <h2>Why this fits</h2>
-          <ul className="mt-4 space-y-2">
-            {m.matchedSkills.map((s) => (
-              <li key={s} className="flex items-start gap-2 text-sm">
-                <Check className="mt-0.5 size-4 shrink-0 text-emerald-700" />
-                {s} experience
-              </li>
-            ))}
+          <ul className="mt-5 space-y-2.5">
+            {m.matchedSkills.length ? (
+              m.matchedSkills.map((s) => (
+                <li key={s} className="flex items-start gap-2.5 text-sm leading-relaxed">
+                  <Check className="mt-0.5 size-4 shrink-0 text-emerald-700" />
+                  {s} experience
+                </li>
+              ))
+            ) : (
+              <li className="text-sm text-muted-foreground">We will show matched skills after the next search.</li>
+            )}
             {m.job.remote ? (
-              <li className="flex items-start gap-2 text-sm">
+              <li className="flex items-start gap-2.5 text-sm leading-relaxed">
                 <Check className="mt-0.5 size-4 shrink-0 text-emerald-700" />
                 Remote position
               </li>
             ) : null}
           </ul>
         </Card>
-        <Card>
+        <Card className="bg-[#fbf6f0]">
           <h2>Potential gaps</h2>
           {gaps.length ? (
-            <ul className="mt-4 space-y-2">
+            <ul className="mt-5 space-y-2.5">
               {gaps.map((s) => (
-                <li key={s} className="flex items-start gap-2 text-sm">
+                <li key={s} className="flex items-start gap-2.5 text-sm leading-relaxed">
                   <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-800" />
                   {s} is not clearly on your resume
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="mt-4 text-sm text-muted-foreground">No material gaps against the required list.</p>
+            <p className="mt-5 text-sm text-muted-foreground">No material gaps against the required list.</p>
           )}
-          <p className="mt-4 text-sm leading-relaxed">{m.recommendation}</p>
+          {m.recommendation ? (
+            <p className="mt-5 rounded-2xl bg-white/70 px-4 py-3 text-sm leading-relaxed text-foreground/85">
+              {m.recommendation}
+            </p>
+          ) : null}
         </Card>
       </div>
 
       <Card>
         <h2>Score breakdown</h2>
-        <div className="mt-5 space-y-3">
+        <div className="mt-6 space-y-4">
           {Object.entries(m.breakdown).map(([k, v]) => (
-            <div key={k} className="grid grid-cols-[7.5rem_1fr_2.5rem] items-center gap-3 text-sm">
-              <span>{BREAKDOWN_LABELS[k] ?? k}</span>
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-primary" style={{ width: `${v}%` }} />
+            <div key={k} className="grid grid-cols-[7.25rem_1fr_2.75rem] items-center gap-3 text-sm">
+              <span className="text-foreground/80">{BREAKDOWN_LABELS[k] ?? k}</span>
+              <div className="h-2.5 overflow-hidden rounded-full bg-[#eef1ee]">
+                <div
+                  className={`h-full rounded-full ${v >= 80 ? 'bg-[#c6a15b]' : 'bg-[var(--forest)]'}`}
+                  style={{ width: `${Math.max(4, Math.min(100, v))}%` }}
+                />
               </div>
-              <span className="tabular-nums text-muted-foreground">{Math.round(v)}%</span>
+              <span className="text-right tabular-nums text-muted-foreground">{Math.round(v)}%</span>
             </div>
           ))}
         </div>
@@ -328,23 +347,28 @@ export function JobDetailsPage() {
 
       <Card>
         <h2>Job description</h2>
-        <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">
-          {m.job.description?.trim() || 'No description was provided with this listing.'}
+        <div className="mt-5">
+          <JobCopy text={m.job.description ?? ''} />
         </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {m.job.skills.map((s) => (
-            <Badge key={s}>{s}</Badge>
-          ))}
-        </div>
-        <div className="mt-6">
+        {m.job.skills.length ? (
+          <div className="mt-6 border-t border-[#e6ebe7] pt-5">
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[var(--copper)]">Skills on this role</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {m.job.skills.map((s) => (
+                <Badge key={s}>{s}</Badge>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <div className="mt-6 border-t border-[#e6ebe7] pt-5">
           <SocialShare text={`${m.job.title} at ${m.job.company} — scored on Atelier`} />
         </div>
       </Card>
 
       <InviteEmployer job={m.job} />
 
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 p-3 backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:p-0">
-        <div className="mx-auto flex max-w-5xl flex-wrap gap-2">
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[#d7ddd8] bg-[var(--paper)]/92 p-3 backdrop-blur-md lg:static lg:border-0 lg:bg-transparent lg:p-0">
+        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center gap-2 rounded-2xl border border-[#d7ddd8] bg-white px-4 py-3 shadow-[0_12px_32px_rgba(19,38,31,0.08)]">
           <Button variant="copper" onClick={() => apply.mutate()} disabled={apply.isPending}>
             {apply.isPending
               ? 'Preparing…'

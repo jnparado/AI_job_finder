@@ -26,7 +26,7 @@ export function FeedListing({
   ].filter(Boolean)
 
   return (
-    <article className="rounded-2xl border border-border bg-card p-5 shadow-[0_1px_0_rgba(19,38,31,0.04)] transition-colors hover:border-[var(--forest)]">
+    <article className="rounded-3xl border border-[#d7ddd8] bg-card p-6 shadow-[0_12px_32px_rgba(19,38,31,0.05)] transition-colors hover:border-[var(--forest)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <Link to={`/app/jobs/${job.id}`} className="block">

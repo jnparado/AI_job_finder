@@ -2,7 +2,15 @@ import type { HTMLAttributes, TextareaHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('rounded-xl border border-border bg-card p-5', className)} {...props} />
+  return (
+    <div
+      className={cn(
+        'atelier-card rounded-3xl border border-[#d7ddd8] bg-card p-6 shadow-[0_12px_32px_rgba(19,38,31,0.05)]',
+        className,
+      )}
+      {...props}
+    />
+  )
 }
 
 export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {

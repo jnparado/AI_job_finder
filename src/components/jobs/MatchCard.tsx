@@ -18,7 +18,7 @@ export function MatchCard({
 }) {
   const atelier = match.job.source === 'atelier' || Boolean(match.job.employerId)
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-[var(--forest)] sm:flex-row sm:items-center sm:p-5">
+    <div className="flex flex-col gap-4 rounded-3xl border border-[#d7ddd8] bg-card p-5 shadow-[0_12px_32px_rgba(19,38,31,0.05)] transition-colors hover:border-[var(--forest)] sm:flex-row sm:items-center sm:p-6">
       <Link to={`/app/jobs/${match.job.id}`} className="flex min-w-0 flex-1 gap-4">
         <ScoreBadge score={match.score} category={match.category} />
         <div className="min-w-0 flex-1">

@@ -15,14 +15,18 @@ export function PageHeader({
   actions?: ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4">
-      <div className="max-w-2xl">
-        {kicker ? <p className="eyebrow">{kicker}</p> : null}
-        <h1 className="mt-1 text-3xl sm:text-4xl">{title}</h1>
-        {description ? <p className="mt-2 text-muted-foreground">{description}</p> : null}
+    <section className="overflow-hidden rounded-3xl border border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)] shadow-[0_16px_40px_rgba(13,27,22,0.12)]">
+      <div className="flex flex-wrap items-end justify-between gap-4 p-6 sm:p-8">
+        <div className="max-w-2xl">
+          {kicker ? (
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">{kicker}</p>
+          ) : null}
+          <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">{title}</h1>
+          {description ? <p className="mt-2 text-sm leading-relaxed text-[#d8d0c0]">{description}</p> : null}
+        </div>
+        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
       </div>
-      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
-    </div>
+    </section>
   )
 }
 
@@ -40,8 +44,9 @@ export function EmptyState({
   onClick?: () => void
 }) {
   return (
-    <Card className="py-12 text-center">
-      <h2 className="text-2xl">{title}</h2>
+    <Card className="py-14 text-center">
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[var(--copper)]">Atelier</p>
+      <h2 className="mt-2 text-2xl">{title}</h2>
       <p className="mx-auto mt-2 max-w-md text-muted-foreground">{body}</p>
       {actionLabel && to ? (
         <Button className="mt-6" variant="copper" asChild>

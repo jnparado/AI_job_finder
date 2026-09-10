@@ -171,19 +171,29 @@ export function ApplicationDetailsPage() {
       <Link to="/app/applications" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> All applications
       </Link>
-      <div>
-        <Badge>{prettyStatus(a.status)}</Badge>
-        <h1 className="mt-2 text-3xl sm:text-4xl">{a.match?.job.title ?? 'Application packet'}</h1>
-        <p className="mt-1 text-muted-foreground">{a.match?.job.company} · {a.channel}</p>
-        {p.aiLane === 'terra' ? (
-          <p className="mt-2 text-sm text-muted-foreground">Cover letter and answers drafted by GPT-5.6 Terra. Edit anything before you approve.</p>
-        ) : null}
-        {a.deliveredToEmployer ? (
-          <Link to={`/app/messages/${a.id}`} className="mt-2 inline-block text-sm text-[var(--copper)]">
-            Open messages
-          </Link>
-        ) : null}
-      </div>
+      <section className="overflow-hidden rounded-3xl border border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)] shadow-[0_16px_40px_rgba(13,27,22,0.12)]">
+        <div className="p-6 sm:p-8">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">
+            {prettyStatus(a.status)}
+          </p>
+          <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">
+            {a.match?.job.title ?? 'Application packet'}
+          </h1>
+          <p className="mt-2 text-[#d8d0c0]">
+            {a.match?.job.company} · {a.channel}
+          </p>
+          {p.aiLane === 'terra' ? (
+            <p className="mt-3 text-sm text-[#c9c0ae]">
+              Cover letter and answers drafted by GPT-5.6 Terra. Edit anything before you approve.
+            </p>
+          ) : null}
+          {a.deliveredToEmployer ? (
+            <Link to={`/app/messages/${a.id}`} className="mt-4 inline-block text-sm text-[#c6a15b] hover:underline">
+              Open messages
+            </Link>
+          ) : null}
+        </div>
+      </section>
 
       {p.resumeNotes.unconfirmed.length ? (
         <Card>

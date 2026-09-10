@@ -47,7 +47,7 @@ export function CareerPage() {
         title="Career coach"
         description="Advice from your profile, scored roles, and packets you actually touched — not a generic script."
         actions={
-          <Button variant="outline" className="rounded-xl" disabled={coach.isFetching} onClick={() => void coach.refetch()}>
+          <Button variant="paper" className="rounded-xl" disabled={coach.isFetching} onClick={() => void coach.refetch()}>
             <RefreshCw className={`size-4 ${coach.isFetching ? 'animate-spin' : ''}`} />
             {coach.isFetching ? 'Updating…' : 'Refresh coach'}
           </Button>

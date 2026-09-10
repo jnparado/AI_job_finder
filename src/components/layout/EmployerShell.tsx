@@ -75,7 +75,7 @@ export function EmployerShell() {
   )
 
   return (
-    <div className="min-h-svh bg-background lg:grid lg:grid-cols-[240px_1fr]">
+    <div className="atelier-app min-h-svh lg:grid lg:grid-cols-[240px_1fr]">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/90 px-4 py-3 backdrop-blur lg:hidden">
         <BrandMark />
         <button type="button" aria-label="Open menu" onClick={() => setOpen(true)}>

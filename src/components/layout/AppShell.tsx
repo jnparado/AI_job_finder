@@ -68,7 +68,7 @@ export function AppShell() {
   }, [])
 
   return (
-    <div className="min-h-svh bg-[var(--paper)]">
+    <div className="atelier-app min-h-svh">
       <header className="sticky top-0 z-40 border-b border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)]">
         <div className="mx-auto flex max-w-[1400px] items-center gap-2 px-3 py-2 sm:gap-4 sm:px-5">
           <Link to="/app" className="shrink-0" aria-label="Atelier home">

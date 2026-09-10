@@ -53,6 +53,32 @@ body {
   font-family: var(--font-sans);
 }
 
+.atelier-app {
+  background:
+    radial-gradient(ellipse 70% 36% at 100% -8%, rgba(198, 161, 91, 0.12), transparent 52%),
+    radial-gradient(ellipse 46% 28% at 0% 100%, rgba(184, 92, 56, 0.05), transparent 48%),
+    var(--paper);
+}
+
+.atelier-card > h2:first-child {
+  position: relative;
+  padding-bottom: 0.8rem;
+}
+
+.atelier-card > h2:first-child::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 2.25rem;
+  height: 2px;
+  background: #c6a15b;
+}
+
+.atelier-prose p + p {
+  margin-top: 1rem;
+}
+
 ::selection {
   background: color-mix(in srgb, var(--copper) 25%, transparent);
 }

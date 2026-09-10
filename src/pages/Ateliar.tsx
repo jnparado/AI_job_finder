@@ -138,7 +138,7 @@ function CandidateTracker({
         subtitle="Clock in, track live hours, and review your timesheet. Download it for your desk if you want it offline."
         onDownload={() => void downloadTrackerApp()}
         extra={
-          <Button variant="outline" onClick={() => downloadText('Atelier-timesheet.csv', sessionsToCsv(sessions))}>
+          <Button variant="paper" onClick={() => downloadText('Atelier-timesheet.csv', sessionsToCsv(sessions))}>
             <Download className="size-4" />
             Download timesheet
           </Button>
@@ -227,11 +227,11 @@ function EmployerTracker({ sessions }: { sessions: TrackerSession[] }) {
         onDownload={() => void downloadTrackerApp()}
         extra={
           <>
-            <Button variant="outline" onClick={() => downloadText('Atelier-team.csv', sessionsToCsv(sessions))}>
+            <Button variant="paper" onClick={() => downloadText('Atelier-team.csv', sessionsToCsv(sessions))}>
               <Download className="size-4" />
               Download timesheet
             </Button>
-            <Button variant="outline" asChild>
+            <Button variant="paper" asChild>
               <Link to="/employer/inbox">Mark someone hired</Link>
             </Button>
           </>
@@ -259,19 +259,22 @@ function TrackerHeader({
   extra?: ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div className="max-w-xl">
-        <h1 className="text-3xl sm:text-4xl">{title}</h1>
-        <p className="mt-2 text-sm text-muted-foreground sm:text-base">{subtitle}</p>
+    <section className="overflow-hidden rounded-3xl border border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)] shadow-[0_16px_40px_rgba(13,27,22,0.12)]">
+      <div className="flex flex-wrap items-end justify-between gap-4 p-6 sm:p-8">
+        <div className="max-w-xl">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Time</p>
+          <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">{title}</h1>
+          <p className="mt-2 text-sm leading-relaxed text-[#d8d0c0] sm:text-base">{subtitle}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="paper" onClick={onDownload}>
+            <Download className="size-4" />
+            Download tracker
+          </Button>
+          {extra}
+        </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={onDownload}>
-          <Download className="size-4" />
-          Download tracker
-        </Button>
-        {extra}
-      </div>
-    </div>
+    </section>
   )
 }
 

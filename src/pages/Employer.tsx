@@ -431,7 +431,7 @@ export function EmployerInboxPage() {
         title="Inbox"
         description="Packets candidates approved are delivered here. Mark someone hired to open Atelier time tracker. External board jobs still apply on their official sites."
         actions={
-          <Button variant="outline" asChild>
+          <Button variant="paper" asChild>
             <Link to="/employer/ateliar">Time tracker</Link>
           </Button>
         }
@@ -485,18 +485,22 @@ export function EmployerApplicationPage() {
       <Link to="/employer/inbox" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> Inbox
       </Link>
-      <div>
-        <Badge>{prettyStatus(a.status)}</Badge>
-        <h1 className="mt-2 text-3xl">{a.candidateName || a.candidateEmail}</h1>
-        <p className="mt-1 text-muted-foreground">
-          {a.job?.title} · {a.candidateEmail}
-        </p>
-        {a.candidateHeadline ? <p className="mt-1 text-sm">{a.candidateHeadline}</p> : null}
-        <Link to={`/employer/messages/${a.id}`} className="mt-2 inline-flex items-center gap-1 text-sm text-[var(--copper)]">
-          <MessagesSquare className="size-3.5" />
-          Open messages
-        </Link>
-      </div>
+      <section className="overflow-hidden rounded-3xl border border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)] shadow-[0_16px_40px_rgba(13,27,22,0.12)]">
+        <div className="p-6 sm:p-8">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">
+            {prettyStatus(a.status)}
+          </p>
+          <h1 className="mt-1 font-serif text-3xl leading-tight">{a.candidateName || a.candidateEmail}</h1>
+          <p className="mt-2 text-[#d8d0c0]">
+            {a.job?.title} · {a.candidateEmail}
+          </p>
+          {a.candidateHeadline ? <p className="mt-2 text-sm text-[#c9c0ae]">{a.candidateHeadline}</p> : null}
+          <Link to={`/employer/messages/${a.id}`} className="mt-4 inline-flex items-center gap-1 text-sm text-[#c6a15b] hover:underline">
+            <MessagesSquare className="size-3.5" />
+            Open messages
+          </Link>
+        </div>
+      </section>
       <div className="flex flex-wrap gap-2">
         {(['letter', 'resume', 'answers'] as const).map((t) => (
           <Button key={t} variant={tab === t ? 'default' : 'outline'} onClick={() => setTab(t)}>
