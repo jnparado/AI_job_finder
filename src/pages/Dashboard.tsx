@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Briefcase,
   FileText,
@@ -31,8 +31,10 @@ interface AppRow {
   createdAt?: string
 }
 
-interface ThreadRow {
-  id: string
+interface CandidateHome {
+  matches: JobMatch[]
+  applications: AppRow[]
+  threadCount: number
 }
 
 const REVIEW = new Set([
@@ -47,21 +49,19 @@ const REVIEW = new Set([
 export function DashboardPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const [sort, setSort] = useState<FeedSort>('fit')
   const [prompt, setPrompt] = useState('')
 
-  const jobs = useQuery({
-    queryKey: ['jobs'],
-    queryFn: () => api<JobMatch[]>('/api/jobs'),
+  const home = useQuery({
+    queryKey: ['candidate-home'],
+    queryFn: async () => {
+      const data = await api<CandidateHome>('/api/candidate/home')
+      qc.setQueryData(['jobs'], data.matches)
+      qc.setQueryData(['applications'], data.applications)
+      return data
+    },
     staleTime: 30_000,
-  })
-  const apps = useQuery({
-    queryKey: ['applications'],
-    queryFn: () => api<AppRow[]>('/api/applications'),
-  })
-  const threads = useQuery({
-    queryKey: ['messages'],
-    queryFn: () => api<ThreadRow[]>('/api/messages'),
   })
   const apply = useMutation({
     mutationFn: (jobId: string) =>
@@ -69,18 +69,24 @@ export function DashboardPage() {
         method: 'POST',
         body: JSON.stringify({ jobId }),
       }),
-    onSuccess: (row) => navigate(`/app/applications/${row.id}`),
+    onSuccess: (row) => {
+      void qc.invalidateQueries({ queryKey: ['candidate-home'] })
+      void qc.invalidateQueries({ queryKey: ['applications'] })
+      navigate(`/app/applications/${row.id}`)
+    },
   })
   const search = useMutation({
     mutationFn: () => api('/api/agent/search', { method: 'POST', body: '{}' }),
     onSuccess: () => {
-      void jobs.refetch()
+      void qc.invalidateQueries({ queryKey: ['candidate-home'] })
+      void qc.invalidateQueries({ queryKey: ['jobs'] })
       navigate('/app/jobs')
     },
   })
 
-  const matches = jobs.data ?? []
-  const packets = apps.data ?? []
+  const matches = home.data?.matches ?? []
+  const packets = home.data?.applications ?? []
+  const threadCount = home.data?.threadCount ?? 0
   const name = displayName(profile)
   const headline = profile.headline || profile.desiredTitle || profile.currentTitle || 'Candidate'
   const place = [profile.city, profile.country].filter(Boolean).join(', ')
@@ -155,7 +161,7 @@ export function DashboardPage() {
             </div>
             <div className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-[#eef3f0] py-3 text-center">
               <MiniStat n={sent.length} label="Packets" />
-              <MiniStat n={threads.data?.length ?? 0} label="Threads" />
+              <MiniStat n={threadCount} label="Threads" />
               <MiniStat n={matches.filter((m) => m.score >= 70).length} label="70%+ fits" />
             </div>
           </div>
@@ -300,7 +306,7 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {jobs.isLoading ? (
+        {home.isLoading ? (
           <Card className="h-36 animate-pulse bg-muted/60 shadow-[0_10px_28px_rgba(19,38,31,0.06)]" />
         ) : feed.length ? (
           <div className="space-y-3">

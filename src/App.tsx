@@ -133,6 +133,7 @@ export default function App() {
               </Route>
               <Route element={<RequireStaff />}>
                 <Route path="/admin" element={<AdminPage />} />
+                <Route path="/admin/*" element={<AdminPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

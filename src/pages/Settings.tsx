@@ -40,8 +40,8 @@ export function SettingsPage() {
       api('/api/agent/settings', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['agent-settings'] }),
   })
-  const s = q.data
-  if (!s) return <p>Loading…</p>
+  const s = q.data ?? { enabled: false, runHour: 8, minMatch: 80, maxJobs: 20 }
+  const saving = save.isPending
 
   return (
     <div className="space-y-6">
@@ -50,6 +50,11 @@ export function SettingsPage() {
         title="Settings"
         description="The daily agent only notifies you. It never applies without approval."
       />
+      {q.isError ? (
+        <Card className="text-sm text-[var(--copper)]">
+          {q.error instanceof Error ? q.error.message : 'Could not load agent settings. You can still open finances and the tracker.'}
+        </Card>
+      ) : null}
       <Card className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2>Finances</h2>
@@ -95,8 +100,8 @@ export function SettingsPage() {
           </label>
         </div>
         <p className="text-sm text-muted-foreground">
-          Schedule is stored for your account. Wire a cron/queue (BullMQ, n8n, or Supabase scheduled
-          function) to call <code>POST /api/agent/search</code> at the chosen hour.
+          Schedule is stored for your account. The agent notifies you of matches — it never applies without approval.
+          {saving ? ' Saving…' : save.isSuccess ? ' Saved.' : ''}
         </p>
       </Card>
       <Card>
@@ -157,7 +162,7 @@ export function InterviewPage() {
     queryKey: ['interview'],
     queryFn: () =>
       api<{
-        job: { title: string; company: string }
+        job: { title: string; company: string } | null
         matchedSkills: string[]
         questions: string[]
         coaching: string[]
@@ -175,7 +180,7 @@ export function InterviewPage() {
       <Card>
         {q.isLoading ? (
           <p className="text-sm text-muted-foreground">Preparing questions…</p>
-        ) : data ? (
+        ) : data?.job ? (
           <>
             <p className="eyebrow">{data.aiLane === 'sol' ? 'GPT-5.6 Sol' : 'Local interview engine'}</p>
             <h2 className="mt-2">{data.job.title}</h2>
@@ -197,7 +202,9 @@ export function InterviewPage() {
             ) : null}
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">Run the job agent first, then come back to rehearse.</p>
+          <p className="text-sm text-muted-foreground">
+            Score a role first, then come back here to rehearse against your top match.
+          </p>
         )}
       </Card>
     </div>

@@ -1,3 +1,6 @@
+import type { QueryClient } from '@tanstack/react-query'
+import { api } from './api'
+
 const loaders: Record<string, () => Promise<unknown>> = {
   '/': () => import('@/pages/Landing'),
   '/employers': () => import('@/pages/Landing'),
@@ -33,4 +36,13 @@ export function prefetchRoute(to: string) {
   if (!load || warmed.has(path)) return
   warmed.add(path)
   void load()
+}
+
+export function warmCandidateDesk(qc: QueryClient) {
+  prefetchRoute('/app')
+  void qc.prefetchQuery({
+    queryKey: ['candidate-home'],
+    queryFn: () => api('/api/candidate/home'),
+    staleTime: 30_000,
+  })
 }

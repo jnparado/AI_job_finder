@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bell,
@@ -10,7 +10,6 @@ import {
   LogOut,
   MessageSquare,
   MessagesSquare,
-  MoreVertical,
   ScrollText,
   Search,
   Settings,
@@ -46,22 +45,34 @@ interface Note {
 export function AppShell() {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const name = displayName(profile)
+  const [bellOpen, setBellOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const toolsRef = useRef<HTMLDivElement>(null)
+  const settingsOn = location.pathname.startsWith('/app/settings')
   const notes = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api<Note[]>('/api/notifications'),
+    staleTime: 120_000,
   })
   const noteCount = notes.data?.length ?? 0
-  const [bellOpen, setBellOpen] = useState(false)
-  const [moreOpen, setMoreOpen] = useState(false)
-  const toolsRef = useRef<HTMLDivElement>(null)
+
+  function closeMenus() {
+    setBellOpen(false)
+    setHelpOpen(false)
+    setAccountOpen(false)
+  }
+
+  function openSettings() {
+    closeMenus()
+    navigate('/app/settings')
+  }
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (!toolsRef.current?.contains(e.target as Node)) {
-        setBellOpen(false)
-        setMoreOpen(false)
-      }
+      if (!toolsRef.current?.contains(e.target as Node)) closeMenus()
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
@@ -100,14 +111,16 @@ export function AppShell() {
             ))}
           </nav>
 
-          <div ref={toolsRef} className="relative flex shrink-0 items-center gap-1 sm:gap-1.5">
+          <div ref={toolsRef} className="relative flex shrink-0 items-center gap-0.5 sm:gap-1">
             <button
               type="button"
               aria-label="Notifications"
+              aria-expanded={bellOpen}
               className="relative grid size-10 place-items-center text-white"
               onClick={() => {
+                setHelpOpen(false)
+                setAccountOpen(false)
                 setBellOpen((v) => !v)
-                setMoreOpen(false)
               }}
             >
               <Bell className="size-5 stroke-[1.5]" />
@@ -120,11 +133,40 @@ export function AppShell() {
 
             <button
               type="button"
+              aria-label="Help"
+              aria-expanded={helpOpen}
+              className={`grid size-10 place-items-center ${helpOpen ? 'text-white' : 'text-[#c9c0ae] hover:text-white'}`}
               onClick={() => {
-                setMoreOpen((v) => !v)
                 setBellOpen(false)
+                setAccountOpen(false)
+                setHelpOpen((v) => !v)
               }}
+            >
+              <CircleHelp className="size-5 stroke-[1.5]" />
+            </button>
+
+            <button
+              type="button"
+              aria-label="Settings"
+              aria-current={settingsOn ? 'page' : undefined}
+              className={`grid size-10 place-items-center ${
+                settingsOn ? 'text-white' : 'text-[#c9c0ae] hover:text-white'
+              }`}
+              onClick={openSettings}
+            >
+              <Settings className="size-5 stroke-[1.5]" />
+            </button>
+
+            <button
+              type="button"
+              aria-label="Account menu"
+              aria-expanded={accountOpen}
               className="flex max-w-[12rem] items-center gap-2 rounded-2xl border border-[#c9c0ae44] bg-[#1a332b] px-2 py-1.5 text-left sm:max-w-[14rem] sm:px-2.5"
+              onClick={() => {
+                setBellOpen(false)
+                setHelpOpen(false)
+                setAccountOpen((v) => !v)
+              }}
             >
               {profile.avatarUrl ? (
                 <img src={profile.avatarUrl} alt="" className="size-8 shrink-0 rounded-lg object-cover" />
@@ -141,29 +183,19 @@ export function AppShell() {
               </span>
             </button>
 
-            <button
-              type="button"
-              aria-label="More"
-              className="grid size-10 place-items-center text-white"
-              onClick={() => {
-                setMoreOpen((v) => !v)
-                setBellOpen(false)
-              }}
-            >
-              <MoreVertical className="size-5 stroke-[1.5]" />
-            </button>
-
             {bellOpen ? (
               <div className="absolute right-3 top-[calc(100%-0.25rem)] z-50 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-border bg-[var(--paper)] text-[var(--forest)] shadow-xl sm:right-5">
                 <p className="border-b border-border px-4 py-3 text-sm font-medium">Waiting for you</p>
-                {notes.data?.length ? (
+                {notes.isLoading ? (
+                  <p className="px-4 py-6 text-sm text-muted-foreground">Loading notices…</p>
+                ) : notes.data?.length ? (
                   <ul className="max-h-72 overflow-y-auto py-1">
                     {notes.data.slice(0, 8).map((n, i) => (
                       <li key={`${n.title}-${i}`}>
                         <Link
                           to={n.href || '/app'}
                           className="block px-4 py-2.5 hover:bg-muted"
-                          onClick={() => setBellOpen(false)}
+                          onClick={closeMenus}
                         >
                           <p className="text-sm">{n.title}</p>
                           {n.body ? <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p> : null}
@@ -177,7 +209,49 @@ export function AppShell() {
               </div>
             ) : null}
 
-            {moreOpen ? (
+            {helpOpen ? (
+              <div className="absolute right-3 top-[calc(100%-0.25rem)] z-50 w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl border border-border bg-[var(--paper)] p-4 text-[var(--forest)] shadow-xl sm:right-5">
+                <p className="text-sm font-medium">Candidate help</p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  Packets leave only after you approve. We never auto-apply on LinkedIn, Indeed, or Upwork.
+                </p>
+                <div className="mt-3 grid gap-1">
+                  <button
+                    type="button"
+                    className="rounded-lg px-2 py-2 text-left text-sm hover:bg-muted"
+                    onClick={openSettings}
+                  >
+                    Open settings
+                  </button>
+                  <Link
+                    to="/app/interview"
+                    className="rounded-lg px-2 py-2 text-sm hover:bg-muted"
+                    onClick={closeMenus}
+                    onMouseEnter={() => prefetchRoute('/app/interview')}
+                  >
+                    Interview rehearsal
+                  </Link>
+                  <Link
+                    to="/app/ateliar"
+                    className="rounded-lg px-2 py-2 text-sm hover:bg-muted"
+                    onClick={closeMenus}
+                    onMouseEnter={() => prefetchRoute('/app/ateliar')}
+                  >
+                    Time tracker
+                  </Link>
+                  <Link
+                    to="/app/finances"
+                    className="rounded-lg px-2 py-2 text-sm hover:bg-muted"
+                    onClick={closeMenus}
+                    onMouseEnter={() => prefetchRoute('/app/finances')}
+                  >
+                    Finances
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+
+            {accountOpen ? (
               <div className="absolute right-3 top-[calc(100%-0.25rem)] z-50 w-56 overflow-hidden rounded-2xl border border-border bg-[var(--paper)] text-[var(--forest)] shadow-xl sm:right-5">
                 <div className="border-b border-border px-4 py-3">
                   <p className="truncate text-sm font-medium">{name}</p>
@@ -186,12 +260,10 @@ export function AppShell() {
                   </p>
                 </div>
                 <div className="p-2">
-                  <MenuLink to="/app/ateliar" icon={Timer} label="Atelier time tracker" onClick={() => setMoreOpen(false)} />
-                  <MenuLink to="/app/profile" icon={User} label="Your studio" onClick={() => setMoreOpen(false)} />
-                  <MenuLink to="/app/interview" icon={MessageSquare} label="Interview" onClick={() => setMoreOpen(false)} />
-                  <MenuLink to="/app/finances" icon={Wallet} label="Finances" onClick={() => setMoreOpen(false)} />
-                  <MenuLink to="/app/settings" icon={Settings} label="Settings" onClick={() => setMoreOpen(false)} />
-                  <MenuLink to="/support" icon={CircleHelp} label="Help" onClick={() => setMoreOpen(false)} />
+                  <MenuLink to="/app/profile" icon={User} label="Your studio" onClick={closeMenus} />
+                  <MenuLink to="/app/interview" icon={MessageSquare} label="Interview" onClick={closeMenus} />
+                  <MenuLink to="/app/finances" icon={Wallet} label="Finances" onClick={closeMenus} />
+                  <MenuLink to="/app/settings" icon={Settings} label="Settings" onClick={closeMenus} />
                 </div>
                 <p className="mx-3 mb-2 rounded-xl border border-[#c6a15b55] bg-[#f7f1e4] px-3 py-2 text-xs leading-relaxed">
                   Packets leave only after you approve.
@@ -254,15 +326,17 @@ function MenuLink({
   onClick: () => void
 }) {
   return (
-    <Link
+    <NavLink
       to={to}
       onClick={onClick}
       onMouseEnter={() => prefetchRoute(to)}
       onFocus={() => prefetchRoute(to)}
-      className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-muted"
+      className={({ isActive }) =>
+        `flex items-center gap-2 rounded-lg px-2 py-2 text-sm ${isActive ? 'bg-[#eef3f0]' : 'hover:bg-muted'}`
+      }
     >
       <Icon className="size-4 opacity-70" />
       {label}
-    </Link>
+    </NavLink>
   )
 }

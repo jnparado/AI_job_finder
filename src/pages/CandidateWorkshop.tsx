@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, Search, X } from 'lucide-react'
 import type { CareerLevel, CandidateProfile, Currency, EmploymentType, WorkMode, WorkshopNotes } from '@shared/types'
 import { Button } from '@/components/ui/button'
@@ -8,6 +9,7 @@ import { BrandMark, LoadingScreen } from '@/components/ui/feedback'
 import { CountrySelect } from '@/components/ui/country-select'
 import { useAuth } from '@/lib/auth'
 import { rememberIntendedAccount } from '@/lib/supabase'
+import { warmCandidateDesk } from '@/lib/prefetch'
 import { SocialAuth } from '@/components/social/SocialAuth'
 import { cn } from '@/lib/utils'
 
@@ -146,6 +148,7 @@ function toProfile(draft: Draft, base: CandidateProfile): CandidateProfile {
 export function CandidateWorkshop() {
   const { user, demo, profile, saveProfile, signUpEmail, configured, destinationFor, loading } = useAuth()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const signedIn = Boolean(user || demo)
   const [{ draft, step: savedStep }] = useState(loadDraft)
   const [step, setStep] = useState(savedStep)
@@ -211,6 +214,7 @@ export function CandidateWorkshop() {
       await saveProfile(toProfile(d, created))
       sessionStorage.removeItem(DRAFT_KEY)
       sessionStorage.removeItem(STEP_KEY)
+      warmCandidateDesk(qc)
       navigate('/app', { replace: true })
     } catch (err) {
       if (err instanceof Error && (err as Error & { code?: string }).code === 'confirm') {

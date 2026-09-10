@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -15,11 +16,13 @@ import { SocialAuth } from '@/components/social/SocialAuth'
 import { api } from '@/lib/api'
 import { identityFromUser } from '@/lib/identity'
 import { CandidateWorkshop } from '@/pages/CandidateWorkshop'
+import { prefetchRoute, warmCandidateDesk } from '@/lib/prefetch'
 
 const REMEMBER_KEY = 'atelier-remember-email'
 
 export function LoginPage() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const [params] = useSearchParams()
   const { signInEmail, signInDemo, configured, destinationFor, user, demo, loading } = useAuth()
   const role: 'candidate' | 'employer' = params.get('role') === 'employer' ? 'employer' : 'candidate'
@@ -36,6 +39,10 @@ export function LoginPage() {
   }, [role])
 
   useEffect(() => {
+    if (!hiring) prefetchRoute('/app')
+  }, [hiring])
+
+  useEffect(() => {
     if (!loading && (user || demo)) navigate(destinationFor(), { replace: true })
   }, [loading, user, demo, destinationFor, navigate])
 
@@ -47,7 +54,9 @@ export function LoginPage() {
       if (remember) localStorage.setItem(REMEMBER_KEY, email.trim().toLowerCase())
       else localStorage.removeItem(REMEMBER_KEY)
       const profile = await signInEmail(email, password)
-      navigate(destinationFor(profile))
+      const dest = destinationFor(profile)
+      if (dest === '/app') warmCandidateDesk(qc)
+      navigate(dest)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign in.')
     } finally {
@@ -122,7 +131,10 @@ export function LoginPage() {
           onClick={() => {
             setBusy(true)
             void signInDemo()
-              .then((profile) => navigate(destinationFor(profile)))
+              .then((profile) => {
+                warmCandidateDesk(qc)
+                navigate(destinationFor(profile))
+              })
               .catch((err) => setError(err instanceof Error ? err.message : 'Could not open the studio.'))
               .finally(() => setBusy(false))
           }}
@@ -411,6 +423,7 @@ export function VerifyPage() {
 
 export function CallbackPage() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { destinationFor, refreshProfile } = useAuth()
   const [error, setError] = useState('')
 
@@ -477,7 +490,11 @@ export function CallbackPage() {
               onboardingCompleted: metaRole === 'employer',
             }))
           }
-          if (!cancelled) navigate(recovery ? '/auth/reset' : destinationFor(profile), { replace: true })
+          if (!cancelled) {
+            const dest = recovery ? '/auth/reset' : destinationFor(profile)
+            if (dest === '/app') warmCandidateDesk(qc)
+            navigate(dest, { replace: true })
+          }
           return
         }
         await wait(250)
@@ -488,7 +505,7 @@ export function CallbackPage() {
     return () => {
       cancelled = true
     }
-  }, [destinationFor, navigate, refreshProfile])
+  }, [destinationFor, navigate, qc, refreshProfile])
 
   if (error) {
     return (

@@ -71,6 +71,25 @@ app.use(
 
 type AuthUser = { id: string; email: string }
 
+const AUTH_TTL_MS = 60_000
+const PROFILE_TTL_MS = 20_000
+const MATCH_TTL_MS = 90_000
+const LIVE_JOBS_TTL_MS = 45_000
+const authCache = new Map<string, { user: AuthUser; until: number }>()
+const profileCache = new Map<string, { profile: CandidateProfile; at: number }>()
+const matchScoredAt = new Map<string, number>()
+const scoringInflight = new Map<string, Promise<JobMatch[]>>()
+const appsHydratedAt = new Map<string, number>()
+let liveJobsCache: { jobs: Job[]; at: number } | null = null
+
+function pruneAuthCache() {
+  if (authCache.size < 120) return
+  const now = Date.now()
+  for (const [token, row] of authCache) {
+    if (row.until < now) authCache.delete(token)
+  }
+}
+
 async function auth(c: { req: { header: (n: string) => string | undefined } }): Promise<AuthUser | null> {
   const header = c.req.header('Authorization') ?? ''
   const token = header.replace(/^Bearer\s+/i, '')
@@ -81,10 +100,15 @@ async function auth(c: { req: { header: (n: string) => string | undefined } }): 
   if (token === 'employer') {
     return { id: DEMO_EMPLOYER, email: 'hiring@atelier.local' }
   }
+  const cached = authCache.get(token)
+  if (cached && cached.until > Date.now()) return cached.user
   if (!supabaseAuth) return null
   const { data } = await supabaseAuth.auth.getUser(token)
   if (!data.user) return null
-  return { id: data.user.id, email: data.user.email ?? '' }
+  const user = { id: data.user.id, email: data.user.email ?? '' }
+  authCache.set(token, { user, until: Date.now() + AUTH_TTL_MS })
+  pruneAuthCache()
+  return user
 }
 
 function socialMetaFromParsed(parsed: unknown) {
@@ -399,13 +423,17 @@ async function applyStaffInvite(email: string, userId: string) {
   return true
 }
 
-async function loadProfile(user: AuthUser): Promise<CandidateProfile> {
+async function loadProfile(user: AuthUser, opts?: { staffInvite?: boolean }): Promise<CandidateProfile> {
+  const hit = profileCache.get(user.id)
+  if (hit && Date.now() - hit.at < PROFILE_TTL_MS && !opts?.staffInvite) return hit.profile
   if (supabaseAdmin) {
     try {
-      await applyStaffInvite(user.email, user.id)
-      const { data } = await supabaseAdmin.from('profiles').select('*').eq('id', user.id).maybeSingle()
-      const { data: skills } = await supabaseAdmin.from('user_skills').select('*').eq('user_id', user.id)
-      const { data: experience } = await supabaseAdmin.from('experiences').select('*').eq('user_id', user.id)
+      if (opts?.staffInvite) await applyStaffInvite(user.email, user.id)
+      const [{ data }, { data: skills }, { data: experience }] = await Promise.all([
+        supabaseAdmin.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+        supabaseAdmin.from('user_skills').select('*').eq('user_id', user.id),
+        supabaseAdmin.from('experiences').select('*').eq('user_id', user.id),
+      ])
       if (data) {
         const p = profileFromRow(data as Record<string, unknown>, user.email)
         p.skills = (skills ?? []).filter((s) => s.kind === 'core').map((s) => s.name as string)
@@ -419,6 +447,7 @@ async function loadProfile(user: AuthUser): Promise<CandidateProfile> {
           current: Boolean(e.is_current),
           bullets: (e.bullets as string[]) ?? [],
         }))
+        profileCache.set(user.id, { profile: p, at: Date.now() })
         return p
       }
       await ensureProfileRow(user.id, user.email)
@@ -428,10 +457,12 @@ async function loadProfile(user: AuthUser): Promise<CandidateProfile> {
   }
   const mem = memory.getProfile(user.id)
   if (!mem.email) mem.email = user.email
+  profileCache.set(user.id, { profile: mem, at: Date.now() })
   return mem
 }
 
 async function saveProfile(user: AuthUser, profile: CandidateProfile) {
+  profileCache.delete(user.id)
   memory.setProfile(user.id, profile)
   if ((profile.role ?? 'candidate') === 'employer') await startEmployerPromo(user.id)
   if (!supabaseAdmin) return profile
@@ -489,6 +520,7 @@ async function saveProfile(user: AuthUser, profile: CandidateProfile) {
 }
 
 async function persistJobs(jobs: ReturnType<typeof normalizeAndDedupe>['jobs']) {
+  liveJobsCache = null
   memory.setJobs(jobs)
   if (!supabaseAdmin) return
   const rows = jobs.map((job) => ({
@@ -656,6 +688,10 @@ async function hydrateApplication(id: string): Promise<StoredApplication | undef
 async function hydrateApplications(filter: { userId?: string; jobIds?: string[] }) {
   if (!supabaseAdmin) return
   if (filter.jobIds && !filter.jobIds.length) return
+  if (filter.userId) {
+    const at = appsHydratedAt.get(filter.userId) ?? 0
+    if (Date.now() - at < 15_000) return
+  }
   let q = supabaseAdmin.from('applications').select('*')
   if (filter.userId) q = q.eq('user_id', filter.userId)
   if (filter.jobIds?.length) q = q.in('job_id', filter.jobIds)
@@ -664,14 +700,62 @@ async function hydrateApplications(filter: { userId?: string; jobIds?: string[] 
     console.warn('hydrateApplications', error.message)
     return
   }
+  const missing: Record<string, unknown>[] = []
+  const jobIds = new Set<string>()
+  const userIds = new Set<string>()
   for (const row of data ?? []) {
     const id = String(row.id ?? '')
-    if (!id || memory.getApplicationById(id)) {
-      if (row.job_id) await ensureJob(String(row.job_id))
-      continue
-    }
-    await hydrateApplication(id)
+    if (!id) continue
+    if (row.job_id) jobIds.add(String(row.job_id))
+    if (memory.getApplicationById(id)) continue
+    missing.push(row as Record<string, unknown>)
+    if (row.user_id) userIds.add(String(row.user_id))
   }
+  const needJobs = [...jobIds].filter((id) => !memory.getJob(id))
+  const [answersRes, profilesRes, jobsRes] = await Promise.all([
+    missing.length
+      ? supabaseAdmin
+          .from('application_answers')
+          .select('application_id, question, answer')
+          .in(
+            'application_id',
+            missing.map((row) => String(row.id)),
+          )
+      : Promise.resolve({ data: [] as { application_id?: string; question?: string; answer?: string }[] }),
+    userIds.size
+      ? supabaseAdmin.from('profiles').select('id, first_name, last_name, email, headline').in('id', [...userIds])
+      : Promise.resolve({ data: [] as { id?: string; first_name?: string; last_name?: string; email?: string; headline?: string }[] }),
+    needJobs.length
+      ? supabaseAdmin.from('jobs').select('*').in('id', needJobs)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+  ])
+  for (const row of jobsRes.data ?? []) {
+    memory.setJobs([jobFromRow(row as Record<string, unknown>)])
+  }
+  const answersByApp = new Map<string, { question: string; answer: string }[]>()
+  for (const row of answersRes.data ?? []) {
+    const id = String(row.application_id ?? '')
+    if (!id) continue
+    const list = answersByApp.get(id) ?? []
+    list.push({ question: String(row.question ?? ''), answer: String(row.answer ?? '') })
+    answersByApp.set(id, list)
+  }
+  const profileById = new Map(
+    (profilesRes.data ?? []).map((row) => [String(row.id), row] as const),
+  )
+  for (const row of missing) {
+    const id = String(row.id)
+    const p = profileById.get(String(row.user_id ?? ''))
+    memory.addApplication(
+      applicationFromRow(row, {
+        answers: answersByApp.get(id) ?? [],
+        candidateName: p ? `${String(p.first_name ?? '')} ${String(p.last_name ?? '')}`.trim() : undefined,
+        candidateEmail: p?.email ? String(p.email) : undefined,
+        candidateHeadline: p?.headline ? String(p.headline) : undefined,
+      }),
+    )
+  }
+  if (filter.userId) appsHydratedAt.set(filter.userId, Date.now())
 }
 
 async function prepareEmployerInbox(employerId: string) {
@@ -682,6 +766,7 @@ async function prepareEmployerInbox(employerId: string) {
 
 async function persistMatches(userId: string, list: JobMatch[]) {
   memory.setMatches(userId, list)
+  matchScoredAt.set(userId, Date.now())
   if (!supabaseAdmin) return
   try {
     const rows = list.slice(0, 80).map((m) => ({
@@ -711,33 +796,78 @@ async function persistMatches(userId: string, list: JobMatch[]) {
   }
 }
 
+function slimMatch(row: JobMatch): JobMatch {
+  const description = row.job.description ?? ''
+  return {
+    ...row,
+    job: {
+      ...row.job,
+      description: description.length > 420 ? `${description.slice(0, 420)}…` : description,
+    },
+  }
+}
+
 async function scoreReadyJobs(user: AuthUser): Promise<JobMatch[]> {
-  const profile = await loadProfile(user)
-  const live = await Promise.race([
-    loadCandidateJobs(),
-    new Promise<Job[]>((resolve) => setTimeout(() => resolve(memory.allJobs()), 600)),
+  const cached = memory.getMatches(user.id)
+  const scoredAt = matchScoredAt.get(user.id) ?? 0
+  const age = Date.now() - scoredAt
+  if (scoredAt && age < MATCH_TTL_MS) {
+    if (age > 40_000 && !scoringInflight.has(user.id)) {
+      const refresh = scoreReadyJobsFresh(user).catch(() => cached)
+      scoringInflight.set(user.id, refresh)
+      void refresh.finally(() => {
+        if (scoringInflight.get(user.id) === refresh) scoringInflight.delete(user.id)
+      })
+    }
+    return cached
+  }
+  const inflight = scoringInflight.get(user.id)
+  if (inflight) return inflight
+  const work = scoreReadyJobsFresh(user)
+  scoringInflight.set(user.id, work)
+  try {
+    return await work
+  } finally {
+    if (scoringInflight.get(user.id) === work) scoringInflight.delete(user.id)
+  }
+}
+
+async function scoreReadyJobsFresh(user: AuthUser): Promise<JobMatch[]> {
+  const fallbackJobs = user.id === DEMO_USER ? memory.allJobs() : memory.atelierJobs()
+  const [profile, live] = await Promise.all([
+    loadProfile(user),
+    Promise.race([
+      loadCandidateJobs(),
+      new Promise<Job[]>((resolve) => setTimeout(() => resolve(fallbackJobs), 350)),
+    ]),
   ])
   const byId = new Map<string, Job>()
-  for (const job of JOB_CATALOG) byId.set(job.id, asJob(job))
-  for (const job of live) byId.set(job.id, job)
+  if (user.id === DEMO_USER) {
+    for (const job of JOB_CATALOG) byId.set(job.id, asJob(job))
+  }
+  for (const job of live) {
+    if (user.id !== DEMO_USER && JOB_CATALOG.some((row) => row.id === job.id) && !job.employerId) continue
+    byId.set(job.id, job)
+  }
   for (const job of memory.atelierJobs()) byId.set(job.id, job)
   for (const match of memory.getMatches(user.id)) byId.set(match.job.id, match.job)
   const jobs = [...byId.values()].filter((job) => job.title && job.company)
   memory.setJobs(jobs)
   const scored = matchJobs(jobs, profile)
-  const cached = new Map(memory.getMatches(user.id).map((row) => [row.job.id, row]))
+  const prev = new Map(memory.getMatches(user.id).map((row) => [row.job.id, row]))
   const merged = scored.map((row) => {
-    const prev = cached.get(row.job.id)
-    if (!prev) return row
+    const hit = prev.get(row.job.id)
+    if (!hit) return row
     return {
       ...row,
-      summary: prev.summary || row.summary,
-      recommendation: prev.recommendation || row.recommendation,
-      aiLane: prev.aiLane ?? row.aiLane,
-      aiNote: prev.aiNote ?? row.aiNote,
+      summary: hit.summary || row.summary,
+      recommendation: hit.recommendation || row.recommendation,
+      aiLane: hit.aiLane ?? row.aiLane,
+      aiNote: hit.aiNote ?? row.aiNote,
     }
   })
   memory.setMatches(user.id, merged)
+  matchScoredAt.set(user.id, Date.now())
   return merged
 }
 
@@ -878,7 +1008,7 @@ app.post('/api/auth/confirm', async (c) => {
 app.get('/api/profile', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
-  return c.json(await loadProfile(user))
+  return c.json(await loadProfile(user, { staffInvite: true }))
 })
 
 app.post('/api/profile', async (c) => {
@@ -1115,7 +1245,27 @@ app.get('/api/jobs', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const list = await scoreReadyJobs(user)
   const min = Number(c.req.query('min') ?? 0)
-  return c.json(list.filter((m) => m.score >= min).slice(0, 80))
+  return c.json(list.filter((m) => m.score >= min).slice(0, 80).map(slimMatch))
+})
+
+app.get('/api/candidate/home', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const [matches] = await Promise.all([scoreReadyJobs(user), hydrateApplications({ userId: user.id })])
+  const applications = memory.getApplications(user.id).map((row) => ({
+    id: row.id,
+    status: row.status,
+    jobId: row.jobId,
+    createdAt: row.createdAt,
+  }))
+  const threadCount = memory
+    .getApplications(user.id)
+    .filter((row) => threadEligible(row, memory.getJob(row.jobId))).length
+  return c.json({
+    matches: matches.slice(0, 40).map(slimMatch),
+    applications,
+    threadCount,
+  })
 })
 
 app.get('/api/jobs/:id', async (c) => {
@@ -1128,20 +1278,38 @@ app.get('/api/jobs/:id', async (c) => {
   return c.json(match)
 })
 
-app.post('/api/applications', async (c) => {
-  const user = await auth(c)
-  if (!user) return c.json({ error: 'Unauthorized' }, 401)
-  const { jobId } = (await c.req.json()) as { jobId: string }
-  const profile = await loadProfile(user)
-  const match = findMatch(user.id, jobId, profile)
-  if (!match) return c.json({ error: 'Match not found. Run search first.' }, 404)
-  const existing = memory.getApplications(user.id).find((a) => a.jobId === jobId && a.status === 'draft')
-  if (existing) return c.json(existing)
-  const packet = await writePacket(match, profile, preparePacket(match, profile))
+async function createDraftPacket(
+  userId: string,
+  jobId: string,
+  profile: CandidateProfile,
+  coverLetter?: string,
+): Promise<{ app?: StoredApplication; already?: boolean; error?: string; status?: number }> {
+  await hydrateApplications({ userId })
+  const stored = (await ensureJob(jobId)) ?? JOB_CATALOG.find((row) => row.id === jobId)
+  if (!stored) return { error: 'Job not found.', status: 404 }
+  const job = asJob(stored)
+  await persistJobs([job])
+  const match = findMatch(userId, jobId, profile)
+  if (!match) return { error: 'Could not score this role for the candidate.', status: 400 }
+  await persistMatches(userId, [match, ...memory.getMatches(userId).filter((row) => row.job.id !== jobId)].slice(0, 80))
+  const open = memory.getApplications(userId).find(
+    (row) =>
+      row.jobId === jobId &&
+      row.status !== 'rejected' &&
+      row.status !== 'withdrawn' &&
+      row.status !== 'closed' &&
+      row.status !== 'completed',
+  )
+  if (open) return { app: open, already: true }
+  const local = preparePacket(match, profile)
+  const note = coverLetter?.trim()
+  if (note) local.coverLetter = note
+  const packet = await writePacket(match, profile, local)
+  if (note) packet.coverLetter = note
   const direct = isEmployerJob(match.job)
   const appRow: StoredApplication = {
     id: crypto.randomUUID(),
-    userId: user.id,
+    userId,
     jobId,
     status: 'draft',
     channel: direct ? 'Atelier employer inbox' : (match.job.applyChannel ?? 'Authorized portal'),
@@ -1154,15 +1322,13 @@ app.post('/api/applications', async (c) => {
         label: 'Packet prepared',
         detail: direct
           ? 'Review the packet. When you approve, it is sent to the employer on Atelier.'
-          : packet.aiLane
-            ? 'GPT-5.6 Terra drafted the resume, cover letter, and answers. Nothing submitted.'
-            : 'Resume customized, cover letter and answers drafted. Nothing submitted.',
+          : 'Resume customized, cover letter and answers drafted. Nothing submitted.',
       },
     ],
     followUps: followUps(match, profile).map((f) => ({ ...f, sent: false })),
     recruiterSent: false,
     candidateName: displayName(profile),
-    candidateEmail: profile.email || user.email,
+    candidateEmail: profile.email,
     candidateHeadline: profile.headline || profile.desiredTitle || profile.currentTitle,
   }
   memory.addApplication(appRow)
@@ -1170,7 +1336,7 @@ app.post('/api/applications', async (c) => {
     const { data } = await supabaseAdmin
       .from('applications')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         job_id: jobId,
         status: 'draft',
         channel: appRow.channel,
@@ -1189,7 +1355,17 @@ app.post('/api/applications', async (c) => {
       })),
     )
   }
-  return c.json(appRow)
+  return { app: appRow }
+}
+
+app.post('/api/applications', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const { jobId } = (await c.req.json()) as { jobId: string }
+  const profile = await loadProfile(user)
+  const made = await createDraftPacket(user.id, String(jobId ?? ''), profile)
+  if (!made.app) return c.json({ error: made.error ?? 'Could not create the packet.' }, made.status === 404 ? 404 : 400)
+  return c.json(made.app)
 })
 
 app.get('/api/applications', async (c) => {
@@ -1895,7 +2071,14 @@ app.get('/api/interview', async (c) => {
   const jobId = c.req.query('jobId')
   const matches = memory.getMatches(user.id)
   const match = (jobId ? matches.find((m) => m.job.id === jobId) : matches[0]) ?? null
-  if (!match) return c.json({ error: 'Run the job agent first.' }, 404)
+  if (!match) {
+    return c.json({
+      job: null,
+      matchedSkills: [],
+      questions: [],
+      coaching: [],
+    })
+  }
   const profile = await loadProfile(user)
   const localQs = interviewQuestions(match, profile)
   const coached = await coachInterview(match, profile, localQs)
@@ -2085,13 +2268,22 @@ async function loadLiveJobs(): Promise<Job[]> {
 }
 
 async function loadCandidateJobs(): Promise<Job[]> {
-  if (!supabaseAdmin) return memory.allJobs()
-  const { data, error } = await supabaseAdmin.from('jobs').select('*').order('posted_at', { ascending: false }).limit(100)
+  if (liveJobsCache && Date.now() - liveJobsCache.at < LIVE_JOBS_TTL_MS) return liveJobsCache.jobs
+  if (!supabaseAdmin) return memory.atelierJobs()
+  const { data, error } = await supabaseAdmin
+    .from('jobs')
+    .select(
+      'id, source, source_job_id, title, company, description, location, remote, employment_type, salary_min, salary_max, currency, skills, required_skills, preferred_skills, required_experience, seniority, application_url, apply_channel, posted_at, employer_id, canonical_key',
+    )
+    .order('posted_at', { ascending: false })
+    .limit(80)
   if (error) {
     console.warn('loadCandidateJobs', error.message)
-    return memory.allJobs()
+    return memory.atelierJobs()
   }
-  return (data ?? []).map((row) => jobFromRow(row as Record<string, unknown>))
+  const jobs = (data ?? []).map((row) => jobFromRow(row as Record<string, unknown>))
+  liveJobsCache = { jobs, at: Date.now() }
+  return jobs
 }
 
 async function loadInviteJobs(): Promise<Job[]> {
@@ -2283,6 +2475,7 @@ app.get('/api/admin/dashboard', async (c) => {
     userId: string
     createdAt: string
     submittedAt: string
+    updatedAt: string
     coverLetter: string
     channel: string
   }[] = []
@@ -2315,7 +2508,7 @@ app.get('/api/admin/dashboard', async (c) => {
       supabaseAdmin.from('applications').select('id', { count: 'exact', head: true }),
       supabaseAdmin.from('applications').select('id', { count: 'exact', head: true }).in('status', ['hired', 'offer']),
       supabaseAdmin.from('jobs').select('id', { count: 'exact', head: true }),
-      supabaseAdmin.from('applications').select('id, status, job_id, user_id, created_at, submitted_at, cover_letter, channel').order('created_at', { ascending: false }).limit(400),
+      supabaseAdmin.from('applications').select('id, status, job_id, user_id, created_at, submitted_at, updated_at, cover_letter, channel').order('created_at', { ascending: false }).limit(400),
       supabaseAdmin.from('ateliar_sessions').select('*').order('started_at', { ascending: false }).limit(80),
       supabaseAdmin.from('ledger_entries').select('*').order('created_at', { ascending: false }).limit(200),
       supabaseAdmin.from('thread_messages').select('id', { count: 'exact', head: true }),
@@ -2331,7 +2524,23 @@ app.get('/api/admin/dashboard', async (c) => {
     else hired = hiredRes.count ?? 0
     if (jobRes.error) console.warn('admin jobs', jobRes.error.message)
     else jobCount = jobRes.count ?? jobCount
-    if (appsRes.error) console.warn('admin applications', appsRes.error.message)
+    if (appsRes.error && /updated_at/.test(appsRes.error.message)) {
+      const retry = await supabaseAdmin.from('applications').select('id, status, job_id, user_id, created_at, submitted_at, cover_letter, channel').order('created_at', { ascending: false }).limit(400)
+      if (retry.error) console.warn('admin applications', retry.error.message)
+      else {
+        appRows = (retry.data ?? []).map((row) => ({
+          id: String(row.id),
+          status: String(row.status ?? ''),
+          jobId: String(row.job_id ?? ''),
+          userId: String(row.user_id ?? ''),
+          createdAt: row.created_at ? String(row.created_at) : '',
+          submittedAt: row.submitted_at ? String(row.submitted_at) : '',
+          updatedAt: '',
+          coverLetter: String(row.cover_letter ?? '').slice(0, 400),
+          channel: String(row.channel ?? ''),
+        }))
+      }
+    } else if (appsRes.error) console.warn('admin applications', appsRes.error.message)
     else {
       appRows = (appsRes.data ?? []).map((row) => ({
         id: String(row.id),
@@ -2340,6 +2549,7 @@ app.get('/api/admin/dashboard', async (c) => {
         userId: String(row.user_id ?? ''),
         createdAt: row.created_at ? String(row.created_at) : '',
         submittedAt: row.submitted_at ? String(row.submitted_at) : '',
+        updatedAt: row.updated_at ? String(row.updated_at) : '',
         coverLetter: String(row.cover_letter ?? '').slice(0, 400),
         channel: String(row.channel ?? ''),
       }))
@@ -2400,6 +2610,21 @@ app.get('/api/admin/dashboard', async (c) => {
     }
   }
 
+  if (!supabaseAdmin && !appRows.length) {
+    appRows = memory.allApplications().slice(0, 400).map((row) => ({
+      id: row.id,
+      status: row.status,
+      jobId: row.jobId,
+      userId: row.userId,
+      createdAt: row.createdAt,
+      submittedAt: row.submittedAt ?? '',
+      updatedAt: '',
+      coverLetter: row.packet?.coverLetter?.slice(0, 400) ?? '',
+      channel: row.channel,
+    }))
+    packets = appRows.length
+  }
+
   const peopleById = new Map(accounts.map((row) => [row.id, row]))
   const jobsById = new Map(jobs.map((job) => [job.id, job]))
 
@@ -2416,6 +2641,9 @@ app.get('/api/admin/dashboard', async (c) => {
       candidateEmail: person?.email ?? '',
       createdAt: row.createdAt,
       submittedAt: row.submittedAt || row.createdAt,
+      updatedAt: row.updatedAt || '',
+      reviewedAt:
+        row.status === 'draft' || row.status === 'submitted' ? '' : row.updatedAt || row.submittedAt || '',
       coverLetter: row.coverLetter,
       channel: row.channel,
       atelier: Boolean(job?.employerId || job?.source === 'atelier'),
@@ -2868,6 +3096,9 @@ app.patch('/api/admin/packets/:id', async (c) => {
   if (!allowed.includes(next)) return c.json({ error: 'Use a studio packet status.' }, 400)
   const row = (await hydrateApplication(id)) ?? memory.getApplicationById(id)
   if (!row) return c.json({ error: 'Packet not found.' }, 404)
+  if (row.status === 'draft' && next !== 'rejected') {
+    return c.json({ error: 'This packet is still a draft. The candidate must approve it before it can move.' }, 400)
+  }
   row.status = next
   memory.addApplication(row)
   if (supabaseAdmin) {
@@ -2892,6 +3123,72 @@ app.patch('/api/admin/packets/:id', async (c) => {
     hired ? '/app/ateliar' : `/app/applications/${row.id}`,
   )
   return c.json({ ok: true, id, status: next })
+})
+
+app.post('/api/admin/packets', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (!isStaffRole(profile.role)) return c.json({ error: 'Admin account required' }, 403)
+  const body = (await c.req.json().catch(() => ({}))) as { candidateId?: string; jobId?: string; coverLetter?: string }
+  const candidateId = String(body.candidateId ?? '').trim()
+  const jobId = String(body.jobId ?? '').trim()
+  if (!candidateId || !jobId) return c.json({ error: 'Choose a candidate and a job.' }, 400)
+
+  let email = ''
+  let role: AccountRole = 'candidate'
+  if (supabaseAdmin) {
+    const { data, error } = await supabaseAdmin.from('profiles').select('id, email, role').eq('id', candidateId).maybeSingle()
+    if (error) return c.json({ error: error.message }, 400)
+    if (!data) return c.json({ error: 'Candidate not found.' }, 404)
+    email = String(data.email ?? '')
+    role = parseAccountRole(data.role)
+  } else {
+    const person = memory.getProfile(candidateId)
+    email = person.email
+    role = parseAccountRole(person.role)
+  }
+  if (role !== 'candidate') return c.json({ error: 'Packets are for candidate accounts.' }, 400)
+  const candidate = await loadProfile({ id: candidateId, email }, { staffInvite: false })
+  const made = await createDraftPacket(candidateId, jobId, candidate, body.coverLetter)
+  if (!made.app) return c.json({ error: made.error ?? 'Could not create the packet.' }, made.status === 404 ? 404 : 400)
+  const job = memory.getJob(jobId)
+  if (!made.already) {
+    await notifyUser(
+      candidateId,
+      `Packet ready: ${job?.title ?? 'Role'}`,
+      `Staff prepared a packet for ${job?.company ?? 'Atelier'}. Review it and approve before it is sent.`,
+      `/app/applications/${made.app.id}`,
+    )
+  }
+  return c.json({
+    ok: true,
+    id: made.app.id,
+    already: Boolean(made.already),
+    status: made.app.status,
+    message: made.already
+      ? 'This candidate already has an open packet for that role.'
+      : 'Draft packet created. It stays with the candidate until they approve.',
+  })
+})
+
+app.post('/api/admin/packets/:id/remind', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (!isStaffRole(profile.role)) return c.json({ error: 'Admin account required' }, 403)
+  const id = c.req.param('id')
+  const row = (await hydrateApplication(id)) ?? memory.getApplicationById(id)
+  if (!row) return c.json({ error: 'Packet not found.' }, 404)
+  if (row.status !== 'draft') return c.json({ error: 'Only draft packets need a reminder to approve.' }, 400)
+  const job = (await ensureJob(row.jobId)) ?? memory.getJob(row.jobId)
+  await notifyUser(
+    row.userId,
+    `Review packet: ${job?.title ?? 'Role'}`,
+    `Your Atelier packet for ${job?.company ?? 'this role'} is still a draft. Approve it before it can be sent.`,
+    `/app/applications/${row.id}`,
+  )
+  return c.json({ ok: true, id })
 })
 
 app.post('/api/admin/employers/invite', async (c) => {

@@ -34,6 +34,8 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null)
 
+let profileInflight: Promise<CandidateProfile> | null = null
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<User | null>(null)
@@ -60,39 +62,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const establish = useCallback(async (next: User | null) => {
     setUser(next)
     if (!next) {
+      profileInflight = null
       setProfile(emptyProfile())
       return emptyProfile()
     }
-    try {
-      const synced = next.identities?.length ? await syncSocialProfile(next) : await refreshProfile()
-      setProfile(synced)
-      return synced
-    } catch {
-      const fallback = { ...emptyProfile(), email: next.email ?? '' }
-      setProfile(fallback)
-      return fallback
-    }
+    if (profileInflight) return profileInflight
+    const work = (async () => {
+      try {
+        const synced = next.identities?.length ? await syncSocialProfile(next) : await refreshProfile()
+        setProfile(synced)
+        return synced
+      } catch {
+        const fallback = { ...emptyProfile(), email: next.email ?? '' }
+        setProfile(fallback)
+        return fallback
+      } finally {
+        profileInflight = null
+      }
+    })()
+    profileInflight = work
+    return work
   }, [refreshProfile, syncSocialProfile])
 
   useEffect(() => {
     let cancelled = false
     const { data } = supabase
-      ? supabase.auth.onAuthStateChange((_event, session) => {
+      ? supabase.auth.onAuthStateChange((event, session) => {
           if (cancelled) return
           setAccessToken(session?.access_token ?? null)
+          if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+            if (session?.user) setUser(session.user)
+            return
+          }
           setUser(session?.user ?? null)
-          if (session?.user) {
+          if (event === 'SIGNED_OUT') {
             setDemoToken(false)
             setDemo(false)
-            void (session.user.identities?.length
-              ? api<CandidateProfile>('/api/profile/sync-identity', {
-                  method: 'POST',
-                  body: JSON.stringify(identityFromUser(session.user)),
-                })
-              : api<CandidateProfile>('/api/profile')
-            ).then((p) => {
-              if (!cancelled) setProfile(p)
-            }).catch(() => {})
+            setProfile(emptyProfile())
           }
         })
       : { data: { subscription: { unsubscribe() {} } } }
