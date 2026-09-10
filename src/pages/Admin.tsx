@@ -35,6 +35,7 @@ import {
   Send,
   Settings,
   Shield,
+  Globe,
   Timer,
   X,
   Menu,
@@ -49,12 +50,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
-import { cn, initials, money, prettyStatus } from '@/lib/utils'
+import { cn, initials, money, moneyBand, prettyStatus } from '@/lib/utils'
 import { formatHoursMinutes, startOfLocalDay } from '@shared/tracker'
-import { isStaffRole, sourceLabel, type AccountRole } from '@shared/types'
+import { isStaffRole, sourceLabel, type AccountRole, type Currency, type EmploymentType } from '@shared/types'
 import { employerInviteNote, employerJoinPath } from '@shared/employerInvite'
 import { candidateInviteNote, candidateJoinPath } from '@shared/candidateInvite'
-import { officialApplyLinks } from '@shared/applyBoards'
+import { listingUrl, officialApplyLinks } from '@shared/applyBoards'
 import type { LucideIcon } from 'lucide-react'
 
 type InviteDeskStatus = 'not_invited' | 'invited' | 'joined'
@@ -116,9 +117,24 @@ interface AdminDashboard {
     remote: boolean
     postedAt: string
     atelier: boolean
+    description: string
+    location: string
+    employmentType: string
+    salaryMin?: number
+    salaryMax?: number
+    currency: string
+    skills: string[]
+    seniority: string
+    employerId: string
+    applicationUrl: string
+    applicants: number
+    pending: number
+    hired: number
+    shortlisted: number
   }[]
   packetsList: {
     id: string
+    jobId: string
     status: string
     jobTitle: string
     company: string
@@ -251,6 +267,7 @@ type PeopleFilter = 'all' | AccountRole
 type UserTypeFilter = 'all' | 'candidate' | 'employer' | 'admin'
 type PacketBucket = 'pending' | 'accepted' | 'declined' | 'draft'
 type CandidateDeskTab = 'all' | 'active' | 'pending' | 'onboarded' | 'hired'
+type JobDeskTab = 'all' | 'atelier' | 'boards' | 'remote' | 'packets'
 type PayTab = 'all' | 'employer' | 'payout' | 'pending'
 type InviteDeskTab = 'all' | 'linkedin' | 'upwork' | InviteDeskStatus
 
@@ -421,6 +438,28 @@ export function AdminPage() {
   const [candidateOpen, setCandidateOpen] = useState(true)
   const [candidateInviteOpen, setCandidateInviteOpen] = useState(false)
   const [candidateCopied, setCandidateCopied] = useState('')
+  const [jobQuery, setJobQuery] = useState('')
+  const [jobTab, setJobTab] = useState<JobDeskTab>('all')
+  const [jobSource, setJobSource] = useState('all')
+  const [jobType, setJobType] = useState('all')
+  const [jobStatus, setJobStatus] = useState<'all' | 'atelier' | 'open'>('all')
+  const [jobSort, setJobSort] = useState<'newest' | 'title' | 'applicants'>('newest')
+  const [jobPage, setJobPage] = useState(0)
+  const [jobPageSize, setJobPageSize] = useState(10)
+  const [pickedJob, setPickedJob] = useState('')
+  const [jobOpen, setJobOpen] = useState(true)
+  const [jobPostOpen, setJobPostOpen] = useState(false)
+  const [jobPostEmployer, setJobPostEmployer] = useState('')
+  const [jobPostTitle, setJobPostTitle] = useState('')
+  const [jobPostDescription, setJobPostDescription] = useState('')
+  const [jobPostLocation, setJobPostLocation] = useState('Remote worldwide')
+  const [jobPostRemote, setJobPostRemote] = useState(true)
+  const [jobPostEmployment, setJobPostEmployment] = useState<EmploymentType>('full-time')
+  const [jobPostSalaryMin, setJobPostSalaryMin] = useState('')
+  const [jobPostSalaryMax, setJobPostSalaryMax] = useState('')
+  const [jobPostCurrency, setJobPostCurrency] = useState<Currency>('USD')
+  const [jobPostSkills, setJobPostSkills] = useState('')
+  const [jobPostNotice, setJobPostNotice] = useState('')
   const [packetQuery, setPacketQuery] = useState('')
   const [packetStatus, setPacketStatus] = useState<'all' | PacketBucket>('all')
   const [packetCompany, setPacketCompany] = useState('all')
@@ -481,6 +520,31 @@ export function AdminPage() {
       void qc.invalidateQueries({ queryKey: ['admin-dashboard'] })
     },
     onError: (err) => setPeopleInviteNotice(err instanceof Error ? err.message : 'Could not send the invite.'),
+  })
+  const postAdminJob = useMutation({
+    mutationFn: (body: {
+      employerId: string
+      title: string
+      description: string
+      location: string
+      remote: boolean
+      employmentType: EmploymentType
+      salaryMin?: number
+      salaryMax?: number
+      currency: Currency
+      skills: string
+    }) => api('/api/admin/jobs', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => {
+      setJobPostNotice('')
+      setJobPostOpen(false)
+      setJobPostTitle('')
+      setJobPostDescription('')
+      setJobPostSkills('')
+      setJobPostSalaryMin('')
+      setJobPostSalaryMax('')
+      void qc.invalidateQueries({ queryKey: ['admin-dashboard'] })
+    },
+    onError: (err) => setJobPostNotice(err instanceof Error ? err.message : 'Could not post the job.'),
   })
   const changeUserRole = useMutation({
     mutationFn: (body: { email: string; role: 'admin' | 'employer' | 'candidate' }) =>
@@ -604,12 +668,79 @@ export function AdminPage() {
   const nowMs = Date.now()
 
   const searchListings = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return (data?.listings ?? []).filter((row) => {
+    const q = (view === 'listings' ? jobQuery : query).trim().toLowerCase()
+    const rows = [...(data?.listings ?? [])]
+    const filtered = rows.filter((row) => {
+      if (jobTab === 'atelier' && !row.atelier) return false
+      if (jobTab === 'boards' && row.atelier) return false
+      if (jobTab === 'remote' && !row.remote) return false
+      if (jobTab === 'packets' && (row.applicants ?? 0) < 1) return false
+      if (jobSource !== 'all' && row.source !== jobSource) return false
+      if (jobType !== 'all' && row.employmentType !== jobType) return false
+      if (jobStatus === 'atelier' && !row.atelier) return false
+      if (jobStatus === 'open' && row.atelier) return false
       if (!q) return true
-      return `${row.title} ${row.company} ${row.source}`.toLowerCase().includes(q)
+      return `${row.title} ${row.company} ${row.source} ${(row.skills ?? []).join(' ')} ${row.location}`.toLowerCase().includes(q)
     })
-  }, [data?.listings, query])
+    filtered.sort((a, b) => {
+      if (jobSort === 'title') return a.title.localeCompare(b.title)
+      if (jobSort === 'applicants') return b.applicants - a.applicants || a.title.localeCompare(b.title)
+      return String(b.postedAt ?? '').localeCompare(String(a.postedAt ?? '')) || a.title.localeCompare(b.title)
+    })
+    return filtered
+  }, [data?.listings, jobQuery, jobSort, jobSource, jobStatus, jobTab, jobType, query, view])
+
+  const jobSources = useMemo(() => {
+    return [...new Set((data?.listings ?? []).map((row) => row.source).filter(Boolean))].sort()
+  }, [data?.listings])
+  const jobTypes = useMemo(() => {
+    return [...new Set((data?.listings ?? []).map((row) => row.employmentType).filter(Boolean))].sort()
+  }, [data?.listings])
+  const jobPages = Math.max(1, Math.ceil(searchListings.length / jobPageSize))
+  const jobPageSafe = Math.min(jobPage, jobPages - 1)
+  const jobSlice = searchListings.slice(jobPageSafe * jobPageSize, jobPageSafe * jobPageSize + jobPageSize)
+  const selectedJob = searchListings.find((row) => row.id === pickedJob) ?? jobSlice[0]
+  const jobEmployers = data?.employers ?? []
+  const jobStats = useMemo(() => {
+    const rows = data?.listings ?? []
+    const month = 30 * 24 * 60 * 60 * 1000
+    const postedMs = (row: { postedAt: string }) => {
+      if (!row.postedAt) return NaN
+      const t = new Date(row.postedAt).getTime()
+      return Number.isNaN(t) ? NaN : t
+    }
+    const fresh = rows.filter((row) => {
+      const t = postedMs(row)
+      return Number.isFinite(t) && nowMs - t <= month
+    }).length
+    const prior = rows.filter((row) => {
+      const t = postedMs(row)
+      if (!Number.isFinite(t)) return false
+      const age = nowMs - t
+      return age > month && age <= month * 2
+    }).length
+    const delta = (cur: number, prev: number) => {
+      if (!prev && !cur) return 0
+      if (!prev) return 100
+      return Math.round(((cur - prev) / prev) * 100)
+    }
+    const atelier = rows.filter((row) => row.atelier).length
+    const boards = rows.filter((row) => !row.atelier).length
+    const remote = rows.filter((row) => row.remote).length
+    const packets = rows.filter((row) => (row.applicants ?? 0) > 0).length
+    return {
+      total: rows.length,
+      atelier,
+      boards,
+      remote,
+      packets,
+      totalDelta: delta(fresh, prior),
+      atelierDelta: delta(atelier, Math.max(0, atelier - fresh)),
+      boardsDelta: delta(boards, Math.max(0, boards - Math.min(boards, fresh))),
+      remoteDelta: delta(remote, Math.max(0, remote - Math.min(remote, fresh))),
+      packetsDelta: delta(packets, Math.max(0, packets - Math.min(packets, fresh))),
+    }
+  }, [data?.listings, nowMs])
 
   const packets = useMemo(() => {
     const q = (view === 'packets' ? packetQuery : query).trim().toLowerCase()
@@ -1093,6 +1224,32 @@ export function AdminPage() {
     URL.revokeObjectURL(href)
   }
 
+  function exportJobs() {
+    const header = 'Title,Company,Board,Type,Location,Budget,Applicants,Status,Posted'
+    const lines = searchListings.map((row) =>
+      [
+        row.title,
+        row.company,
+        sourceLabel(row.source),
+        prettyEmployment(row.employmentType),
+        row.location || (row.remote ? 'Remote' : ''),
+        jobBudget(row),
+        row.applicants,
+        row.atelier ? 'Atelier' : 'Open',
+        row.postedAt,
+      ]
+        .map((v) => `"${String(v).replaceAll('"', '""')}"`)
+        .join(','),
+    )
+    const blob = new Blob([`${header}\n${lines.join('\n')}`], { type: 'text/csv' })
+    const href = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = href
+    a.download = 'atelier-jobs.csv'
+    a.click()
+    URL.revokeObjectURL(href)
+  }
+
   function exportPackets() {
     const header = 'Candidate,Email,Role,Company,Status,Submitted'
     const lines = packets.map((row) =>
@@ -1299,6 +1456,10 @@ export function AdminPage() {
     }
     if (next === 'employers') setEmployerPage(0)
     if (next === 'candidates') setCandidatePage(0)
+    if (next === 'listings') {
+      setJobPage(0)
+      setJobOpen(true)
+    }
     if (next === 'packets') {
       setPacketPage(0)
       setPacketOpen(true)
@@ -1321,7 +1482,7 @@ export function AdminPage() {
     return view === item.id
   }
 
-  const searchValue = view === 'people' ? peopleQuery : view === 'roles' ? roleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'candidates' ? candidateQuery : view === 'packets' ? packetQuery : view === 'contracts' ? contractQuery : view === 'finances' ? payQuery : query
+  const searchValue = view === 'people' ? peopleQuery : view === 'roles' ? roleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'candidates' ? candidateQuery : view === 'listings' ? jobQuery : view === 'packets' ? packetQuery : view === 'contracts' ? contractQuery : view === 'finances' ? payQuery : query
   const onSearch = (value: string) => {
     if (view === 'people') {
       setPeopleQuery(value)
@@ -1334,6 +1495,9 @@ export function AdminPage() {
     } else if (view === 'candidates') {
       setCandidateQuery(value)
       setCandidatePage(0)
+    } else if (view === 'listings') {
+      setJobQuery(value)
+      setJobPage(0)
     } else if (view === 'packets') {
       setPacketQuery(value)
       setPacketPage(0)
@@ -1365,6 +1529,8 @@ export function AdminPage() {
                 ? 'Search employers by name, email, or company'
                 : view === 'candidates'
                   ? 'Search candidates by name, email, skills, or location'
+                : view === 'listings'
+                  ? 'Search jobs by title, company, or keyword...'
                 : view === 'people'
                   ? 'Search users by name, email, or role'
                 : view === 'roles'
@@ -2734,7 +2900,7 @@ export function AdminPage() {
                               </span>
                             </td>
                             <td className="hidden px-3 py-3 lg:table-cell">
-                              {row.skills[0] ? (
+                              {(row.skills ?? [])[0] ? (
                                 <span className="rounded-md bg-[#eef6ff] px-2 py-0.5 text-xs text-[#1d4ed8]">{row.skills[0]}</span>
                               ) : (
                                 <span className="text-[#8a918c]">—</span>
@@ -3657,14 +3823,655 @@ export function AdminPage() {
           ) : null}
 
           {view === 'listings' ? (
-            <Panel>
-              <h2 className="font-sans text-lg font-semibold">Jobs</h2>
-              <DeskTable
-                columns={['Job Title', 'Company', 'Board', 'Posted', 'Status']}
-                rows={searchListings.map((row) => [row.title, row.company, sourceLabel(row.source), row.postedAt || '—', row.atelier ? 'Atelier' : 'Open'])}
-                empty="No jobs match this search."
-              />
-            </Panel>
+            <div className="space-y-5">
+              {jobPostOpen ? (
+                <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+                  <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close post job" onClick={() => setJobPostOpen(false)} />
+                  <Panel className="relative z-10 w-full max-w-lg p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="font-sans text-lg font-semibold">Post a Job</h2>
+                        <p className="mt-1 text-sm text-[#5c635f]">Publish an Atelier listing for an employer. Packets land in their inbox after the candidate approves.</p>
+                      </div>
+                      <button type="button" className="grid size-8 place-items-center rounded-full hover:bg-[#f3f5f4]" aria-label="Close" onClick={() => setJobPostOpen(false)}>
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    {jobEmployers.length ? (
+                      <form
+                        className="mt-5 space-y-4"
+                        onSubmit={(e) => {
+                          e.preventDefault()
+                          setJobPostNotice('')
+                          if (!jobPostEmployer) {
+                            setJobPostNotice('Choose an employer.')
+                            return
+                          }
+                          postAdminJob.mutate({
+                            employerId: jobPostEmployer,
+                            title: jobPostTitle,
+                            description: jobPostDescription,
+                            location: jobPostLocation,
+                            remote: jobPostRemote,
+                            employmentType: jobPostEmployment,
+                            salaryMin: jobPostSalaryMin ? Number(jobPostSalaryMin) : undefined,
+                            salaryMax: jobPostSalaryMax ? Number(jobPostSalaryMax) : undefined,
+                            currency: jobPostCurrency,
+                            skills: jobPostSkills,
+                          })
+                        }}
+                      >
+                        <label className="block space-y-1.5">
+                          <span className="text-sm font-medium">
+                            Employer <span className="text-[#b85c38]">*</span>
+                          </span>
+                          <select
+                            required
+                            className="h-10 w-full rounded-lg border border-[#e4e8e5] bg-white px-3 text-sm"
+                            value={jobPostEmployer}
+                            onChange={(e) => setJobPostEmployer(e.target.value)}
+                          >
+                            <option value="">Select employer</option>
+                            {jobEmployers.map((row) => (
+                              <option key={row.id} value={row.id}>
+                                {row.company || row.name} · {row.email}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="block space-y-1.5">
+                          <span className="text-sm font-medium">
+                            Job title <span className="text-[#b85c38]">*</span>
+                          </span>
+                          <Input required value={jobPostTitle} onChange={(e) => setJobPostTitle(e.target.value)} placeholder="React Developer for SaaS Platform" />
+                        </label>
+                        <label className="block space-y-1.5">
+                          <span className="text-sm font-medium">
+                            Description <span className="text-[#b85c38]">*</span>
+                          </span>
+                          <textarea
+                            required
+                            className="min-h-28 w-full rounded-lg border border-[#e4e8e5] bg-white px-3 py-2 text-sm"
+                            value={jobPostDescription}
+                            onChange={(e) => setJobPostDescription(e.target.value)}
+                            placeholder="What the role does, the stack, and who should apply."
+                          />
+                          <p className={`text-xs ${jobPostDescription.trim().length >= 40 ? 'text-[#8a918c]' : 'text-[#b85c38]'}`}>
+                            {jobPostDescription.trim().length}/40 characters minimum
+                          </p>
+                        </label>
+                        <label className="block space-y-1.5">
+                          <span className="text-sm font-medium">Skills (comma separated)</span>
+                          <Input value={jobPostSkills} onChange={(e) => setJobPostSkills(e.target.value)} placeholder="React, TypeScript, Node.js" />
+                        </label>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="block space-y-1.5">
+                            <span className="text-sm font-medium">Location</span>
+                            <Input value={jobPostLocation} onChange={(e) => setJobPostLocation(e.target.value)} />
+                          </label>
+                          <label className="block space-y-1.5">
+                            <span className="text-sm font-medium">Type</span>
+                            <select
+                              className="h-10 w-full rounded-lg border border-[#e4e8e5] bg-white px-3 text-sm"
+                              value={jobPostEmployment}
+                              onChange={(e) => setJobPostEmployment(e.target.value as EmploymentType)}
+                            >
+                              {(['full-time', 'part-time', 'contract', 'freelance'] as const).map((t) => (
+                                <option key={t} value={t}>
+                                  {prettyEmployment(t)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="block space-y-1.5">
+                            <span className="text-sm font-medium">Salary min</span>
+                            <Input type="number" min={0} value={jobPostSalaryMin} onChange={(e) => setJobPostSalaryMin(e.target.value)} placeholder="Optional" />
+                          </label>
+                          <label className="block space-y-1.5">
+                            <span className="text-sm font-medium">Salary max</span>
+                            <Input type="number" min={0} value={jobPostSalaryMax} onChange={(e) => setJobPostSalaryMax(e.target.value)} placeholder="Optional" />
+                          </label>
+                          <label className="block space-y-1.5">
+                            <span className="text-sm font-medium">Currency</span>
+                            <select
+                              className="h-10 w-full rounded-lg border border-[#e4e8e5] bg-white px-3 text-sm"
+                              value={jobPostCurrency}
+                              onChange={(e) => setJobPostCurrency(e.target.value as Currency)}
+                            >
+                              {(['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'PHP', 'CHF'] as const).map((c) => (
+                                <option key={c}>{c}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="flex items-center gap-2 pt-6 text-sm">
+                            <input type="checkbox" checked={jobPostRemote} onChange={(e) => setJobPostRemote(e.target.checked)} />
+                            Remote
+                          </label>
+                        </div>
+                        {jobPostNotice ? (
+                          <p className={`text-sm ${postAdminJob.isError || jobPostNotice.startsWith('Choose') ? 'text-[#b85c38]' : 'text-[#147a48]'}`}>{jobPostNotice}</p>
+                        ) : null}
+                        <div className="flex flex-wrap justify-end gap-2 pt-1">
+                          <Button variant="outline" type="button" onClick={() => setJobPostOpen(false)}>
+                            Cancel
+                          </Button>
+                          <Button className="bg-[#147a48] hover:bg-[#0f6a3d]" type="submit" disabled={postAdminJob.isPending}>
+                            {postAdminJob.isPending ? 'Publishing…' : 'Publish job'}
+                          </Button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="mt-5">
+                        <p className="text-sm text-[#5c635f]">Invite an employer first. Jobs on Atelier are posted for a hiring account so packets have an inbox.</p>
+                        <Button
+                          className="mt-4 bg-[#147a48] hover:bg-[#0f6a3d]"
+                          type="button"
+                          onClick={() => {
+                            setJobPostOpen(false)
+                            go('invite')
+                          }}
+                        >
+                          Invite employer
+                        </Button>
+                      </div>
+                    )}
+                  </Panel>
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-[#8a918c]">
+                    Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Jobs</span>
+                  </p>
+                  <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Jobs</h1>
+                  <p className="mt-1 text-sm text-[#5c635f]">Manage job postings, monitor packets, and track hiring progress.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    className="bg-[#147a48] hover:bg-[#0f6a3d]"
+                    onClick={() => {
+                      setJobPostNotice('')
+                      setJobPostOpen(true)
+                      if (!jobPostEmployer && jobEmployers[0]) setJobPostEmployer(jobEmployers[0].id)
+                    }}
+                  >
+                    <Plus className="size-4" />
+                    Post a Job
+                  </Button>
+                  <Button variant="outline" type="button" onClick={exportJobs}>
+                    <Download className="size-4" />
+                    Export
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <EmployerStat icon={Briefcase} color="#2563eb" label="Total Jobs" value={jobStats.total} delta={jobStats.totalDelta} />
+                <EmployerStat icon={Check} color="#22c55e" label="Atelier" value={jobStats.atelier} delta={jobStats.atelierDelta} />
+                <EmployerStat icon={Pause} color="#f59e0b" label="Board listings" value={jobStats.boards} delta={jobStats.boardsDelta} />
+                <EmployerStat icon={UserCheck} color="#3b82f6" label="With packets" value={jobStats.packets} delta={jobStats.packetsDelta} />
+              </div>
+
+              <div className="flex gap-5 overflow-x-auto border-b border-[#e4e8e5] text-sm">
+                {(
+                  [
+                    ['all', 'All Jobs', jobStats.total],
+                    ['atelier', 'Atelier', jobStats.atelier],
+                    ['boards', 'Boards', jobStats.boards],
+                    ['remote', 'Remote', jobStats.remote],
+                    ['packets', 'With packets', jobStats.packets],
+                  ] as const
+                ).map(([id, label, n]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`-mb-px shrink-0 border-b-2 pb-2.5 ${
+                      jobTab === id ? 'border-[#147a48] font-medium text-[#161c19]' : 'border-transparent text-[#8a918c]'
+                    }`}
+                    onClick={() => {
+                      setJobTab(id)
+                      setJobPage(0)
+                    }}
+                  >
+                    {label} ({n.toLocaleString()})
+                  </button>
+                ))}
+              </div>
+
+              <div className={`grid gap-5 ${jobOpen && selectedJob ? 'lg:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
+                <Panel className="overflow-hidden p-0">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-[#eef1ee] px-4 py-3">
+                    <label className="relative min-w-0 w-full flex-1 sm:min-w-[16rem]">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
+                      <Input
+                        className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
+                        placeholder="Search jobs by title, client, or keyword..."
+                        value={jobQuery}
+                        onChange={(e) => {
+                          setJobQuery(e.target.value)
+                          setJobPage(0)
+                        }}
+                      />
+                    </label>
+                    <select
+                      className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
+                      value={jobSource}
+                      onChange={(e) => {
+                        setJobSource(e.target.value)
+                        setJobPage(0)
+                      }}
+                    >
+                      <option value="all">All categories</option>
+                      {jobSources.map((item) => (
+                        <option key={item} value={item}>
+                          {sourceLabel(item)}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
+                      value={jobType}
+                      onChange={(e) => {
+                        setJobType(e.target.value)
+                        setJobPage(0)
+                      }}
+                    >
+                      <option value="all">All job types</option>
+                      {jobTypes.map((item) => (
+                        <option key={item} value={item}>
+                          {prettyEmployment(item)}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
+                      value={jobStatus}
+                      onChange={(e) => {
+                        setJobStatus(e.target.value as typeof jobStatus)
+                        setJobPage(0)
+                      }}
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="atelier">Atelier</option>
+                      <option value="open">Open boards</option>
+                    </select>
+                    <select
+                      className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
+                      value={jobSort}
+                      onChange={(e) => {
+                        setJobSort(e.target.value as typeof jobSort)
+                        setJobPage(0)
+                      }}
+                    >
+                      <option value="newest">Newest</option>
+                      <option value="title">Title</option>
+                      <option value="applicants">Packets</option>
+                    </select>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() => {
+                        setJobQuery('')
+                        setJobTab('all')
+                        setJobSource('all')
+                        setJobType('all')
+                        setJobStatus('all')
+                        setJobSort('newest')
+                        setJobPage(0)
+                      }}
+                    >
+                      <ListFilter className="size-4" />
+                      Reset
+                    </Button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-0 text-left text-sm md:min-w-[44rem]">
+                      <thead className="text-xs text-[#8a918c]">
+                        <tr className="border-b border-[#eef1ee]">
+                          <th className="w-10 px-4 py-3 font-medium">
+                            <span className="sr-only">Select</span>
+                          </th>
+                          <th className="px-3 py-3 font-medium">Job Title</th>
+                          <th className="px-3 py-3 font-medium">Client</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Category</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Type</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Budget</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Applicants</th>
+                          <th className="px-3 py-3 font-medium">Status</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Posted Date</th>
+                          <th className="px-3 py-3 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {jobSlice.map((row) => (
+                          <tr
+                            key={row.id}
+                            className={`cursor-pointer border-b border-[#eef1ee] ${selectedJob?.id === row.id && jobOpen ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
+                            onClick={() => {
+                              setPickedJob(row.id)
+                              setJobOpen(true)
+                              setStaffMenu('')
+                            }}
+                          >
+                            <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                className="size-4 rounded border-[#d4dbd6] accent-[#147a48]"
+                                checked={selectedJob?.id === row.id && jobOpen}
+                                onChange={() => {
+                                  setPickedJob(row.id)
+                                  setJobOpen(true)
+                                }}
+                                aria-label={`Select ${row.title}`}
+                              />
+                            </td>
+                            <td className="px-3 py-3">
+                              <span className="block font-medium leading-snug">{row.title}</span>
+                              <span className="mt-0.5 block text-xs text-[#8a918c]">{sourceLabel(row.source)}</span>
+                            </td>
+                            <td className="px-3 py-3">
+                              <span className="flex items-center gap-2.5">
+                                <span
+                                  className="grid size-8 shrink-0 place-items-center rounded-full text-[0.7rem] font-semibold text-white"
+                                  style={{ background: companyMark(row.company) }}
+                                >
+                                  {initials(row.company)}
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="block truncate font-medium">{row.company}</span>
+                                  {row.atelier ? <span className="block text-[0.65rem] text-[#147a48]">Atelier employer</span> : null}
+                                </span>
+                              </span>
+                            </td>
+                            <td className="hidden px-3 py-3 lg:table-cell">
+                              {(row.skills ?? [])[0] ? (
+                                <span className="rounded-md bg-[#eef6ff] px-2 py-0.5 text-xs text-[#1d4ed8]">{row.skills[0]}</span>
+                              ) : (
+                                <span className="text-[#8a918c]">—</span>
+                              )}
+                            </td>
+                            <td className="hidden px-3 py-3 md:table-cell">
+                              <JobTypeChip type={row.employmentType} />
+                            </td>
+                            <td className="hidden px-3 py-3 tabular-nums text-[#5c635f] lg:table-cell">{jobBudget(row)}</td>
+                            <td className="hidden px-3 py-3 tabular-nums md:table-cell">{row.applicants}</td>
+                            <td className="px-3 py-3">
+                              <JobStatusChip atelier={row.atelier} />
+                            </td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{day(row.postedAt)}</td>
+                            <td className="relative px-3 py-3">
+                              <button
+                                type="button"
+                                className="grid size-8 place-items-center rounded-full hover:bg-white"
+                                aria-label="Actions"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setPickedJob(row.id)
+                                  setJobOpen(true)
+                                  setStaffMenu(staffMenu === row.id ? '' : row.id)
+                                }}
+                              >
+                                <MoreHorizontal className="size-4 text-[#8a918c]" />
+                              </button>
+                              {staffMenu === row.id ? (
+                                <div className="absolute right-3 z-20 w-44 overflow-hidden rounded-xl border border-[#e4e8e5] bg-white py-1 text-sm shadow-[0_8px_24px_rgba(19,38,31,0.12)]">
+                                  <button
+                                    type="button"
+                                    className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setStaffMenu('')
+                                      setPacketQuery(row.title)
+                                      setPacketCompany(row.company || 'all')
+                                      setPacketPage(0)
+                                      go('packets')
+                                    }}
+                                  >
+                                    View packets
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      void navigator.clipboard.writeText(jobPublicHref(row, candidateOrigin))
+                                      setStaffMenu('')
+                                    }}
+                                  >
+                                    Copy listing
+                                  </button>
+                                  {!row.atelier ? (
+                                    <button
+                                      type="button"
+                                      className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setStaffMenu('')
+                                        go('invite')
+                                      }}
+                                    >
+                                      Invite employer
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!jobSlice.length ? <p className="px-4 py-8 text-sm text-[#8a918c]">No jobs match this search.</p> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
+                    <p>
+                      Showing {searchListings.length ? jobPageSafe * jobPageSize + 1 : 0}–
+                      {Math.min(searchListings.length, jobPageSafe * jobPageSize + jobPageSize)} of {searchListings.length} jobs
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="grid size-7 place-items-center rounded-md hover:bg-[#f3f5f4] disabled:opacity-40"
+                          disabled={jobPageSafe === 0}
+                          onClick={() => setJobPage((p) => Math.max(0, p - 1))}
+                          aria-label="Previous page"
+                        >
+                          <ChevronLeft className="size-4" />
+                        </button>
+                        {Array.from({ length: jobPages }, (_, i) => i)
+                          .filter((i) => i === 0 || i === jobPages - 1 || Math.abs(i - jobPageSafe) <= 1)
+                          .reduce<(number | 'gap')[]>((acc, i) => {
+                            if (acc.length && acc[acc.length - 1] !== 'gap' && typeof acc[acc.length - 1] === 'number' && i - (acc[acc.length - 1] as number) > 1) acc.push('gap')
+                            acc.push(i)
+                            return acc
+                          }, [])
+                          .map((item, idx) =>
+                            item === 'gap' ? (
+                              <span key={`gap-${idx}`} className="px-1">
+                                …
+                              </span>
+                            ) : (
+                              <button
+                                key={item}
+                                type="button"
+                                onClick={() => setJobPage(item)}
+                                className={`grid size-7 place-items-center rounded-md ${jobPageSafe === item ? 'bg-[#147a48] text-white' : 'hover:bg-[#f3f5f4]'}`}
+                              >
+                                {item + 1}
+                              </button>
+                            ),
+                          )}
+                        <button
+                          type="button"
+                          className="grid size-7 place-items-center rounded-md hover:bg-[#f3f5f4] disabled:opacity-40"
+                          disabled={jobPageSafe >= jobPages - 1}
+                          onClick={() => setJobPage((p) => Math.min(jobPages - 1, p + 1))}
+                          aria-label="Next page"
+                        >
+                          <ChevronRight className="size-4" />
+                        </button>
+                      </div>
+                      <label className="flex items-center gap-2">
+                        Show
+                        <select
+                          className="h-8 rounded-lg border border-[#e4e8e5] bg-white px-2"
+                          value={jobPageSize}
+                          onChange={(e) => {
+                            setJobPageSize(Number(e.target.value))
+                            setJobPage(0)
+                          }}
+                        >
+                          <option value={10}>10</option>
+                          <option value={25}>25</option>
+                          <option value={50}>50</option>
+                        </select>
+                        per page
+                      </label>
+                    </div>
+                  </div>
+                </Panel>
+
+                {jobOpen && selectedJob ? (
+                  <Panel className="h-fit p-0">
+                    <div className="flex items-start justify-between gap-3 border-b border-[#eef1ee] px-5 py-4">
+                      <p className="text-sm font-medium text-[#161c19]">Job Details</p>
+                      <button
+                        type="button"
+                        className="grid size-8 place-items-center rounded-full text-[#8a918c] hover:bg-[#f3f5f4]"
+                        aria-label="Close details"
+                        onClick={() => setJobOpen(false)}
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <div className="space-y-5 px-5 py-5">
+                      <div>
+                        <div className="flex items-start justify-between gap-3">
+                          <h2 className="font-sans text-lg font-semibold leading-snug text-[#161c19]">{selectedJob.title}</h2>
+                          <JobStatusChip atelier={selectedJob.atelier} />
+                        </div>
+                        <p className="mt-1 text-sm text-[#8a918c]">Posted {day(selectedJob.postedAt)}</p>
+                        <p className="mt-3 text-sm leading-relaxed text-[#5c635f]">
+                          {selectedJob.description || 'No description on this listing.'}
+                        </p>
+                      </div>
+                      {(selectedJob.skills ?? []).length ? <SkillPills skills={selectedJob.skills ?? []} all /> : null}
+                      <ul className="space-y-2.5 text-sm text-[#5c635f]">
+                        <li className="flex items-center gap-2">
+                          <Briefcase className="size-4 shrink-0 text-[#8a918c]" />
+                          {(selectedJob.skills ?? [])[0] || sourceLabel(selectedJob.source)}
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <DollarSign className="size-4 shrink-0 text-[#8a918c]" />
+                          {jobBudget(selectedJob)}
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Clock className="size-4 shrink-0 text-[#8a918c]" />
+                          {prettyEmployment(selectedJob.employmentType)}
+                          {selectedJob.seniority ? ` · ${prettyEmployment(selectedJob.seniority)}` : ''}
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Globe className="size-4 shrink-0 text-[#8a918c]" />
+                          {selectedJob.location || (selectedJob.remote ? 'Remote' : 'Location not set')}
+                        </li>
+                      </ul>
+                      <div className="rounded-2xl border border-[#eef1ee] p-3">
+                        <p className="text-xs font-medium text-[#8a918c]">Posted by</p>
+                        <div className="mt-2 flex items-center gap-3">
+                          <span
+                            className="grid size-10 place-items-center rounded-full text-sm font-semibold text-white"
+                            style={{ background: companyMark(selectedJob.company) }}
+                          >
+                            {initials(selectedJob.company)}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{selectedJob.company}</p>
+                            <p className="truncate text-xs text-[#8a918c]">{selectedJob.atelier ? 'Atelier employer' : sourceLabel(selectedJob.source)}</p>
+                          </div>
+                        </div>
+                        {selectedJob.atelier ? (
+                          <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-[#e8f6ee] px-2 py-0.5 text-xs font-medium text-[#147a48]">
+                            <Check className="size-3.5" />
+                            Atelier listing
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded-xl bg-[#f7f8f7] py-3">
+                          <p className="text-lg font-semibold tabular-nums">{selectedJob.applicants}</p>
+                          <p className="mt-0.5 text-[0.65rem] text-[#8a918c]">Applicants</p>
+                        </div>
+                        <div className="rounded-xl bg-[#f7f8f7] py-3">
+                          <p className="text-lg font-semibold tabular-nums">{selectedJob.shortlisted}</p>
+                          <p className="mt-0.5 text-[0.65rem] text-[#8a918c]">Shortlisted</p>
+                        </div>
+                        <div className="rounded-xl bg-[#f7f8f7] py-3">
+                          <p className="text-lg font-semibold tabular-nums">{selectedJob.hired}</p>
+                          <p className="mt-0.5 text-[0.65rem] text-[#8a918c]">Hired</p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Button
+                          className="w-full bg-[#147a48] hover:bg-[#0f6a3d]"
+                          type="button"
+                          onClick={() => {
+                            setPacketQuery(selectedJob.title)
+                            setPacketCompany(selectedJob.company || 'all')
+                            setPacketPage(0)
+                            go('packets')
+                          }}
+                        >
+                          View Applications
+                        </Button>
+                        {selectedJob.atelier ? (
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            type="button"
+                            onClick={() => {
+                              const hit = jobEmployers.find(
+                                (row) =>
+                                  (selectedJob.employerId && row.id === selectedJob.employerId) ||
+                                  row.company.trim().toLowerCase() === selectedJob.company.trim().toLowerCase(),
+                              )
+                              if (hit) setPickedEmployer(hit.id)
+                              go('employers')
+                            }}
+                          >
+                            View employer
+                          </Button>
+                        ) : (
+                          <Button variant="outline" className="w-full" type="button" onClick={() => go('invite')}>
+                            Invite employer
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          type="button"
+                          onClick={() => void navigator.clipboard.writeText(jobPublicHref(selectedJob, candidateOrigin))}
+                        >
+                          Copy listing
+                        </Button>
+                        {!selectedJob.atelier ? (
+                          <a
+                            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[#e4e8e5] bg-white text-sm font-medium hover:bg-[#f7f8f7]"
+                            href={jobPublicHref(selectedJob, candidateOrigin)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <ExternalLink className="size-4" />
+                            Official board
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  </Panel>
+                ) : null}
+              </div>
+            </div>
           ) : null}
 
           {view === 'packets' ? (
@@ -4612,6 +5419,56 @@ function StatusDot({ status }: { status: 'active' | 'pending' | 'suspended' }) {
       {row.label}
     </span>
   )
+}
+
+function JobStatusChip({ atelier }: { atelier: boolean }) {
+  if (atelier) return <StatusDot status="active" />
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#dbeafe] px-2 py-0.5 text-xs text-[#1d4ed8]">
+      <span className="size-1.5 rounded-full bg-[#3b82f6]" />
+      Open
+    </span>
+  )
+}
+
+function JobTypeChip({ type }: { type?: string }) {
+  if (!type) return <span className="text-[#8a918c]">—</span>
+  const freelance = type === 'contract' || type === 'freelance'
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${freelance ? 'bg-[#ede9fe] text-[#6d28d9]' : 'bg-[#d1fae5] text-[#047857]'}`}>
+      {prettyEmployment(type)}
+    </span>
+  )
+}
+
+function prettyEmployment(type?: string) {
+  if (!type) return '—'
+  return type.replaceAll('_', ' ').replaceAll('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function jobBudget(row: { salaryMin?: number; salaryMax?: number; currency?: string }) {
+  const currency = row.currency || 'USD'
+  if (row.salaryMin != null && row.salaryMax != null) return moneyBand(row.salaryMin, row.salaryMax, currency)
+  if (row.salaryMin != null) return money(row.salaryMin, currency)
+  if (row.salaryMax != null) return money(row.salaryMax, currency)
+  return '—'
+}
+
+const COMPANY_MARKS = ['#2563eb', '#7c3aed', '#0f766e', '#b85c38', '#db2777', '#0369a1']
+
+function companyMark(name: string) {
+  let n = 0
+  for (let i = 0; i < name.length; i++) n = (n + name.charCodeAt(i) * (i + 1)) % COMPANY_MARKS.length
+  return COMPANY_MARKS[n]
+}
+
+function jobPublicHref(
+  row: { atelier: boolean; id: string; title: string; company: string; source: string; applicationUrl?: string },
+  origin: string,
+) {
+  if (row.atelier) return `${origin}/app/jobs/${row.id}`
+  if (row.applicationUrl?.startsWith('http')) return row.applicationUrl
+  return listingUrl({ title: row.title, company: row.company, source: row.source, applicationUrl: row.applicationUrl }) ?? `${origin}/app/jobs/${row.id}`
 }
 
 function prettyRole(role: AccountRole) {

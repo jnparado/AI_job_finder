@@ -1428,57 +1428,77 @@ app.post('/api/employer/jobs', async (c) => {
   if (!profile.companyName?.trim()) {
     return c.json({ error: 'Add your company name in setup before posting a job.' }, 400)
   }
-  const body = (await c.req.json()) as {
-    title?: string
-    description?: string
-    location?: string
-    remote?: boolean
-    employmentType?: EmploymentType
-    salaryMin?: number
-    salaryMax?: number
-    currency?: Currency
-    skills?: string[] | string
-    requiredExperience?: number
-    seniority?: Job['seniority']
-  }
-  const title = String(body.title ?? '').trim()
-  const description = String(body.description ?? '').trim()
-  if (!title || description.length < 40) {
-    return c.json({ error: 'Add a title and a description of at least 40 characters.' }, 400)
-  }
-  const skills = Array.isArray(body.skills)
-    ? body.skills.map((s) => s.trim()).filter(Boolean)
-    : String(body.skills ?? '')
+  const body = (await c.req.json()) as Parameters<typeof makeAtelierJob>[0]
+  const made = makeAtelierJob({
+    ...body,
+    employerId: user.id,
+    company: profile.companyName || displayName(profile) || 'Employer',
+  })
+  if (!made.job) return c.json({ error: made.error }, 400)
+  await persistJobs([made.job])
+  return c.json(made.job)
+})
+
+function parseJobSkills(skills?: string[] | string) {
+  return Array.isArray(skills)
+    ? skills.map((s) => s.trim()).filter(Boolean)
+    : String(skills ?? '')
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean)
+}
+
+function makeAtelierJob(input: {
+  employerId: string
+  company: string
+  title?: string
+  description?: string
+  location?: string
+  remote?: boolean
+  employmentType?: EmploymentType
+  salaryMin?: number
+  salaryMax?: number
+  currency?: Currency
+  skills?: string[] | string
+  requiredExperience?: number
+  seniority?: Job['seniority']
+}): { job?: Job; error?: string } {
+  const title = String(input.title ?? '').trim()
+  const description = String(input.description ?? '').trim()
+  if (!title || description.length < 40) {
+    return { error: 'Add a title and a description of at least 40 characters.' }
+  }
+  const skills = parseJobSkills(input.skills)
+  const company = input.company.trim() || 'Employer'
   const id = `atelier-${crypto.randomUUID()}`
-  const job = asJob({
-    id,
-    source: 'atelier',
-    sourceJobId: id,
-    title,
-    company: profile.companyName || displayName(profile) || 'Employer',
-    description,
-    location: body.location || (body.remote !== false ? 'Remote worldwide' : ''),
-    remote: body.remote !== false,
-    employmentType: body.employmentType ?? 'full-time',
-    salaryMin: body.salaryMin,
-    salaryMax: body.salaryMax,
-    currency: body.currency ?? 'USD',
-    skills,
-    requiredSkills: skills,
-    requiredExperience: body.requiredExperience,
-    seniority: body.seniority ?? inferSeniority(title, description),
-    applicationUrl: `/app/jobs/${id}`,
-    applyChannel: 'Atelier — sent to employer',
-    postedAt: new Date().toISOString().slice(0, 10),
-    employerId: user.id,
-    canonicalKey: canonicalKey({ company: profile.companyName || displayName(profile) || 'Employer', title }),
-  })
-  await persistJobs([job])
-  return c.json(job)
-})
+  const salaryMin = Number.isFinite(input.salaryMin) && (input.salaryMin ?? 0) > 0 ? input.salaryMin : undefined
+  const salaryMax = Number.isFinite(input.salaryMax) && (input.salaryMax ?? 0) > 0 ? input.salaryMax : undefined
+  return {
+    job: asJob({
+      id,
+      source: 'atelier',
+      sourceJobId: id,
+      title,
+      company,
+      description,
+      location: input.location || (input.remote !== false ? 'Remote worldwide' : ''),
+      remote: input.remote !== false,
+      employmentType: input.employmentType ?? 'full-time',
+      salaryMin,
+      salaryMax,
+      currency: input.currency ?? 'USD',
+      skills,
+      requiredSkills: skills,
+      requiredExperience: input.requiredExperience,
+      seniority: input.seniority ?? inferSeniority(title, description),
+      applicationUrl: `/app/jobs/${id}`,
+      applyChannel: 'Atelier — sent to employer',
+      postedAt: new Date().toISOString().slice(0, 10),
+      employerId: input.employerId,
+      canonicalKey: canonicalKey({ company, title }),
+    }),
+  }
+}
 
 app.get('/api/employer/applications', async (c) => {
   const user = await auth(c)
@@ -2295,7 +2315,7 @@ app.get('/api/admin/dashboard', async (c) => {
       supabaseAdmin.from('applications').select('id', { count: 'exact', head: true }),
       supabaseAdmin.from('applications').select('id', { count: 'exact', head: true }).in('status', ['hired', 'offer']),
       supabaseAdmin.from('jobs').select('id', { count: 'exact', head: true }),
-      supabaseAdmin.from('applications').select('id, status, job_id, user_id, created_at, submitted_at, cover_letter, channel').order('created_at', { ascending: false }).limit(120),
+      supabaseAdmin.from('applications').select('id, status, job_id, user_id, created_at, submitted_at, cover_letter, channel').order('created_at', { ascending: false }).limit(400),
       supabaseAdmin.from('ateliar_sessions').select('*').order('started_at', { ascending: false }).limit(80),
       supabaseAdmin.from('ledger_entries').select('*').order('created_at', { ascending: false }).limit(200),
       supabaseAdmin.from('thread_messages').select('id', { count: 'exact', head: true }),
@@ -2388,6 +2408,7 @@ app.get('/api/admin/dashboard', async (c) => {
     const person = peopleById.get(row.userId)
     return {
       id: row.id,
+      jobId: row.jobId,
       status: row.status,
       jobTitle: job?.title ?? 'Role',
       company: job?.company ?? '',
@@ -2464,18 +2485,47 @@ app.get('/api/admin/dashboard', async (c) => {
     .map(([source, count]) => ({ source, count }))
     .sort((a, b) => b.count - a.count)
 
+  const packetStatsByJob = new Map<string, { applicants: number; pending: number; hired: number; shortlisted: number }>()
+  for (const row of appRows) {
+    const cur = packetStatsByJob.get(row.jobId) ?? { applicants: 0, pending: 0, hired: 0, shortlisted: 0 }
+    cur.applicants += 1
+    if (row.status === 'offer' || row.status === 'hired' || row.status === 'completed') cur.hired += 1
+    else if (row.status === 'interview' || row.status === 'under_review') cur.shortlisted += 1
+    else if (row.status !== 'rejected' && row.status !== 'withdrawn' && row.status !== 'closed' && row.status !== 'draft') cur.pending += 1
+    packetStatsByJob.set(row.jobId, cur)
+  }
+
   const listings = [...jobs]
     .sort((a, b) => String(b.postedAt ?? '').localeCompare(String(a.postedAt ?? '')))
-    .slice(0, 80)
-    .map((job) => ({
-      id: job.id,
-      title: job.title,
-      company: job.company,
-      source: job.source,
-      remote: Boolean(job.remote),
-      postedAt: job.postedAt ?? '',
-      atelier: Boolean(job.employerId || job.source === 'atelier'),
-    }))
+    .map((job) => {
+      const stats = packetStatsByJob.get(job.id) ?? { applicants: 0, pending: 0, hired: 0, shortlisted: 0 }
+      return {
+        id: job.id,
+        title: job.title,
+        company: job.company,
+        source: job.source,
+        remote: Boolean(job.remote),
+        postedAt: job.postedAt ?? '',
+        atelier: Boolean(job.employerId || job.source === 'atelier'),
+        description: String(job.description ?? '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 420),
+        location: job.location ?? '',
+        employmentType: job.employmentType ?? '',
+        salaryMin: job.salaryMin,
+        salaryMax: job.salaryMax,
+        currency: job.currency ?? 'USD',
+        skills: (job.skills ?? []).slice(0, 8),
+        seniority: job.seniority ?? '',
+        employerId: job.employerId ?? '',
+        applicationUrl: job.applicationUrl ?? '',
+        applicants: stats.applicants,
+        pending: stats.pending,
+        hired: stats.hired,
+        shortlisted: stats.shortlisted,
+      }
+    })
 
   const invites = buildEmployerInviteDesk(jobs, accounts, employerInviteRows)
 
@@ -2771,6 +2821,39 @@ app.get('/api/admin/dashboard', async (c) => {
     staffInvites,
     promoteSql: "update public.profiles set role = 'admin' where email = 'you@example.com';",
   })
+})
+
+app.post('/api/admin/jobs', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (!isStaffRole(profile.role)) return c.json({ error: 'Admin account required' }, 403)
+  const body = (await c.req.json().catch(() => ({}))) as Parameters<typeof makeAtelierJob>[0] & { employerId?: string }
+  const employerId = String(body.employerId ?? '').trim()
+  if (!employerId) return c.json({ error: 'Choose an employer to post this job for.' }, 400)
+
+  let company = ''
+  if (supabaseAdmin) {
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('id, role, company_name, first_name, last_name, email')
+      .eq('id', employerId)
+      .maybeSingle()
+    if (error) return c.json({ error: error.message }, 400)
+    if (!data) return c.json({ error: 'Employer not found.' }, 404)
+    if (parseAccountRole(data.role) !== 'employer') return c.json({ error: 'That account is not an employer.' }, 400)
+    company = String(data.company_name ?? '').trim() || `${data.first_name ?? ''} ${data.last_name ?? ''}`.trim() || String(data.email ?? 'Employer')
+  } else {
+    const employer = memory.getProfile(employerId)
+    if (employer.role !== 'employer') return c.json({ error: 'That account is not an employer.' }, 400)
+    company = employer.companyName?.trim() || displayName(employer) || 'Employer'
+  }
+  if (!company) return c.json({ error: 'That employer needs a company name before you can post.' }, 400)
+
+  const made = makeAtelierJob({ ...body, employerId, company })
+  if (!made.job) return c.json({ error: made.error }, 400)
+  await persistJobs([made.job])
+  return c.json(made.job)
 })
 
 app.patch('/api/admin/packets/:id', async (c) => {
