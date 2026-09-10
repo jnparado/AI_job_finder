@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card'
 export function InviteEmployer({
   job,
   compact = false,
+  tone = 'card',
 }: {
   job: {
     title: string
@@ -18,6 +19,7 @@ export function InviteEmployer({
     employerId?: string | null
   }
   compact?: boolean
+  tone?: 'card' | 'studio'
 }) {
   const [copied, setCopied] = useState('')
   if (isAtelierJob(job) || !job.company.trim()) return null
@@ -38,6 +40,46 @@ export function InviteEmployer({
       <Link to={join} className="text-xs font-medium text-[var(--copper)] hover:underline">
         Invite {job.company} to Atelier
       </Link>
+    )
+  }
+
+  if (tone === 'studio') {
+    const href = typeof window !== 'undefined' ? `${window.location.origin}${join}` : join
+    return (
+      <div className="space-y-5">
+        <div>
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Invite ready</p>
+          <h2 className="mt-2 font-serif text-3xl leading-tight text-[var(--paper)]">Ask {job.company} to hire here</h2>
+          <p className="mt-3 text-sm leading-relaxed text-[#d8d0c0]">
+            Found on {platform}. They do not have an Atelier inbox yet. Send the join link — they create a hiring
+            account, then approved packets land here.
+          </p>
+        </div>
+        <p className="truncate rounded-2xl border border-[#c9c0ae33] bg-[#0d1b16] px-4 py-3 text-xs text-[#c9c0ae]">
+          {href}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="copper" asChild>
+            <Link to={join} target="_blank" rel="noreferrer">
+              <Mail className="size-4" />
+              Open invite
+            </Link>
+          </Button>
+          <Button variant="paper" type="button" onClick={() => copy('link')}>
+            <Copy className="size-4" />
+            {copied === 'link' ? 'Copied' : 'Copy join link'}
+          </Button>
+          <Button
+            variant="outline"
+            className="border-[#c9c0ae55] text-[var(--paper)] hover:bg-[#1f3d32]"
+            type="button"
+            onClick={() => copy('note')}
+          >
+            <Copy className="size-4" />
+            {copied === 'note' ? 'Copied' : 'Copy note'}
+          </Button>
+        </div>
+      </div>
     )
   }
 
