@@ -36,6 +36,16 @@ export interface StoredNotification {
   createdAt: string
 }
 
+export interface StaffInvite {
+  id: string
+  email: string
+  name: string
+  role: 'admin'
+  status: 'pending' | 'accepted'
+  invitedAt: string
+  invitedBy?: string
+}
+
 export interface AgentSettings {
   enabled: boolean
   runHour: number
@@ -54,6 +64,7 @@ const subscriptions = new Map<string, Subscription>()
 const threadMessages = new Map<string, ThreadMessage[]>()
 const ledger: LedgerEntry[] = []
 const trackerSessions: TrackerSession[] = []
+const staffInvites: StaffInvite[] = []
 
 export const memory = {
   getProfile(userId: string) {
@@ -196,5 +207,22 @@ export const memory = {
   },
   allLedger() {
     return [...ledger]
+  },
+  addStaffInvite(row: StaffInvite) {
+    const i = staffInvites.findIndex((s) => s.email === row.email)
+    if (i >= 0) staffInvites[i] = row
+    else staffInvites.unshift(row)
+    return row
+  },
+  getStaffInvite(email: string) {
+    return staffInvites.find((s) => s.email === email.trim().toLowerCase())
+  },
+  removeStaffInvite(email: string) {
+    const target = email.trim().toLowerCase()
+    const i = staffInvites.findIndex((s) => s.email === target && s.status === 'pending')
+    if (i >= 0) staffInvites.splice(i, 1)
+  },
+  allStaffInvites() {
+    return [...staffInvites]
   },
 }

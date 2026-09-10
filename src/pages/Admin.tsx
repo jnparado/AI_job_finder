@@ -6,6 +6,7 @@ import {
   Briefcase,
   Building2,
   Calendar,
+  Check,
   ChevronDown,
   ChevronRight,
   CircleHelp,
@@ -14,11 +15,13 @@ import {
   LogOut,
   Mail,
   MessagesSquare,
+  MoreHorizontal,
   Search,
   Settings,
   Shield,
   Timer,
   User,
+  UserPlus,
   Users,
   Wallet,
   Zap,
@@ -51,6 +54,7 @@ interface AdminAccount {
 }
 
 interface AdminDashboard {
+  live: boolean
   role: AccountRole
   email: string
   name: string
@@ -123,64 +127,72 @@ interface AdminDashboard {
     threads: number
     recent: { id: string; body: string; at: string; applicationId: string; senderRole: string }[]
   }
+  staffInvites: {
+    id: string
+    email: string
+    name: string
+    role: string
+    status: 'pending' | 'accepted'
+    invitedAt: string
+  }[]
   activity: { kind: 'person' | 'invite'; title: string; body: string; at: string }[]
   promoteSql: string
 }
 
-type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'tracker' | 'inbox' | 'finances' | 'reports'
+type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'tracker' | 'inbox' | 'finances' | 'reports' | 'staff' | 'roles'
 type PeopleFilter = 'all' | AccountRole
 
 interface NavLinkItem {
-  kind: 'link'
   id: DeskView
   label: string
   icon: LucideIcon
   people?: PeopleFilter
 }
 
-interface NavGroupItem {
-  kind: 'group'
-  id: string
-  label: string
-  icon: LucideIcon
-  children: NavLinkItem[]
+interface NavSection {
+  label?: string
+  items: NavLinkItem[]
 }
 
-type NavEntry = NavLinkItem | NavGroupItem
-
-const NAV: NavEntry[] = [
-  { kind: 'link', id: 'pulse', label: 'Dashboard', icon: LayoutDashboard },
+const NAV: NavSection[] = [
+  { items: [{ id: 'pulse', label: 'Dashboard', icon: LayoutDashboard }] },
   {
-    kind: 'group',
-    id: 'users',
-    label: 'Users',
-    icon: Users,
-    children: [
-      { kind: 'link', id: 'people', label: 'Candidates', icon: User, people: 'candidate' },
-      { kind: 'link', id: 'people', label: 'Employers', icon: Building2, people: 'employer' },
-      { kind: 'link', id: 'people', label: 'All users', icon: Users, people: 'all' },
+    label: 'User Management',
+    items: [
+      { id: 'people', label: 'Users', icon: Users, people: 'all' },
+      { id: 'people', label: 'Candidates', icon: User, people: 'candidate' },
+      { id: 'people', label: 'Employers', icon: Building2, people: 'employer' },
     ],
   },
   {
-    kind: 'group',
-    id: 'work',
+    label: 'Team & Access',
+    items: [
+      { id: 'staff', label: 'Invite Admin', icon: UserPlus },
+      { id: 'roles', label: 'Manage Roles', icon: Shield },
+    ],
+  },
+  {
     label: 'Jobs & Projects',
-    icon: Briefcase,
-    children: [
-      { kind: 'link', id: 'listings', label: 'Jobs', icon: Briefcase },
-      { kind: 'link', id: 'packets', label: 'Packets', icon: FileText },
-      { kind: 'link', id: 'invite', label: 'Invite', icon: Mail },
+    items: [
+      { id: 'listings', label: 'Jobs', icon: Briefcase },
+      { id: 'packets', label: 'Packets', icon: FileText },
+      { id: 'invite', label: 'Invite employers', icon: Mail },
     ],
   },
-  { kind: 'link', id: 'inbox', label: 'Inbox', icon: MessagesSquare },
-  { kind: 'link', id: 'tracker', label: 'Tracker', icon: Timer },
-  { kind: 'link', id: 'finances', label: 'Finances', icon: Wallet },
-  { kind: 'link', id: 'reports', label: 'Reports', icon: BarChart3 },
-  { kind: 'link', id: 'keys', label: 'Settings', icon: Settings },
+  {
+    label: 'Operations',
+    items: [
+      { id: 'inbox', label: 'Inbox', icon: MessagesSquare },
+      { id: 'tracker', label: 'Tracker', icon: Timer },
+      { id: 'finances', label: 'Finances', icon: Wallet },
+      { id: 'reports', label: 'Reports', icon: BarChart3 },
+    ],
+  },
+  { label: 'Settings', items: [{ id: 'keys', label: 'Settings', icon: Settings }] },
 ]
 
-const MOBILE_NAV: { id: DeskView; label: string; people?: PeopleFilter }[] = NAV.flatMap((item) =>
-  item.kind === 'group' ? item.children.map((child) => ({ id: child.id, label: child.label, people: child.people })) : [{ id: item.id, label: item.label, people: item.people }],
+const MOBILE_NAV: { id: DeskView; label: string; people?: PeopleFilter }[] = NAV.flatMap((section) =>
+  section.items.map((item) => ({ id: item.id, label: item.label, people: item.people })),
 )
 
 export function AdminPage() {
@@ -197,17 +209,35 @@ export function AdminPage() {
   const [copied, setCopied] = useState(false)
   const [picked, setPicked] = useState('')
   const [range, setRange] = useState<'7D' | '30D' | '3M' | '1Y'>('30D')
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ users: true, work: true })
   const [helpOpen, setHelpOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [staffEmail, setStaffEmail] = useState('')
+  const [staffQuery, setStaffQuery] = useState('')
+  const [staffMenu, setStaffMenu] = useState('')
   const dash = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: () => api<AdminDashboard>('/api/admin/dashboard'),
+    refetchInterval: 12_000,
+    refetchOnWindowFocus: true,
   })
   const promote = useMutation({
     mutationFn: () => api('/api/admin/role', { method: 'POST', body: JSON.stringify({ email, role: nextRole }) }),
     onSuccess: () => {
       setEmail('')
+      void qc.invalidateQueries({ queryKey: ['admin-dashboard'] })
+    },
+  })
+  const inviteStaff = useMutation({
+    mutationFn: () => api<{ status: string; mailed?: boolean; message?: string; already?: boolean }>('/api/admin/invite', { method: 'POST', body: JSON.stringify({ email: staffEmail, role: 'admin' }) }),
+    onSuccess: () => {
+      setStaffEmail('')
+      void qc.invalidateQueries({ queryKey: ['admin-dashboard'] })
+    },
+  })
+  const cancelInvite = useMutation({
+    mutationFn: (inviteEmail: string) => api('/api/admin/invite/cancel', { method: 'POST', body: JSON.stringify({ email: inviteEmail }) }),
+    onSuccess: () => {
+      setStaffMenu('')
       void qc.invalidateQueries({ queryKey: ['admin-dashboard'] })
     },
   })
@@ -236,7 +266,7 @@ export function AdminPage() {
   const selected = invites.find((row) => row.company === picked) ?? invites[0]
 
   const people = useMemo(() => {
-    const q = (view === 'people' ? peopleQuery : query).trim().toLowerCase()
+    const q = (view === 'people' || view === 'roles' ? peopleQuery : query).trim().toLowerCase()
     return (data?.accounts ?? []).filter((row) => {
       if (peopleRole !== 'all' && row.role !== peopleRole) return false
       if (!q) return true
@@ -284,7 +314,20 @@ export function AdminPage() {
     })
   }, [data?.inbox?.recent, query])
 
+  const staffRows = useMemo(() => {
+    const q = (view === 'staff' ? staffQuery : query).trim().toLowerCase()
+    return (data?.staffInvites ?? []).filter((row) => {
+      if (!q) return true
+      return `${row.name} ${row.email} ${row.role} ${row.status}`.toLowerCase().includes(q)
+    })
+  }, [data?.staffInvites, query, staffQuery, view])
+
   const candidates = (data?.accounts ?? []).filter((a) => a.role === 'candidate')
+
+  function onInviteStaff(e: FormEvent) {
+    e.preventDefault()
+    inviteStaff.mutate()
+  }
 
   function onPromote(e: FormEvent) {
     e.preventDefault()
@@ -301,37 +344,38 @@ export function AdminPage() {
   function go(next: DeskView, role: PeopleFilter = 'all') {
     setView(next)
     if (next === 'people') setPeopleRole(role)
-    if (next === 'people') setOpenGroups((g) => ({ ...g, users: true }))
-    if (next === 'listings' || next === 'packets' || next === 'invite') setOpenGroups((g) => ({ ...g, work: true }))
+    if (next === 'roles') setPeopleRole('all')
     setNavOpen(false)
     setHelpOpen(false)
     setAccountOpen(false)
+    setStaffMenu('')
     setQuery('')
   }
 
-  function toggleGroup(id: string) {
-    setOpenGroups((g) => ({ ...g, [id]: !g[id] }))
-  }
-
   function linkActive(item: NavLinkItem) {
-    if (item.people) return view === 'people' && peopleRole === item.people
-    if (item.id === 'people') return view === 'people' && peopleRole === 'all'
+    if (item.id === 'people') return view === 'people' && peopleRole === (item.people ?? 'all')
     return view === item.id
   }
 
-  const searchValue = view === 'people' ? peopleQuery : query
-  const onSearch = (value: string) => (view === 'people' ? setPeopleQuery(value) : setQuery(value))
+  const searchValue = view === 'people' || view === 'roles' ? peopleQuery : view === 'staff' ? staffQuery : query
+  const onSearch = (value: string) => {
+    if (view === 'people' || view === 'roles') setPeopleQuery(value)
+    else if (view === 'staff') setStaffQuery(value)
+    else setQuery(value)
+  }
   const alertCount = (counts?.companiesToInvite ?? 0) + (counts?.messages ?? 0)
   const searchHint =
-    view === 'tracker'
-      ? 'Search tracker sessions'
-      : view === 'finances'
-        ? 'Search pay ledger'
-        : view === 'inbox'
-          ? 'Search messages'
-          : view === 'packets'
-            ? 'Search packets'
-            : 'Search users, jobs, packets, or companies'
+    view === 'staff'
+      ? 'Search invited admins...'
+      : view === 'tracker'
+        ? 'Search tracker sessions'
+        : view === 'finances'
+          ? 'Search pay ledger'
+          : view === 'inbox'
+            ? 'Search messages'
+            : view === 'packets'
+              ? 'Search packets'
+              : 'Search users, jobs, packets, or companies'
 
   return (
     <div className="min-h-svh bg-[#f3f5f4] lg:grid lg:grid-cols-[252px_minmax(0,1fr)]">
@@ -343,52 +387,30 @@ export function AdminPage() {
             <p className="mt-1 text-[0.65rem] text-white/55">Admin Panel</p>
           </div>
         </div>
-        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3">
-          {NAV.map((item) => {
-            if (item.kind === 'group') {
-              const open = Boolean(openGroups[item.id])
-              const childOn = item.children.some(linkActive)
-              return (
-                <div key={item.id}>
-                  <SideRow
-                    icon={item.icon}
-                    label={item.label}
-                    active={childOn && !open}
-                    open={open}
-                    onClick={() => toggleGroup(item.id)}
-                  />
-                  {open
-                    ? item.children.map((child) => (
-                        <SideRow
-                          key={`${child.label}-${child.people ?? ''}`}
-                          icon={child.icon}
-                          label={child.label}
-                          active={linkActive(child)}
-                          indent
-                          onClick={() => go(child.id, child.people ?? 'all')}
-                        />
-                      ))
-                    : null}
-                </div>
-              )
-            }
-            return (
-              <SideRow
-                key={item.label}
-                icon={item.icon}
-                label={item.label}
-                active={linkActive(item)}
-                onClick={() => go(item.id, item.people ?? 'all')}
-              />
-            )
-          })}
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-4">
+          {NAV.map((section, i) => (
+            <div key={section.label ?? `top-${i}`} className={section.label ? 'mt-4' : ''}>
+              {section.label ? (
+                <p className="px-3 pb-1.5 text-[0.68rem] font-medium text-white/40">{section.label}</p>
+              ) : null}
+              {section.items.map((item) => (
+                <SideRow
+                  key={`${item.label}-${item.people ?? ''}`}
+                  icon={item.icon}
+                  label={item.label}
+                  active={linkActive(item)}
+                  onClick={() => go(item.id, item.people ?? 'all')}
+                />
+              ))}
+            </div>
+          ))}
         </nav>
-        <div className="mt-auto border-t border-white/10 px-5 py-5">
+        <div className="mx-3 mb-4 rounded-2xl bg-[#0d1b16] px-4 py-4">
           <div className="flex items-center gap-2">
             <img src="/brand/atelier-logo.jpg" alt="" className="size-8 rounded-md object-cover" />
             <div>
-              <p className="text-sm">Atelier</p>
-              <p className="text-[0.65rem] text-white/50">AI-Powered Job Matching</p>
+              <p className="text-sm font-medium">Atelier</p>
+              <p className="text-[0.65rem] leading-snug text-white/50">AI-Powered Job Matching</p>
             </div>
           </div>
         </div>
@@ -529,15 +551,23 @@ export function AdminPage() {
                   <h1 className="font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Admin Dashboard</h1>
                   <p className="mt-1 text-sm text-[#5c635f]">Platform overview and key metrics at a glance.</p>
                 </div>
-                <span className="inline-flex items-center gap-2 rounded-xl border border-[#e4e8e5] bg-white px-3 py-2 text-sm text-[#5c635f]">
-                  <Calendar className="size-4" />
-                  {monthLabel}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {data?.live ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e8f6ee] px-2.5 py-1 text-xs font-medium text-[#147a48]">
+                      <span className={`size-1.5 rounded-full bg-[#14a35a] ${dash.isFetching ? 'animate-pulse' : ''}`} />
+                      Live
+                    </span>
+                  ) : null}
+                  <span className="inline-flex items-center gap-2 rounded-xl border border-[#e4e8e5] bg-white px-3 py-2 text-sm text-[#5c635f]">
+                    <Calendar className="size-4" />
+                    {monthLabel}
+                  </span>
+                </div>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard icon={Users} tone="green" label="Total Users" value={counts?.people ?? 0} hint="On this desk" />
-                <MetricCard icon={Briefcase} tone="blue" label="Active Jobs" value={counts?.jobs ?? 0} hint="Scored listings" />
+                <MetricCard icon={Users} tone="green" label="Total Users" value={counts?.people ?? 0} hint="From Supabase" />
+                <MetricCard icon={Briefcase} tone="blue" label="Active Jobs" value={counts?.jobs ?? 0} hint="Live listings" />
                 <MetricCard icon={FileText} tone="teal" label="Total Packets" value={counts?.packets ?? 0} hint="Applications in studio" />
                 <MetricCard icon={Mail} tone="gold" label="Invite Queue" value={counts?.companiesToInvite ?? 0} hint="Companies to invite" />
                 <MetricCard icon={Timer} tone="green" label="Tracker" value={formatHoursMinutes(counts?.trackerHours ?? 0)} hint={`${counts?.liveClocks ?? 0} live clocks`} />
@@ -695,6 +725,185 @@ export function AdminPage() {
             </>
           ) : null}
 
+          {view === 'staff' ? (
+            <div className="space-y-5">
+              <div>
+                <p className="text-sm text-[#8a918c]">
+                  Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Invite Admin</span>
+                </p>
+                <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Invite Admin</h1>
+                <p className="mt-1 max-w-2xl text-sm text-[#5c635f]">
+                  Add administrators to help run Atelier. They get access to users, jobs, packets, tracker, and pay. Signup still cannot grant admin on its own.
+                </p>
+              </div>
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+                <Panel className="p-6">
+                  <h2 className="font-sans text-lg font-semibold">Send Invitation</h2>
+                  <form className="mt-5 space-y-4" onSubmit={onInviteStaff}>
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-medium">
+                        Email address <span className="text-[#b85c38]">*</span>
+                      </span>
+                      <Input
+                        type="email"
+                        required
+                        placeholder="Enter email address"
+                        value={staffEmail}
+                        onChange={(e) => setStaffEmail(e.target.value)}
+                      />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-medium">
+                        Role <span className="text-[#b85c38]">*</span>
+                      </span>
+                      <select className="h-10 w-full rounded-lg border border-[#e4e8e5] bg-white px-3 text-sm" value="admin" onChange={() => undefined}>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </label>
+                    <div>
+                      <p className="text-sm font-medium">Permissions</p>
+                      <p className="mt-1 text-sm text-[#5c635f]">Admins can manage users, jobs, and studio settings. Super admins are granted in SQL only.</p>
+                      <ul className="mt-3 space-y-3">
+                        <PermissionRow title="User Management" body="View and manage candidates and employers" />
+                        <PermissionRow title="Job Management" body="Access jobs, packets, and employer invites" />
+                        <PermissionRow title="Finances" body="View the pay ledger and tracker hours" />
+                        <PermissionRow title="Account Settings" body="Open staff settings on this desk" />
+                      </ul>
+                    </div>
+                    {inviteStaff.isError ? (
+                      <p className="text-sm text-[#b85c38]">{inviteStaff.error instanceof Error ? inviteStaff.error.message : 'Could not send the invite.'}</p>
+                    ) : null}
+                    {inviteStaff.isSuccess ? (
+                      <p className="text-sm text-[#147a48]">
+                        {inviteStaff.data.already
+                          ? 'That email is already an admin.'
+                          : inviteStaff.data.message || (inviteStaff.data.status === 'accepted' ? 'They are an admin now.' : 'Invitation saved.')}
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap justify-end gap-2 pt-2">
+                      <Button variant="outline" type="button" onClick={() => setStaffEmail('')}>
+                        Cancel
+                      </Button>
+                      <Button type="submit" disabled={inviteStaff.isPending || !staffEmail.trim()}>
+                        {inviteStaff.isPending ? 'Sending…' : 'Send Invitation'}
+                      </Button>
+                    </div>
+                  </form>
+                </Panel>
+
+                <section className="rounded-2xl bg-[#e8f6ee] p-6">
+                  <div className="mx-auto grid size-28 place-items-center">
+                    <img src="/brand/atelier-logo.jpg" alt="" className="size-20 rounded-2xl object-cover shadow-sm" />
+                  </div>
+                  <h2 className="mt-2 text-center font-sans text-lg font-semibold">Why invite an admin?</h2>
+                  <ul className="mt-4 space-y-2.5 text-sm">
+                    {[
+                      'Manage the team and users',
+                      'Oversee jobs, packets, and invites',
+                      'Handle tracker hours and pay',
+                      'Keep the Atelier desk secure',
+                    ].map((line) => (
+                      <li key={line} className="flex gap-2">
+                        <Check className="mt-0.5 size-4 shrink-0 text-[#14a35a]" />
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+
+              <Panel>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="font-sans text-lg font-semibold">Invited Admins</h2>
+                  <label className="relative w-full max-w-xs">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
+                    <Input
+                      className="h-10 rounded-xl border-[#e4e8e5] bg-[#f7f8f7] pl-10"
+                      placeholder="Search invited admins..."
+                      value={staffQuery}
+                      onChange={(e) => setStaffQuery(e.target.value)}
+                    />
+                  </label>
+                </div>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full min-w-[40rem] text-left text-sm">
+                    <thead className="text-xs text-[#8a918c]">
+                      <tr>
+                        <th className="pb-2 font-medium">Name</th>
+                        <th className="pb-2 font-medium">Email</th>
+                        <th className="pb-2 font-medium">Role</th>
+                        <th className="pb-2 font-medium">Status</th>
+                        <th className="pb-2 font-medium">Invited On</th>
+                        <th className="pb-2 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {staffRows.map((row) => (
+                        <tr key={`${row.id}-${row.email}`} className="border-t border-[#eef1ee]">
+                          <td className="py-3">
+                            <span className="flex items-center gap-3">
+                              <span className="grid size-9 place-items-center rounded-full bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
+                                {initials(row.name || row.email)}
+                              </span>
+                              <span className="font-medium">{row.name || row.email.split('@')[0]}</span>
+                            </span>
+                          </td>
+                          <td className="py-3 text-[#5c635f]">{row.email}</td>
+                          <td className="py-3 capitalize">{row.role.replace('_', ' ')}</td>
+                          <td className="py-3">
+                            <span
+                              className={`rounded-full px-2.5 py-0.5 text-xs ${
+                                row.status === 'pending' ? 'bg-[#fef3c7] text-[#b45309]' : 'bg-[#d1fae5] text-[#047857]'
+                              }`}
+                            >
+                              {row.status === 'pending' ? 'Pending' : 'Accepted'}
+                            </span>
+                          </td>
+                          <td className="py-3 text-[#5c635f]">{day(row.invitedAt)}</td>
+                          <td className="relative py-3">
+                            <button
+                              type="button"
+                              className="grid size-8 place-items-center rounded-full hover:bg-[#f3f5f4]"
+                              aria-label="Actions"
+                              onClick={() => setStaffMenu((v) => (v === row.email ? '' : row.email))}
+                            >
+                              <MoreHorizontal className="size-4 text-[#8a918c]" />
+                            </button>
+                            {staffMenu === row.email ? (
+                              <div className="absolute right-0 z-20 w-44 overflow-hidden rounded-xl border border-[#e4e8e5] bg-white py-1 text-sm shadow-[0_8px_24px_rgba(19,38,31,0.12)]">
+                                <button
+                                  type="button"
+                                  className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                  onClick={() => {
+                                    void navigator.clipboard.writeText(row.email)
+                                    setStaffMenu('')
+                                  }}
+                                >
+                                  Copy email
+                                </button>
+                                {row.status === 'pending' ? (
+                                  <button
+                                    type="button"
+                                    className="block w-full px-3 py-2 text-left text-[#b85c38] hover:bg-[#f3f5f4]"
+                                    onClick={() => cancelInvite.mutate(row.email)}
+                                  >
+                                    Cancel invite
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!staffRows.length ? <p className="py-6 text-sm text-[#8a918c]">No invited admins yet.</p> : null}
+                </div>
+              </Panel>
+            </div>
+          ) : null}
+
           {view === 'invite' ? (
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
               <Panel>
@@ -738,47 +947,92 @@ export function AdminPage() {
             </div>
           ) : null}
 
-          {view === 'people' ? (
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
-              <Panel>
-                <h2 className="font-sans text-lg font-semibold">Users</h2>
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                  {(['all', 'admin', 'super_admin', 'employer', 'candidate'] as const).map((role) => (
-                    <Chip key={role} active={peopleRole === role} onClick={() => setPeopleRole(role)} label={role === 'all' ? 'All' : role.replace('_', ' ')} />
-                  ))}
-                </div>
-                <div className="mt-4 divide-y divide-[#eef1ee]">
-                  {people.map((row) => (
-                    <div key={row.id} className="flex items-center gap-3 py-3">
-                      <span className="grid size-10 place-items-center rounded-full bg-[#e8f6ee] text-sm font-medium text-[#147a48]">
-                        {initials(row.name || row.email)}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{row.name}</p>
-                        <p className="truncate text-sm text-[#8a918c]">{row.email}</p>
-                      </div>
-                      <span className="rounded-full bg-[#f3f5f4] px-2.5 py-0.5 text-xs capitalize">{row.role.replace('_', ' ')}</span>
-                    </div>
-                  ))}
-                </div>
-              </Panel>
-              {superAdmin ? (
+          {view === 'roles' ? (
+            <div className="space-y-5">
+              <div>
+                <p className="text-sm text-[#8a918c]">
+                  Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Manage Roles</span>
+                </p>
+                <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Manage Roles</h1>
+                <p className="mt-1 text-sm text-[#5c635f]">Change candidate, employer, and admin access. Super admin stays in SQL.</p>
+              </div>
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
                 <Panel>
-                  <h2 className="font-sans text-base font-semibold">Change a role</h2>
-                  <form className="mt-4 space-y-3" onSubmit={onPromote}>
-                    <Input type="email" required placeholder="email@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-                    <select className="h-10 w-full rounded-lg border border-[#e4e8e5] px-3 text-sm" value={nextRole} onChange={(e) => setNextRole(e.target.value as typeof nextRole)}>
-                      <option value="admin">admin</option>
-                      <option value="employer">employer</option>
-                      <option value="candidate">candidate</option>
-                    </select>
-                    <Button variant="copper" type="submit" disabled={promote.isPending}>
-                      {promote.isPending ? 'Saving…' : 'Update role'}
-                    </Button>
-                  </form>
+                  <h2 className="font-sans text-lg font-semibold">People</h2>
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {(['all', 'admin', 'super_admin', 'employer', 'candidate'] as const).map((role) => (
+                      <Chip key={role} active={peopleRole === role} onClick={() => setPeopleRole(role)} label={role === 'all' ? 'All' : role.replace('_', ' ')} />
+                    ))}
+                  </div>
+                  <div className="mt-4 divide-y divide-[#eef1ee]">
+                    {people.map((row) => (
+                      <div key={row.id} className="flex items-center gap-3 py-3">
+                        <span className="grid size-10 place-items-center rounded-full bg-[#e8f6ee] text-sm font-medium text-[#147a48]">
+                          {initials(row.name || row.email)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium">{row.name}</p>
+                          <p className="truncate text-sm text-[#8a918c]">{row.email}</p>
+                        </div>
+                        <span className="rounded-full bg-[#f3f5f4] px-2.5 py-0.5 text-xs capitalize">{row.role.replace('_', ' ')}</span>
+                      </div>
+                    ))}
+                  </div>
                 </Panel>
-              ) : null}
+                {superAdmin ? (
+                  <Panel>
+                    <h2 className="font-sans text-base font-semibold">Change a role</h2>
+                    <form className="mt-4 space-y-3" onSubmit={onPromote}>
+                      <Input type="email" required placeholder="email@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                      <select className="h-10 w-full rounded-lg border border-[#e4e8e5] px-3 text-sm" value={nextRole} onChange={(e) => setNextRole(e.target.value as typeof nextRole)}>
+                        <option value="admin">admin</option>
+                        <option value="employer">employer</option>
+                        <option value="candidate">candidate</option>
+                      </select>
+                      <Button variant="copper" type="submit" disabled={promote.isPending}>
+                        {promote.isPending ? 'Saving…' : 'Update role'}
+                      </Button>
+                      {promote.isError ? (
+                        <p className="text-sm text-[#b85c38]">{promote.error instanceof Error ? promote.error.message : 'Could not update the role.'}</p>
+                      ) : null}
+                    </form>
+                  </Panel>
+                ) : (
+                  <Panel>
+                    <h2 className="font-sans text-base font-semibold">Change a role</h2>
+                    <p className="mt-2 text-sm text-[#5c635f]">Only a super admin can change roles here. Use Invite Admin to grant the admin desk.</p>
+                    <Button className="mt-4" type="button" onClick={() => go('staff')}>
+                      Invite Admin
+                    </Button>
+                  </Panel>
+                )}
+              </div>
             </div>
+          ) : null}
+
+          {view === 'people' ? (
+            <Panel>
+              <h2 className="font-sans text-lg font-semibold">Users</h2>
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {(['all', 'admin', 'super_admin', 'employer', 'candidate'] as const).map((role) => (
+                  <Chip key={role} active={peopleRole === role} onClick={() => setPeopleRole(role)} label={role === 'all' ? 'All' : role.replace('_', ' ')} />
+                ))}
+              </div>
+              <div className="mt-4 divide-y divide-[#eef1ee]">
+                {people.map((row) => (
+                  <div key={row.id} className="flex items-center gap-3 py-3">
+                    <span className="grid size-10 place-items-center rounded-full bg-[#e8f6ee] text-sm font-medium text-[#147a48]">
+                      {initials(row.name || row.email)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{row.name}</p>
+                      <p className="truncate text-sm text-[#8a918c]">{row.email}</p>
+                    </div>
+                    <span className="rounded-full bg-[#f3f5f4] px-2.5 py-0.5 text-xs capitalize">{row.role.replace('_', ' ')}</span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
           ) : null}
 
           {view === 'listings' ? (
@@ -915,15 +1169,11 @@ function SideRow({
   icon: Icon,
   label,
   active,
-  open,
-  indent,
   onClick,
 }: {
   icon: LucideIcon
   label: string
   active?: boolean
-  open?: boolean
-  indent?: boolean
   onClick: () => void
 }) {
   return (
@@ -931,12 +1181,11 @@ function SideRow({
       type="button"
       onClick={onClick}
       className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${
-        indent ? 'pl-9' : ''
-      } ${active ? 'bg-[#1f3d32] text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}
+        active ? 'bg-[#147a48] text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'
+      }`}
     >
       <Icon className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {!indent ? <ChevronRight className={`size-4 shrink-0 text-white/35 ${open ? 'rotate-90' : ''}`} /> : null}
     </button>
   )
 }
@@ -1129,6 +1378,20 @@ function NoteDot({ color, text }: { color: string; text: string }) {
     <li className="flex gap-2">
       <span className="mt-1.5 size-2 shrink-0 rounded-full" style={{ background: color }} />
       <span>{text}</span>
+    </li>
+  )
+}
+
+function PermissionRow({ title, body }: { title: string; body: string }) {
+  return (
+    <li className="flex gap-3">
+      <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-md bg-[#14a35a] text-white">
+        <Check className="size-3" />
+      </span>
+      <span>
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="text-xs text-[#8a918c]">{body}</span>
+      </span>
     </li>
   )
 }
