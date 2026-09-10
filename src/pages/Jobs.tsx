@@ -41,8 +41,24 @@ export function JobsPage() {
     staleTime: 30_000,
   })
   const search = useMutation({
-    mutationFn: () =>
-      api<{ discovery: DiscoverySummary }>('/api/agent/search', { method: 'POST', body: '{}' }),
+    mutationFn: async () => {
+      const ctrl = new AbortController()
+      const timer = window.setTimeout(() => ctrl.abort(), 20_000)
+      try {
+        return await api<{ discovery: DiscoverySummary }>('/api/agent/search', {
+          method: 'POST',
+          body: '{}',
+          signal: ctrl.signal,
+        })
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          throw new Error('Board search timed out. Scored listings are still shown.')
+        }
+        throw err
+      } finally {
+        window.clearTimeout(timer)
+      }
+    },
     onSuccess: () => {
       void jobs.refetch()
       void discovery.refetch()
@@ -93,11 +109,15 @@ export function JobsPage() {
                 ? 'Loading scored listings…'
                 : search.isPending
                   ? 'Refreshing authorized boards in the background…'
-                  : recommended
-                    ? `${recommended} roles clear your 70% bar.`
-                    : all.length
-                      ? `${all.length} roles scored. None clear 70% yet — showing all matches.`
-                      : 'Search authorized boards and we will score every listing against you.'}
+                  : search.isError
+                    ? search.error instanceof Error
+                      ? search.error.message
+                      : 'Live boards did not refresh. Scored listings below are still current.'
+                    : recommended
+                      ? `${recommended} roles clear your 70% bar.`
+                      : all.length
+                        ? `${all.length} roles scored. None clear 70% yet — showing all matches.`
+                        : 'Search authorized boards and we will score every listing against you.'}
             </p>
           </div>
           <Button variant="copper" onClick={() => search.mutate()} disabled={search.isPending}>

@@ -23,6 +23,7 @@ import {
   Lock,
   LogOut,
   Mail,
+  MapPin,
   MessagesSquare,
   MoreHorizontal,
   Pause,
@@ -47,6 +48,7 @@ import { cn, initials, money, prettyStatus } from '@/lib/utils'
 import { formatHoursMinutes, startOfLocalDay } from '@shared/tracker'
 import { sourceLabel, type AccountRole } from '@shared/types'
 import { employerInviteNote, employerJoinPath } from '@shared/employerInvite'
+import { candidateInviteNote, candidateJoinPath } from '@shared/candidateInvite'
 import { officialApplyLinks } from '@shared/applyBoards'
 import type { LucideIcon } from 'lucide-react'
 
@@ -57,10 +59,10 @@ interface AdminInvite {
   title: string
   source: string
   listings: number
-  sources: string[]
-  industry: string
-  status: InviteDeskStatus
-  invitedAt: string
+  sources?: string[]
+  industry?: string
+  status?: InviteDeskStatus
+  invitedAt?: string
 }
 
 interface AdminAccount {
@@ -168,6 +170,7 @@ interface AdminDashboard {
     invitedAt: string
   }[]
   employers: AdminEmployer[]
+  candidates: AdminCandidate[]
   contracts: AdminContract[]
   activity: { kind: 'person' | 'invite'; title: string; body: string; at: string }[]
   promoteSql: string
@@ -188,6 +191,23 @@ interface AdminEmployer {
   hired: number
   spent: number
   status: 'active' | 'pending' | 'suspended'
+}
+
+interface AdminCandidate {
+  id: string
+  name: string
+  email: string
+  headline: string
+  skills: string[]
+  city: string
+  country: string
+  joinedAt: string
+  onboarded: boolean
+  packets: number
+  hired: number
+  hours: number
+  earned: number
+  status: 'active' | 'pending'
 }
 
 type ContractPhase = 'active' | 'progress' | 'completed' | 'cancelled'
@@ -214,7 +234,7 @@ interface AdminContract {
   createdAt: string
 }
 
-type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'contracts' | 'tracker' | 'inbox' | 'finances' | 'reports' | 'staff' | 'roles' | 'employers'
+type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'contracts' | 'tracker' | 'inbox' | 'finances' | 'reports' | 'staff' | 'roles' | 'employers' | 'candidates'
 type PeopleFilter = 'all' | AccountRole
 type PacketBucket = 'pending' | 'accepted' | 'declined' | 'draft'
 type PayTab = 'all' | 'employer' | 'payout' | 'pending'
@@ -238,7 +258,7 @@ const NAV: NavSection[] = [
     label: 'User Management',
     items: [
       { id: 'people', label: 'Users', icon: Users, people: 'all' },
-      { id: 'people', label: 'Candidates', icon: User, people: 'candidate' },
+      { id: 'candidates', label: 'Candidates', icon: User },
       { id: 'employers', label: 'Employers', icon: Building2 },
     ],
   },
@@ -256,6 +276,7 @@ const NAV: NavSection[] = [
       { id: 'packets', label: 'Packets', icon: FileText },
       { id: 'contracts', label: 'Contracts', icon: FileSignature },
       { id: 'invite', label: 'Invite employers', icon: Mail },
+      { id: 'candidates', label: 'Invite candidates', icon: UserPlus },
     ],
   },
   {
@@ -299,6 +320,13 @@ export function AdminPage() {
   const [employerPage, setEmployerPage] = useState(0)
   const [pickedEmployer, setPickedEmployer] = useState('')
   const [employerTab, setEmployerTab] = useState<'overview' | 'jobs' | 'packets'>('overview')
+  const [candidateQuery, setCandidateQuery] = useState('')
+  const [candidateStatus, setCandidateStatus] = useState<'all' | 'active' | 'pending'>('all')
+  const [candidatePlace, setCandidatePlace] = useState('all')
+  const [candidateSort, setCandidateSort] = useState<'newest' | 'name' | 'packets'>('newest')
+  const [candidatePage, setCandidatePage] = useState(0)
+  const [pickedCandidate, setPickedCandidate] = useState('')
+  const [candidateCopied, setCandidateCopied] = useState('')
   const [packetQuery, setPacketQuery] = useState('')
   const [packetStatus, setPacketStatus] = useState<'all' | PacketBucket>('all')
   const [packetCompany, setPacketCompany] = useState('all')
@@ -324,6 +352,7 @@ export function AdminPage() {
   const [invitePage, setInvitePage] = useState(0)
   const [inviteCopied, setInviteCopied] = useState('')
   const [inviteNote, setInviteNote] = useState('')
+  const [localInvited, setLocalInvited] = useState<string[]>(() => readLocalEmployerInvites())
   const dash = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: () => api<AdminDashboard>('/api/admin/dashboard'),
@@ -375,24 +404,26 @@ export function AdminPage() {
 
   const sources = useMemo(() => {
     const set = new Set<string>()
-    for (const row of data?.invites ?? []) for (const s of row.sources) set.add(s)
+    for (const row of data?.invites ?? []) for (const s of inviteBoards(row)) set.add(s)
     return [...set].sort()
   }, [data?.invites])
 
   const invites = useMemo(() => {
-    const q = (view === 'invite' ? query : query).trim().toLowerCase()
+    const q = query.trim().toLowerCase()
     return (data?.invites ?? []).filter((row) => {
-      if (source !== 'all' && !row.sources.includes(source) && row.source !== source) return false
-      if (inviteIndustry !== 'all' && row.industry !== inviteIndustry) return false
-      if (inviteTab === 'linkedin' && !row.sources.includes('linkedin') && row.source !== 'linkedin') return false
-      if (inviteTab === 'upwork' && !row.sources.includes('upwork') && row.source !== 'upwork') return false
+      const boards = inviteBoards(row)
+      const status = deskInviteStatus(row, localInvited)
+      if (source !== 'all' && !boards.includes(source) && row.source !== source) return false
+      if (inviteIndustry !== 'all' && (row.industry || '') !== inviteIndustry) return false
+      if (inviteTab === 'linkedin' && !boards.includes('linkedin') && row.source !== 'linkedin') return false
+      if (inviteTab === 'upwork' && !boards.includes('upwork') && row.source !== 'upwork') return false
       if (inviteTab === 'not_invited' || inviteTab === 'invited' || inviteTab === 'joined') {
-        if (row.status !== inviteTab) return false
+        if (status !== inviteTab) return false
       }
       if (!q) return true
-      return `${row.company} ${row.title} ${row.industry} ${row.sources.map(sourceLabel).join(' ')}`.toLowerCase().includes(q)
+      return `${row.company} ${row.title} ${row.industry ?? ''} ${boards.map(sourceLabel).join(' ')}`.toLowerCase().includes(q)
     })
-  }, [data?.invites, inviteIndustry, inviteTab, query, source, view])
+  }, [data?.invites, inviteIndustry, inviteTab, localInvited, query, source])
 
   const inviteIndustries = useMemo(() => {
     return [...new Set((data?.invites ?? []).map((row) => row.industry).filter(Boolean))].sort()
@@ -402,13 +433,13 @@ export function AdminPage() {
     const rows = data?.invites ?? []
     return {
       all: rows.length,
-      linkedin: rows.filter((row) => row.sources.includes('linkedin') || row.source === 'linkedin').length,
-      upwork: rows.filter((row) => row.sources.includes('upwork') || row.source === 'upwork').length,
-      not_invited: rows.filter((row) => row.status === 'not_invited').length,
-      invited: rows.filter((row) => row.status === 'invited').length,
-      joined: rows.filter((row) => row.status === 'joined').length,
+      linkedin: rows.filter((row) => inviteBoards(row).includes('linkedin') || row.source === 'linkedin').length,
+      upwork: rows.filter((row) => inviteBoards(row).includes('upwork') || row.source === 'upwork').length,
+      not_invited: rows.filter((row) => deskInviteStatus(row, localInvited) === 'not_invited').length,
+      invited: rows.filter((row) => deskInviteStatus(row, localInvited) === 'invited').length,
+      joined: rows.filter((row) => deskInviteStatus(row, localInvited) === 'joined').length,
     }
-  }, [data?.invites])
+  }, [data?.invites, localInvited])
 
   const invitePages = Math.max(1, Math.ceil(invites.length / 10))
   const invitePageSafe = Math.min(invitePage, invitePages - 1)
@@ -424,7 +455,7 @@ export function AdminPage() {
       return
     }
     setInviteNote(employerInviteNote(selected, inviteOrigin))
-  }, [inviteOrigin, selected])
+  }, [inviteOrigin, selected?.company])
 
   const people = useMemo(() => {
     const q = (view === 'people' || view === 'roles' ? peopleQuery : query).trim().toLowerCase()
@@ -716,7 +747,69 @@ export function AdminPage() {
     }
   }, [data?.employers, nowMs])
 
-  const candidates = (data?.accounts ?? []).filter((a) => a.role === 'candidate')
+  const candidateRows = useMemo(() => {
+    const q = (view === 'candidates' ? candidateQuery : query).trim().toLowerCase()
+    const rows = [...(data?.candidates ?? [])].filter((row) => {
+      if (candidateStatus !== 'all' && row.status !== candidateStatus) return false
+      if (candidatePlace !== 'all' && placeLabel(row.city, row.country) !== candidatePlace) return false
+      if (!q) return true
+      return `${row.name} ${row.email} ${row.headline} ${row.skills.join(' ')} ${row.city} ${row.country}`.toLowerCase().includes(q)
+    })
+    rows.sort((a, b) => {
+      if (candidateSort === 'name') return a.name.localeCompare(b.name)
+      if (candidateSort === 'packets') return b.packets - a.packets || b.hired - a.hired
+      return String(b.joinedAt).localeCompare(String(a.joinedAt))
+    })
+    return rows
+  }, [candidatePlace, candidateQuery, candidateSort, candidateStatus, data?.candidates, query, view])
+
+  const candidatePlaces = useMemo(() => {
+    return [...new Set((data?.candidates ?? []).map((row) => placeLabel(row.city, row.country)).filter(Boolean))].sort()
+  }, [data?.candidates])
+
+  const candidatePages = Math.max(1, Math.ceil(candidateRows.length / pageSize))
+  const candidatePageSafe = Math.min(candidatePage, candidatePages - 1)
+  const candidateSlice = candidateRows.slice(candidatePageSafe * pageSize, candidatePageSafe * pageSize + pageSize)
+  const selectedCandidate = candidateRows.find((row) => row.id === pickedCandidate) ?? candidateSlice[0]
+  const candidatePackets = useMemo(() => {
+    if (!selectedCandidate) return []
+    const email = selectedCandidate.email.toLowerCase()
+    return (data?.packetsList ?? []).filter((row) => row.candidateEmail.toLowerCase() === email)
+  }, [data?.packetsList, selectedCandidate])
+  const candidateStats = useMemo(() => {
+    const rows = data?.candidates ?? []
+    const month = 30 * 24 * 60 * 60 * 1000
+    const total = rows.length
+    const onboarded = rows.filter((row) => row.onboarded).length
+    const active = rows.filter((row) => row.status === 'active').length
+    const pending = rows.filter((row) => row.status === 'pending').length
+    const fresh = rows.filter((row) => row.joinedAt && nowMs - new Date(row.joinedAt).getTime() <= month).length
+    const prior = rows.filter((row) => {
+      if (!row.joinedAt) return false
+      const age = nowMs - new Date(row.joinedAt).getTime()
+      return age > month && age <= month * 2
+    }).length
+    const delta = (cur: number, prev: number) => {
+      if (!prev && !cur) return 0
+      if (!prev) return 100
+      return Math.round(((cur - prev) / prev) * 100)
+    }
+    return {
+      total,
+      onboarded,
+      active,
+      pending,
+      totalDelta: delta(fresh, prior),
+      onboardedDelta: delta(onboarded, Math.max(0, onboarded - fresh)),
+      activeDelta: delta(active, Math.max(0, active - fresh)),
+      pendingDelta: delta(pending, Math.max(0, pending - 1)),
+    }
+  }, [data?.candidates, nowMs])
+  const candidateOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://ai-job-finder-ecru.vercel.app'
+  const candidateJoin = `${candidateOrigin}${candidateJoinPath()}`
+  const linkedInPeople = 'https://www.linkedin.com/search/results/people/'
+
+  const candidates = data?.candidates ?? (data?.accounts ?? []).filter((a) => a.role === 'candidate')
 
   function onInviteStaff(e: FormEvent) {
     e.preventDefault()
@@ -747,6 +840,34 @@ export function AdminPage() {
     const a = document.createElement('a')
     a.href = href
     a.download = 'atelier-employers.csv'
+    a.click()
+    URL.revokeObjectURL(href)
+  }
+
+  function exportCandidates() {
+    const header = 'Name,Email,Headline,Skills,Location,Packets,Hired,Hours,Status,Onboarded,Joined'
+    const lines = candidateRows.map((row) =>
+      [
+        row.name,
+        row.email,
+        row.headline,
+        row.skills.join('; '),
+        placeLabel(row.city, row.country),
+        row.packets,
+        row.hired,
+        formatHoursMinutes(row.hours),
+        row.status,
+        row.onboarded ? 'yes' : 'no',
+        row.joinedAt,
+      ]
+        .map((v) => `"${String(v).replaceAll('"', '""')}"`)
+        .join(','),
+    )
+    const blob = new Blob([`${header}\n${lines.join('\n')}`], { type: 'text/csv' })
+    const href = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = href
+    a.download = 'atelier-candidates.csv'
     a.click()
     URL.revokeObjectURL(href)
   }
@@ -829,8 +950,23 @@ export function AdminPage() {
     })
   }
 
+  function copyCandidateInvite(kind: 'link' | 'note') {
+    const text = kind === 'link' ? candidateJoin : candidateInviteNote(candidateOrigin)
+    void navigator.clipboard.writeText(text).then(() => {
+      setCandidateCopied(kind)
+      window.setTimeout(() => setCandidateCopied(''), 2000)
+    })
+  }
+
+  function openCandidate(email: string) {
+    const hit = (data?.candidates ?? []).find((row) => row.email.toLowerCase() === email.toLowerCase())
+    if (hit) setPickedCandidate(hit.id)
+    go('candidates')
+  }
+
   function sendEmployerInvite(row: AdminInvite) {
     setPicked(row.company)
+    rememberLocalEmployerInvite(row.company, setLocalInvited)
     markEmployerInvite.mutate({ company: row.company, title: row.title, source: row.source })
     copyInvite('link', row)
   }
@@ -845,6 +981,7 @@ export function AdminPage() {
     setStaffMenu('')
     setQuery('')
     if (next === 'employers') setEmployerPage(0)
+    if (next === 'candidates') setCandidatePage(0)
     if (next === 'packets') {
       setPacketPage(0)
       setPacketOpen(true)
@@ -868,13 +1005,16 @@ export function AdminPage() {
     return view === item.id
   }
 
-  const searchValue = view === 'people' || view === 'roles' ? peopleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'packets' ? packetQuery : view === 'contracts' ? contractQuery : view === 'finances' ? payQuery : query
+  const searchValue = view === 'people' || view === 'roles' ? peopleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'candidates' ? candidateQuery : view === 'packets' ? packetQuery : view === 'contracts' ? contractQuery : view === 'finances' ? payQuery : query
   const onSearch = (value: string) => {
     if (view === 'people' || view === 'roles') setPeopleQuery(value)
     else if (view === 'staff') setStaffQuery(value)
     else if (view === 'employers') {
       setEmployerQuery(value)
       setEmployerPage(0)
+    } else if (view === 'candidates') {
+      setCandidateQuery(value)
+      setCandidatePage(0)
     } else if (view === 'packets') {
       setPacketQuery(value)
       setPacketPage(0)
@@ -904,6 +1044,8 @@ export function AdminPage() {
                 ? 'Search contracts by role, candidate, or employer'
                 : view === 'employers'
                 ? 'Search employers by name, email, or company'
+                : view === 'candidates'
+                  ? 'Search candidates by name, email, skills, or location'
                 : 'Search users, jobs, packets, or companies'
 
   return (
@@ -1174,7 +1316,7 @@ export function AdminPage() {
                     <Panel>
                       <div className="flex items-center justify-between">
                         <h2 className="font-sans text-base font-semibold">Top candidates</h2>
-                        <button type="button" className="text-sm text-[#14a35a]" onClick={() => go('people', 'candidate')}>
+                        <button type="button" className="text-sm text-[#14a35a]" onClick={() => go('candidates')}>
                           View all
                         </button>
                       </div>
@@ -1600,10 +1742,10 @@ export function AdminPage() {
                             <td className="px-3 py-3 text-[#5c635f]">{row.industry || '—'}</td>
                             <td className="px-3 py-3 tabular-nums text-[#5c635f]">{row.listings ? `${row.listings}` : '—'}</td>
                             <td className="px-3 py-3">
-                              <InviteStatusChip status={row.status} />
+                              <InviteStatusChip status={deskInviteStatus(row, localInvited)} />
                             </td>
                             <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                              {row.status === 'joined' ? (
+                              {deskInviteStatus(row, localInvited) === 'joined' ? (
                                 <Button variant="outline" type="button" onClick={() => go('employers')}>
                                   Open employer
                                 </Button>
@@ -1614,7 +1756,7 @@ export function AdminPage() {
                                   onClick={() => sendEmployerInvite(row)}
                                 >
                                   <Mail className="size-4" />
-                                  {row.status === 'invited' ? 'Resend invite' : 'Send invite'}
+                                  {deskInviteStatus(row, localInvited) === 'invited' ? 'Resend invite' : 'Send invite'}
                                 </Button>
                               )}
                             </td>
@@ -1623,6 +1765,11 @@ export function AdminPage() {
                       </tbody>
                     </table>
                     {!inviteSlice.length ? <p className="px-4 py-8 text-sm text-[#8a918c]">No companies match this search.</p> : null}
+                    {markEmployerInvite.isError ? (
+                      <p className="px-4 py-2 text-sm text-[#b85c38]">
+                        {markEmployerInvite.error instanceof Error ? markEmployerInvite.error.message : 'Could not record the invite. The join link was still copied.'}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
                     <p>
@@ -1751,6 +1898,343 @@ export function AdminPage() {
                     </Button>
                   </Panel>
                 )}
+              </div>
+            </div>
+          ) : null}
+
+          {view === 'candidates' ? (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-[#8a918c]">
+                    Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Invite Candidates</span>
+                  </p>
+                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Invite Candidates</h1>
+                  <p className="mt-1 text-sm text-[#5c635f]">Share a join link, then review people who already signed up on Atelier.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-2 rounded-xl border border-[#e4e8e5] bg-white px-3 py-2 text-sm text-[#5c635f]">
+                    <Calendar className="size-4" />
+                    {monthRange}
+                  </span>
+                  <Button variant="outline" type="button" onClick={exportCandidates}>
+                    <Download className="size-4" />
+                    Export
+                  </Button>
+                  <Button type="button" onClick={() => copyCandidateInvite('link')}>
+                    <Copy className="size-4" />
+                    {candidateCopied === 'link' ? 'Copied' : 'Copy join link'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <a
+                  href={linkedInPeople}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]"
+                >
+                  <span className="grid size-12 place-items-center rounded-xl bg-[#0a66c2] text-sm font-bold text-white">in</span>
+                  <span>
+                    <span className="block font-medium">Find people on LinkedIn</span>
+                    <span className="mt-1 block text-sm text-[#5c635f]">Opens LinkedIn’s official people search. Copy an Atelier join link — we do not scrape or message them from here.</span>
+                  </span>
+                  <ExternalLink className="ml-auto size-4 shrink-0 text-[#8a918c]" />
+                </a>
+                <div className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]">
+                  <span className="grid size-12 place-items-center rounded-xl bg-[#13261f] text-white">
+                    <UserPlus className="size-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium">Invite with an Atelier link</span>
+                    <span className="mt-1 block truncate text-sm text-[#5c635f]">{candidateJoin}</span>
+                  </span>
+                  <Button variant="outline" type="button" onClick={() => copyCandidateInvite('note')}>
+                    {candidateCopied === 'note' ? 'Copied' : 'Copy note'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_18rem]">
+                <EmployerStat icon={Users} color="#14a35a" label="Total Candidates" value={candidateStats.total} delta={candidateStats.totalDelta} />
+                <EmployerStat icon={Check} color="#22c55e" label="Onboarded" value={candidateStats.onboarded} delta={candidateStats.onboardedDelta} />
+                <EmployerStat icon={Zap} color="#8b5cf6" label="Active Candidates" value={candidateStats.active} delta={candidateStats.activeDelta} />
+                <EmployerStat icon={Clock} color="#8a918c" label="Pending" value={candidateStats.pending} delta={candidateStats.pendingDelta} />
+                {selectedCandidate ? (
+                  <section className="rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="grid size-10 place-items-center rounded-full bg-[#e8f6ee] text-sm font-semibold text-[#147a48]">
+                        {initials(selectedCandidate.name || selectedCandidate.email)}
+                      </span>
+                      <StatusDot status={selectedCandidate.status} />
+                    </div>
+                    <p className="mt-3 font-medium">{selectedCandidate.name}</p>
+                    <p className="truncate text-sm text-[#5c635f]">{selectedCandidate.headline || 'Candidate'}</p>
+                    <p className="mt-1 text-xs text-[#8a918c]">{placeLabel(selectedCandidate.city, selectedCandidate.country) || 'Location not set'}</p>
+                    <p className="mt-1 text-xs text-[#8a918c]">Joined {day(selectedCandidate.joinedAt)}</p>
+                    <button type="button" className="mt-3 inline-flex items-center gap-1 text-sm text-[#147a48]" onClick={() => go('packets')}>
+                      View packets <ExternalLink className="size-3.5" />
+                    </button>
+                  </section>
+                ) : (
+                  <section className="rounded-2xl bg-white p-4 text-sm text-[#8a918c] shadow-[0_1px_2px_rgba(19,38,31,0.06)]">No candidates yet.</section>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="relative min-w-[16rem] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
+                  <Input
+                    className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
+                    placeholder="Search by name, email, skills, or location"
+                    value={candidateQuery}
+                    onChange={(e) => {
+                      setCandidateQuery(e.target.value)
+                      setCandidatePage(0)
+                    }}
+                  />
+                </label>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={candidatePlace}
+                  onChange={(e) => {
+                    setCandidatePlace(e.target.value)
+                    setCandidatePage(0)
+                  }}
+                >
+                  <option value="all">All locations</option>
+                  {candidatePlaces.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={candidateStatus}
+                  onChange={(e) => {
+                    setCandidateStatus(e.target.value as typeof candidateStatus)
+                    setCandidatePage(0)
+                  }}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="pending">Pending</option>
+                </select>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={candidateSort}
+                  onChange={(e) => {
+                    setCandidateSort(e.target.value as typeof candidateSort)
+                    setCandidatePage(0)
+                  }}
+                >
+                  <option value="newest">Sort by newest</option>
+                  <option value="name">Sort by name</option>
+                  <option value="packets">Sort by packets</option>
+                </select>
+              </div>
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+                <Panel className="overflow-hidden p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[52rem] text-left text-sm">
+                      <thead className="text-xs text-[#8a918c]">
+                        <tr className="border-b border-[#eef1ee]">
+                          <th className="px-4 py-3 font-medium">Candidate</th>
+                          <th className="px-3 py-3 font-medium">Skills</th>
+                          <th className="px-3 py-3 font-medium">Location</th>
+                          <th className="px-3 py-3 font-medium">Packets</th>
+                          <th className="px-3 py-3 font-medium">Hired</th>
+                          <th className="px-3 py-3 font-medium">Status</th>
+                          <th className="px-3 py-3 font-medium">Joined</th>
+                          <th className="px-3 py-3 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {candidateSlice.map((row) => (
+                          <tr
+                            key={row.id}
+                            className={`cursor-pointer border-b border-[#eef1ee] ${selectedCandidate?.id === row.id ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
+                            onClick={() => setPickedCandidate(row.id)}
+                          >
+                            <td className="px-4 py-3">
+                              <span className="flex items-center gap-3">
+                                <span className="grid size-9 place-items-center rounded-full bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
+                                  {initials(row.name || row.email)}
+                                </span>
+                                <span>
+                                  <span className="block font-medium">{row.name}</span>
+                                  <span className="block text-xs text-[#8a918c]">{handleFromEmail(row.email) || row.email}</span>
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">
+                              <SkillPills skills={row.skills} />
+                            </td>
+                            <td className="px-3 py-3 text-[#5c635f]">{placeLabel(row.city, row.country) || '—'}</td>
+                            <td className="px-3 py-3">{row.packets}</td>
+                            <td className="px-3 py-3">{row.hired}</td>
+                            <td className="px-3 py-3">
+                              <StatusDot status={row.status} />
+                            </td>
+                            <td className="px-3 py-3 text-[#5c635f]">{day(row.joinedAt)}</td>
+                            <td className="relative px-3 py-3">
+                              <button
+                                type="button"
+                                className="grid size-8 place-items-center rounded-full hover:bg-white"
+                                aria-label="Actions"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setPickedCandidate(row.id)
+                                  setStaffMenu(staffMenu === row.id ? '' : row.id)
+                                }}
+                              >
+                                <MoreHorizontal className="size-4 text-[#8a918c]" />
+                              </button>
+                              {staffMenu === row.id ? (
+                                <div className="absolute right-3 z-20 w-40 overflow-hidden rounded-xl border border-[#e4e8e5] bg-white py-1 text-sm shadow-[0_8px_24px_rgba(19,38,31,0.12)]">
+                                  <button
+                                    type="button"
+                                    className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      void navigator.clipboard.writeText(row.email)
+                                      setStaffMenu('')
+                                    }}
+                                  >
+                                    Copy email
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setStaffMenu('')
+                                      go('packets')
+                                    }}
+                                  >
+                                    View packets
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setStaffMenu('')
+                                      go('inbox')
+                                    }}
+                                  >
+                                    Message
+                                  </button>
+                                </div>
+                              ) : null}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!candidateSlice.length ? <p className="px-4 py-8 text-sm text-[#8a918c]">No candidates match this search.</p> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
+                    <p>
+                      Showing {candidateRows.length ? candidatePageSafe * pageSize + 1 : 0}-{Math.min(candidateRows.length, candidatePageSafe * pageSize + pageSize)} of {candidateRows.length} candidates
+                    </p>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: candidatePages }, (_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setCandidatePage(i)}
+                          className={`grid size-7 place-items-center rounded-md ${candidatePageSafe === i ? 'bg-[#13261f] text-white' : 'hover:bg-[#f3f5f4]'}`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </Panel>
+
+                <div className="space-y-4">
+                  {selectedCandidate ? (
+                    <>
+                      <Panel>
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="grid size-14 place-items-center rounded-full bg-[#e8f6ee] text-base font-semibold text-[#147a48]">
+                            {initials(selectedCandidate.name || selectedCandidate.email)}
+                          </span>
+                          {selectedCandidate.onboarded ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-[#e8f6ee] px-2 py-0.5 text-xs font-medium text-[#147a48]">
+                              <Check className="size-3.5" />
+                              Onboarded
+                            </span>
+                          ) : (
+                            <StatusDot status={selectedCandidate.status} />
+                          )}
+                        </div>
+                        <p className="mt-3 font-medium">{selectedCandidate.name}</p>
+                        <p className="text-sm text-[#8a918c]">{handleFromEmail(selectedCandidate.email)}</p>
+                        <p className="mt-1 text-sm text-[#5c635f]">{selectedCandidate.headline || 'Candidate'}</p>
+                        <p className="mt-1 flex items-center gap-1 text-xs text-[#8a918c]">
+                          <MapPin className="size-3.5" />
+                          {placeLabel(selectedCandidate.city, selectedCandidate.country) || 'Location not set'}
+                        </p>
+                        <Button className="mt-4 w-full" type="button" onClick={() => go('packets')}>
+                          View packets
+                        </Button>
+                        <Button variant="outline" className="mt-2 w-full" type="button" onClick={() => go('inbox')}>
+                          Message
+                        </Button>
+                        <Button variant="outline" className="mt-2 w-full" type="button" onClick={() => void navigator.clipboard.writeText(selectedCandidate.email)}>
+                          Copy email
+                        </Button>
+                      </Panel>
+                      <Panel>
+                        <h2 className="font-sans text-base font-semibold">Skills</h2>
+                        <div className="mt-3">
+                          <SkillPills skills={selectedCandidate.skills} all />
+                        </div>
+                      </Panel>
+                      <Panel>
+                        <h2 className="font-sans text-base font-semibold">About</h2>
+                        <p className="mt-2 text-sm leading-relaxed text-[#5c635f]">
+                          {selectedCandidate.headline || 'No profile headline yet.'}
+                        </p>
+                      </Panel>
+                      <Panel>
+                        <h2 className="font-sans text-base font-semibold">Account</h2>
+                        <dl className="mt-3 space-y-3 text-sm">
+                          <OverviewRow label="Email" value={selectedCandidate.email} />
+                          <OverviewRow label="Location" value={placeLabel(selectedCandidate.city, selectedCandidate.country) || '—'} />
+                          <OverviewRow label="Joined" value={day(selectedCandidate.joinedAt)} />
+                          <OverviewRow label="Packets" value={String(selectedCandidate.packets)} />
+                          <OverviewRow label="Hired" value={String(selectedCandidate.hired)} />
+                          <OverviewRow label="Tracker" value={formatHoursMinutes(selectedCandidate.hours)} />
+                        </dl>
+                      </Panel>
+                      {candidatePackets.length ? (
+                        <Panel>
+                          <h2 className="font-sans text-base font-semibold">Recent packets</h2>
+                          <ul className="mt-3 space-y-2 text-sm">
+                            {candidatePackets.slice(0, 4).map((row) => (
+                              <li key={row.id} className="rounded-xl bg-[#f7f8f7] px-3 py-2">
+                                <p className="font-medium">{row.jobTitle}</p>
+                                <p className="text-xs text-[#8a918c]">
+                                  {row.company} · {prettyStatus(row.status)}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        </Panel>
+                      ) : null}
+                    </>
+                  ) : (
+                    <Panel>
+                      <p className="text-sm text-[#8a918c]">Select a candidate to see their profile.</p>
+                    </Panel>
+                  )}
+                </div>
               </div>
             </div>
           ) : null}
@@ -2196,8 +2680,8 @@ export function AdminPage() {
                         <p className="text-sm text-[#5c635f]">{selectedPacket.candidateEmail || 'No email'}</p>
                       </div>
                     </div>
-                    <Button className="mt-4 w-full" type="button" onClick={() => go('people', 'candidate')}>
-                      View candidates
+                    <Button className="mt-4 w-full" type="button" onClick={() => selectedPacket && openCandidate(selectedPacket.candidateEmail)}>
+                      View candidate
                     </Button>
                     <div className="mt-5 space-y-3 text-sm">
                       <p className="font-medium">{selectedPacket.jobTitle}</p>
@@ -2444,7 +2928,7 @@ export function AdminPage() {
                         <p className="text-sm text-[#5c635f]">{selectedContract.candidateEmail || 'No email'}</p>
                       </div>
                     </div>
-                    <Button className="mt-4 w-full" type="button" onClick={() => go('people', 'candidate')}>
+                    <Button className="mt-4 w-full" type="button" onClick={() => selectedContract && openCandidate(selectedContract.candidateEmail)}>
                       View candidate
                     </Button>
                     <div className="mt-5 space-y-2 text-sm">
@@ -3296,6 +3780,31 @@ function DeskTable({ columns, rows, empty }: { columns: string[]; rows: (string 
   )
 }
 
+function placeLabel(city?: string, country?: string) {
+  return [city, country].filter(Boolean).join(', ')
+}
+
+function handleFromEmail(email: string) {
+  const local = email.split('@')[0]?.trim()
+  return local ? `@${local}` : ''
+}
+
+function SkillPills({ skills, all = false }: { skills: string[]; all?: boolean }) {
+  const shown = all ? skills : skills.slice(0, 3)
+  const extra = skills.length - shown.length
+  if (!skills.length) return <span className="text-[#8a918c]">—</span>
+  return (
+    <span className="flex flex-wrap gap-1">
+      {shown.map((skill) => (
+        <span key={skill} className="rounded-full bg-[#eef1ee] px-2 py-0.5 text-xs text-[#5c635f]">
+          {skill}
+        </span>
+      ))}
+      {extra > 0 ? <span className="rounded-full bg-[#f3f5f4] px-2 py-0.5 text-xs text-[#8a918c]">+{extra}</span> : null}
+    </span>
+  )
+}
+
 function day(iso?: string) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -3455,12 +3964,46 @@ function PlatformChip({ source }: { source: string }) {
   return <span className="inline-flex items-center gap-1 rounded-full bg-[#f3f5f4] px-2 py-0.5 text-xs text-[#5c635f]">{sourceLabel(source)}</span>
 }
 
+function inviteBoards(row: { source?: string; sources?: string[] }) {
+  if (row.sources?.length) return row.sources
+  return row.source ? [row.source] : []
+}
+
+function deskInviteStatus(row: { company: string; status?: InviteDeskStatus }, localInvited: string[]): InviteDeskStatus {
+  if (row.status === 'joined') return 'joined'
+  if (row.status === 'invited' || localInvited.includes(row.company.trim().toLowerCase())) return 'invited'
+  return 'not_invited'
+}
+
+function readLocalEmployerInvites() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('atelier-employer-invites') || '[]') as unknown
+    return Array.isArray(raw) ? raw.map((item) => String(item)) : []
+  } catch {
+    return []
+  }
+}
+
+function rememberLocalEmployerInvite(company: string, setLocalInvited: (value: string[] | ((prev: string[]) => string[])) => void) {
+  const key = company.trim().toLowerCase()
+  if (!key) return
+  setLocalInvited((prev) => {
+    const next = [...new Set([...prev, key])]
+    try {
+      localStorage.setItem('atelier-employer-invites', JSON.stringify(next))
+    } catch {
+      /* private mode */
+    }
+    return next
+  })
+}
+
 function InviteStatusChip({ status }: { status: InviteDeskStatus }) {
   const map = {
     not_invited: { label: 'Not invited', className: 'bg-[#eef1ee] text-[#5c635f]' },
     invited: { label: 'Invited', className: 'bg-[#dbeafe] text-[#1d4ed8]' },
     joined: { label: 'Joined', className: 'bg-[#d1fae5] text-[#047857]' },
   }
-  const row = map[status]
+  const row = map[status] ?? map.not_invited
   return <span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${row.className}`}>{row.label}</span>
 }

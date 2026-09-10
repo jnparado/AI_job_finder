@@ -2208,15 +2208,19 @@ app.get('/api/admin/dashboard', async (c) => {
     country: string
     website: string
     onboarded: boolean
+    headline: string
+    desiredTitle: string
+    currentTitle: string
   }[] = []
+  let skillRows: { userId: string; name: string }[] = []
 
   if (supabaseAdmin) {
     let { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('id, email, role, first_name, last_name, company_name, created_at, industry, city, country, company_website, onboarding_completed')
+      .select('id, email, role, first_name, last_name, company_name, created_at, industry, city, country, company_website, onboarding_completed, headline, desired_title, current_title')
       .order('created_at', { ascending: false })
       .limit(200)
-    if (error && /industry|city|country|company_website|onboarding_completed|created_at/.test(error.message)) {
+    if (error && /industry|city|country|company_website|onboarding_completed|created_at|headline|desired_title|current_title/.test(error.message)) {
       const retry = await supabaseAdmin
         .from('profiles')
         .select('id, email, role, first_name, last_name, company_name, created_at')
@@ -2240,6 +2244,9 @@ app.get('/api/admin/dashboard', async (c) => {
         country: String(row.country ?? ''),
         website: String(row.company_website ?? ''),
         onboarded: Boolean(row.onboarding_completed),
+        headline: String(row.headline ?? ''),
+        desiredTitle: String(row.desired_title ?? ''),
+        currentTitle: String(row.current_title ?? ''),
       }
     })
   }
@@ -2282,7 +2289,7 @@ app.get('/api/admin/dashboard', async (c) => {
   let activity: { kind: 'person' | 'invite'; title: string; body: string; at: string }[] = []
 
   if (supabaseAdmin) {
-    const [packetRes, hiredRes, jobRes, appsRes, sessionsRes, ledRes, msgCountRes, msgsRes, invitedRes, notesRes, employerInviteRes] = await Promise.all([
+    const [packetRes, hiredRes, jobRes, appsRes, sessionsRes, ledRes, msgCountRes, msgsRes, invitedRes, notesRes, employerInviteRes, skillsRes] = await Promise.all([
       supabaseAdmin.from('applications').select('id', { count: 'exact', head: true }),
       supabaseAdmin.from('applications').select('id', { count: 'exact', head: true }).in('status', ['hired', 'offer']),
       supabaseAdmin.from('jobs').select('id', { count: 'exact', head: true }),
@@ -2294,6 +2301,7 @@ app.get('/api/admin/dashboard', async (c) => {
       supabaseAdmin.from('staff_invites').select('*').order('invited_at', { ascending: false }).limit(100),
       supabaseAdmin.from('notifications').select('title, body, created_at').order('created_at', { ascending: false }).limit(8),
       supabaseAdmin.from('employer_invites').select('*').order('invited_at', { ascending: false }).limit(200),
+      supabaseAdmin.from('user_skills').select('user_id, name, kind').limit(2000),
     ])
     if (packetRes.error) console.warn('admin packets', packetRes.error.message)
     else packets = packetRes.count ?? 0
@@ -2348,6 +2356,13 @@ app.get('/api/admin/dashboard', async (c) => {
         body: String(row.body ?? ''),
         at: row.created_at ? String(row.created_at) : '',
       }))
+    }
+    if (skillsRes.error) console.warn('admin skills', skillsRes.error.message)
+    else {
+      skillRows = (skillsRes.data ?? []).map((row) => ({
+        userId: String(row.user_id ?? ''),
+        name: String(row.name ?? '').trim(),
+      })).filter((row) => row.userId && row.name)
     }
     if (employerInviteRes.error) console.warn('admin employer invites', employerInviteRes.error.message)
     else {
@@ -2587,6 +2602,53 @@ app.get('/api/admin/dashboard', async (c) => {
       }
     })
 
+  const skillsByUser = new Map<string, string[]>()
+  for (const row of skillRows) {
+    const list = skillsByUser.get(row.userId) ?? []
+    if (!list.includes(row.name)) list.push(row.name)
+    skillsByUser.set(row.userId, list)
+  }
+  const packetByUser = new Map<string, { packets: number; hired: number }>()
+  for (const row of appRows) {
+    const cur = packetByUser.get(row.userId) ?? { packets: 0, hired: 0 }
+    cur.packets += 1
+    if (isHiredStatus(row.status) || row.status === 'completed') cur.hired += 1
+    packetByUser.set(row.userId, cur)
+  }
+  const hoursByUser = new Map<string, number>()
+  for (const row of sessionRows) {
+    hoursByUser.set(row.candidateId, (hoursByUser.get(row.candidateId) ?? 0) + sessionSeconds(row))
+  }
+  const earnedByUser = new Map<string, number>()
+  for (const row of ledgerRows) {
+    if (!row.candidateId) continue
+    if (row.kind !== 'from_employer' && row.kind !== 'withdraw') continue
+    earnedByUser.set(row.candidateId, (earnedByUser.get(row.candidateId) ?? 0) + row.amount)
+  }
+  const candidates = accounts
+    .filter((row) => row.role === 'candidate')
+    .map((row) => {
+      const stats = packetByUser.get(row.id) ?? { packets: 0, hired: 0 }
+      const hours = hoursByUser.get(row.id) ?? 0
+      const active = row.onboarded || stats.packets > 0 || stats.hired > 0 || hours > 0
+      return {
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        headline: row.headline || row.desiredTitle || row.currentTitle,
+        skills: skillsByUser.get(row.id) ?? [],
+        city: row.city,
+        country: row.country,
+        joinedAt: row.joinedAt,
+        onboarded: row.onboarded,
+        packets: stats.packets,
+        hired: stats.hired,
+        hours,
+        earned: earnedByUser.get(row.id) ?? 0,
+        status: active ? 'active' : 'pending',
+      }
+    })
+
   const sessionsByApp = new Map<string, typeof sessionRows>()
   for (const row of sessionRows) {
     const list = sessionsByApp.get(row.applicationId) ?? []
@@ -2682,6 +2744,7 @@ app.get('/api/admin/dashboard', async (c) => {
     counts,
     accounts,
     employers,
+    candidates,
     contracts,
     invites,
     boards,
@@ -2753,17 +2816,22 @@ app.post('/api/admin/employers/invite', async (c) => {
   }
   memory.addEmployerInvite(row)
   if (supabaseAdmin) {
-    const { error } = await supabaseAdmin.from('employer_invites').upsert(
-      {
-        company,
-        title: row.title || null,
-        source: row.source || null,
-        status: 'sent',
-        invited_by: user.id,
-        invited_at: now,
-      },
-      { onConflict: 'company' },
-    )
+    const payload = {
+      company,
+      company_key: company.toLowerCase(),
+      title: row.title || null,
+      source: row.source || null,
+      status: 'sent',
+      invited_at: now,
+    }
+    let { error } = await supabaseAdmin.from('employer_invites').upsert(payload, { onConflict: 'company_key' })
+    if (error) {
+      const retry = await supabaseAdmin.from('employer_invites').upsert(
+        { company, title: row.title || null, source: row.source || null, status: 'sent', invited_at: now },
+        { onConflict: 'company' },
+      )
+      error = retry.error
+    }
     if (error) console.warn('employer invite row', error.message)
   }
   return c.json({ ok: true, invite: row })
