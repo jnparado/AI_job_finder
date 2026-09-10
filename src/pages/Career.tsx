@@ -21,6 +21,7 @@ export function CareerPage() {
   const jobs = useQuery({
     queryKey: ['jobs'],
     queryFn: () => api<JobMatch[]>('/api/jobs'),
+    staleTime: 30_000,
   })
   const apps = useQuery({
     queryKey: ['applications'],

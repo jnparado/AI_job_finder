@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  ArrowDownToLine,
   BarChart3,
   Bell,
   Briefcase,
@@ -10,7 +11,11 @@ import {
   ChevronDown,
   ChevronRight,
   CircleHelp,
+  CirclePlay,
+  Clock,
+  DollarSign,
   Download,
+  FileSignature,
   ExternalLink,
   FileText,
   LayoutDashboard,
@@ -19,6 +24,7 @@ import {
   Mail,
   MessagesSquare,
   MoreHorizontal,
+  Pause,
   Plus,
   Search,
   Send,
@@ -38,7 +44,7 @@ import { InviteEmployer } from '@/components/jobs/InviteEmployer'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { cn, initials, money, prettyStatus } from '@/lib/utils'
-import { formatHoursMinutes } from '@shared/tracker'
+import { formatHoursMinutes, startOfLocalDay } from '@shared/tracker'
 import { sourceLabel, type AccountRole } from '@shared/types'
 import type { LucideIcon } from 'lucide-react'
 
@@ -110,6 +116,7 @@ interface AdminDashboard {
     hours: number
     sessions: {
       id: string
+      applicationId?: string
       jobTitle: string
       company: string
       candidate: string
@@ -133,6 +140,11 @@ interface AdminDashboard {
       status: string
       kind: string
       createdAt: string
+      candidate: string
+      candidateEmail: string
+      employerName: string
+      applicationId: string
+      note: string
     }[]
   }
   inbox: {
@@ -149,6 +161,7 @@ interface AdminDashboard {
     invitedAt: string
   }[]
   employers: AdminEmployer[]
+  contracts: AdminContract[]
   activity: { kind: 'person' | 'invite'; title: string; body: string; at: string }[]
   promoteSql: string
 }
@@ -170,9 +183,34 @@ interface AdminEmployer {
   status: 'active' | 'pending' | 'suspended'
 }
 
-type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'tracker' | 'inbox' | 'finances' | 'reports' | 'staff' | 'roles' | 'employers'
+type ContractPhase = 'active' | 'progress' | 'completed' | 'cancelled'
+
+interface AdminContract {
+  id: string
+  title: string
+  candidate: string
+  candidateEmail: string
+  company: string
+  employerName: string
+  type: string
+  amount: number
+  hours: number
+  phase: ContractPhase
+  status: string
+  startedAt: string
+  endedAt: string
+  live: boolean
+  location: string
+  payCount: number
+  payDone: number
+  activity: { id: string; body: string; at: string; senderRole: string }[]
+  createdAt: string
+}
+
+type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'contracts' | 'tracker' | 'inbox' | 'finances' | 'reports' | 'staff' | 'roles' | 'employers'
 type PeopleFilter = 'all' | AccountRole
 type PacketBucket = 'pending' | 'accepted' | 'declined' | 'draft'
+type PayTab = 'all' | 'employer' | 'payout' | 'pending'
 
 interface NavLinkItem {
   id: DeskView
@@ -208,6 +246,7 @@ const NAV: NavSection[] = [
     items: [
       { id: 'listings', label: 'Jobs', icon: Briefcase },
       { id: 'packets', label: 'Packets', icon: FileText },
+      { id: 'contracts', label: 'Contracts', icon: FileSignature },
       { id: 'invite', label: 'Invite employers', icon: Mail },
     ],
   },
@@ -216,7 +255,7 @@ const NAV: NavSection[] = [
     items: [
       { id: 'inbox', label: 'Inbox', icon: MessagesSquare },
       { id: 'tracker', label: 'Tracker', icon: Timer },
-      { id: 'finances', label: 'Finances', icon: Wallet },
+      { id: 'finances', label: 'Payments', icon: Wallet },
       { id: 'reports', label: 'Reports', icon: BarChart3 },
     ],
   },
@@ -258,6 +297,20 @@ export function AdminPage() {
   const [packetPage, setPacketPage] = useState(0)
   const [pickedPacket, setPickedPacket] = useState('')
   const [packetOpen, setPacketOpen] = useState(true)
+  const [contractQuery, setContractQuery] = useState('')
+  const [contractPhase, setContractPhase] = useState<'all' | ContractPhase>('all')
+  const [contractType, setContractType] = useState('all')
+  const [contractCompany, setContractCompany] = useState('all')
+  const [contractPage, setContractPage] = useState(0)
+  const [pickedContract, setPickedContract] = useState('')
+  const [contractOpen, setContractOpen] = useState(true)
+  const [payQuery, setPayQuery] = useState('')
+  const [payTab, setPayTab] = useState<PayTab>('all')
+  const [payKind, setPayKind] = useState<'all' | 'from_employer' | 'withdraw'>('all')
+  const [payStatus, setPayStatus] = useState<'all' | 'pending' | 'available' | 'sent' | 'failed'>('all')
+  const [payPage, setPayPage] = useState(0)
+  const [pickedPay, setPickedPay] = useState('')
+  const [payOpen, setPayOpen] = useState(true)
   const dash = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: () => api<AdminDashboard>('/api/admin/dashboard'),
@@ -298,6 +351,7 @@ export function AdminPage() {
   const name = data?.name || profile.email || 'Admin'
   const counts = data?.counts
   const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date())
+  const monthRange = `${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(new Date().getFullYear(), new Date().getMonth(), 1))} – ${monthLabel}`
 
   const sources = useMemo(() => {
     const set = new Set<string>()
@@ -390,6 +444,64 @@ export function AdminPage() {
     }
   }, [data?.packetsList, nowMs])
 
+  const contractRows = useMemo(() => {
+    const q = (view === 'contracts' ? contractQuery : query).trim().toLowerCase()
+    return (data?.contracts ?? []).filter((row) => {
+      if (contractPhase !== 'all' && row.phase !== contractPhase) return false
+      if (contractType !== 'all' && row.type !== contractType) return false
+      if (contractCompany !== 'all' && row.company !== contractCompany) return false
+      if (!q) return true
+      return `${row.title} ${row.candidate} ${row.company} ${row.type} ${row.phase}`.toLowerCase().includes(q)
+    })
+  }, [contractCompany, contractPhase, contractQuery, contractType, data?.contracts, query, view])
+
+  const contractCompanies = useMemo(() => {
+    return [...new Set((data?.contracts ?? []).map((row) => row.company).filter(Boolean))].sort()
+  }, [data?.contracts])
+
+  const contractTypes = useMemo(() => {
+    return [...new Set((data?.contracts ?? []).map((row) => row.type).filter(Boolean))].sort()
+  }, [data?.contracts])
+
+  const contractPages = Math.max(1, Math.ceil(contractRows.length / 10))
+  const contractPageSafe = Math.min(contractPage, contractPages - 1)
+  const contractSlice = contractRows.slice(contractPageSafe * 10, contractPageSafe * 10 + 10)
+  const selectedContract = contractRows.find((row) => row.id === pickedContract) ?? contractSlice[0]
+  const contractStats = useMemo(() => {
+    const rows = data?.contracts ?? []
+    const month = 30 * 24 * 60 * 60 * 1000
+    const fresh = (phase: ContractPhase | 'all') =>
+      rows.filter((row) => {
+        if (!row.startedAt || nowMs - new Date(row.startedAt).getTime() > month) return false
+        return phase === 'all' || row.phase === phase
+      }).length
+    const prior = (phase: ContractPhase | 'all') =>
+      rows.filter((row) => {
+        if (!row.startedAt) return false
+        const age = nowMs - new Date(row.startedAt).getTime()
+        if (age <= month || age > month * 2) return false
+        return phase === 'all' || row.phase === phase
+      }).length
+    const delta = (cur: number, prev: number) => {
+      if (!prev && !cur) return 0
+      if (!prev) return 100
+      return Math.round(((cur - prev) / prev) * 100)
+    }
+    const active = rows.filter((row) => row.phase === 'active' || row.phase === 'progress').length
+    const completed = rows.filter((row) => row.phase === 'completed').length
+    const cancelled = rows.filter((row) => row.phase === 'cancelled').length
+    return {
+      total: rows.length,
+      active,
+      completed,
+      cancelled,
+      totalDelta: delta(fresh('all'), prior('all')),
+      activeDelta: delta(fresh('active') + fresh('progress'), prior('active') + prior('progress')),
+      completedDelta: delta(fresh('completed'), prior('completed')),
+      cancelledDelta: delta(fresh('cancelled'), prior('cancelled')),
+    }
+  }, [data?.contracts, nowMs])
+
   const sessions = useMemo(() => {
     const q = query.trim().toLowerCase()
     return (data?.tracker?.sessions ?? []).filter((row) => {
@@ -399,12 +511,80 @@ export function AdminPage() {
   }, [data?.tracker?.sessions, query])
 
   const ledger = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = (view === 'finances' ? payQuery : query).trim().toLowerCase()
+    const cutoff = nowMs - rangeMs(range)
     return (data?.finance?.entries ?? []).filter((row) => {
+      const at = new Date(row.createdAt).getTime()
+      if (Number.isFinite(at) && at < cutoff) return false
+      if (payTab === 'employer' && row.kind !== 'from_employer') return false
+      if (payTab === 'payout' && row.kind !== 'withdraw') return false
+      if (payTab === 'pending' && row.status !== 'pending') return false
+      if (payKind !== 'all' && row.kind !== payKind) return false
+      if (payStatus !== 'all' && row.status !== payStatus) return false
       if (!q) return true
-      return `${row.company} ${row.jobTitle} ${row.status} ${row.kind}`.toLowerCase().includes(q)
+      return `${row.company} ${row.jobTitle} ${row.candidate} ${row.id} ${row.kind} ${row.status}`.toLowerCase().includes(q)
     })
-  }, [data?.finance?.entries, query])
+  }, [data?.finance?.entries, nowMs, payKind, payQuery, payStatus, payTab, query, range, view])
+
+  const payPages = Math.max(1, Math.ceil(ledger.length / 10))
+  const payPageSafe = Math.min(payPage, payPages - 1)
+  const paySlice = ledger.slice(payPageSafe * 10, payPageSafe * 10 + 10)
+  const selectedPay = ledger.find((row) => row.id === pickedPay) ?? paySlice[0]
+  const payStats = useMemo(() => {
+    const rows = data?.finance?.entries ?? []
+    const month = 30 * 24 * 60 * 60 * 1000
+    const sum = (list: typeof rows, kind?: string, status?: string) =>
+      list.reduce((n, row) => {
+        if (kind && row.kind !== kind) return n
+        if (status && row.status !== status) return n
+        return n + row.amount
+      }, 0)
+    const fresh = rows.filter((row) => row.createdAt && nowMs - new Date(row.createdAt).getTime() <= month)
+    const prior = rows.filter((row) => {
+      if (!row.createdAt) return false
+      const age = nowMs - new Date(row.createdAt).getTime()
+      return age > month && age <= month * 2
+    })
+    const delta = (cur: number, prev: number) => {
+      if (!prev && !cur) return 0
+      if (!prev) return 100
+      return Math.round(((cur - prev) / prev) * 100)
+    }
+    return {
+      receivedDelta: delta(sum(fresh, 'from_employer'), sum(prior, 'from_employer')),
+      pendingDelta: delta(sum(fresh, 'from_employer', 'pending'), sum(prior, 'from_employer', 'pending')),
+      withdrawnDelta: delta(sum(fresh, 'withdraw'), sum(prior, 'withdraw')),
+      availableDelta: delta(
+        Math.max(0, sum(fresh, 'from_employer') - sum(fresh, 'from_employer', 'pending') - sum(fresh, 'withdraw')),
+        Math.max(0, sum(prior, 'from_employer') - sum(prior, 'from_employer', 'pending') - sum(prior, 'withdraw')),
+      ),
+    }
+  }, [data?.finance, nowMs])
+
+  const payVolume = useMemo(() => {
+    const days = range === '7D' ? 7 : range === '30D' ? 30 : range === '3M' ? 90 : 365
+    const start = startOfLocalDay(nowMs) - (days - 1) * 86_400_000
+    const map = new Map<string, number>()
+    for (let i = 0; i < days; i++) {
+      map.set(localDateKey(start + i * 86_400_000), 0)
+    }
+    for (const row of data?.finance?.entries ?? []) {
+      if (row.kind !== 'from_employer') continue
+      const key = localDateKey(new Date(row.createdAt).getTime())
+      if (!map.has(key)) continue
+      map.set(key, (map.get(key) ?? 0) + row.amount)
+    }
+    return [...map.entries()].map(([date, amount]) => ({ date, amount }))
+  }, [data?.finance?.entries, nowMs, range])
+
+  const payMix = useMemo(() => {
+    const received = data?.finance?.received ?? 0
+    const withdrawn = data?.finance?.withdrawn ?? 0
+    return [
+      { label: 'Employer pay', n: received, color: '#14a35a' },
+      { label: 'Candidate payouts', n: withdrawn, color: '#8b5cf6' },
+    ].filter((row) => row.n > 0)
+  }, [data?.finance])
 
   const messages = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -531,6 +711,59 @@ export function AdminPage() {
     URL.revokeObjectURL(href)
   }
 
+  function exportContracts() {
+    const header = 'Role,Candidate,Email,Employer,Type,Amount,Hours,Status,Start,End'
+    const lines = contractRows.map((row) =>
+      [
+        row.title,
+        row.candidate,
+        row.candidateEmail,
+        row.company,
+        prettyContractType(row.type),
+        row.amount,
+        formatHoursMinutes(row.hours),
+        row.phase,
+        row.startedAt,
+        row.endedAt,
+      ]
+        .map((v) => `"${String(v).replaceAll('"', '""')}"`)
+        .join(','),
+    )
+    const blob = new Blob([`${header}\n${lines.join('\n')}`], { type: 'text/csv' })
+    const href = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = href
+    a.download = 'atelier-contracts.csv'
+    a.click()
+    URL.revokeObjectURL(href)
+  }
+
+  function exportPayments() {
+    const header = 'Date,Id,Type,From,To,Role,Amount,Status,Note'
+    const lines = ledger.map((row) =>
+      [
+        row.createdAt,
+        row.id,
+        payKindLabel(row.kind),
+        row.kind === 'from_employer' ? row.company : 'Atelier',
+        row.kind === 'withdraw' ? row.candidate : row.candidate,
+        row.jobTitle,
+        row.amount,
+        row.status,
+        row.note,
+      ]
+        .map((v) => `"${String(v).replaceAll('"', '""')}"`)
+        .join(','),
+    )
+    const blob = new Blob([`${header}\n${lines.join('\n')}`], { type: 'text/csv' })
+    const href = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = href
+    a.download = 'atelier-payments.csv'
+    a.click()
+    URL.revokeObjectURL(href)
+  }
+
   function go(next: DeskView, role: PeopleFilter = 'all') {
     setView(next)
     if (next === 'people') setPeopleRole(role)
@@ -545,6 +778,14 @@ export function AdminPage() {
       setPacketPage(0)
       setPacketOpen(true)
     }
+    if (next === 'contracts') {
+      setContractPage(0)
+      setContractOpen(true)
+    }
+    if (next === 'finances') {
+      setPayPage(0)
+      setPayOpen(true)
+    }
   }
 
   function linkActive(item: NavLinkItem) {
@@ -552,7 +793,7 @@ export function AdminPage() {
     return view === item.id
   }
 
-  const searchValue = view === 'people' || view === 'roles' ? peopleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'packets' ? packetQuery : query
+  const searchValue = view === 'people' || view === 'roles' ? peopleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'packets' ? packetQuery : view === 'contracts' ? contractQuery : view === 'finances' ? payQuery : query
   const onSearch = (value: string) => {
     if (view === 'people' || view === 'roles') setPeopleQuery(value)
     else if (view === 'staff') setStaffQuery(value)
@@ -562,6 +803,12 @@ export function AdminPage() {
     } else if (view === 'packets') {
       setPacketQuery(value)
       setPacketPage(0)
+    } else if (view === 'contracts') {
+      setContractQuery(value)
+      setContractPage(0)
+    } else if (view === 'finances') {
+      setPayQuery(value)
+      setPayPage(0)
     } else setQuery(value)
   }
   const alertCount = (counts?.companiesToInvite ?? 0) + (counts?.messages ?? 0)
@@ -571,12 +818,14 @@ export function AdminPage() {
       : view === 'tracker'
         ? 'Search tracker sessions'
         : view === 'finances'
-          ? 'Search pay ledger'
+          ? 'Search payments, employers, or candidates'
           : view === 'inbox'
             ? 'Search messages'
               : view === 'packets'
               ? 'Search packets'
-              : view === 'employers'
+              : view === 'contracts'
+                ? 'Search contracts by role, candidate, or employer'
+                : view === 'employers'
                 ? 'Search employers by name, email, or company'
                 : 'Search users, jobs, packets, or companies'
 
@@ -1712,6 +1961,267 @@ export function AdminPage() {
             </div>
           ) : null}
 
+          {view === 'contracts' ? (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-[#8a918c]">
+                    Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Contracts</span>
+                  </p>
+                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Contracts</h1>
+                  <p className="mt-1 text-sm text-[#5c635f]">Hired roles on Atelier — tracker hours and employer pay stay here.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-2 rounded-xl border border-[#e4e8e5] bg-white px-3 py-2 text-sm text-[#5c635f]">
+                    <Calendar className="size-4" />
+                    {monthRange}
+                  </span>
+                  <Button variant="outline" type="button" onClick={exportContracts}>
+                    <Download className="size-4" />
+                    Export
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <EmployerStat icon={FileSignature} color="#14a35a" label="Total contracts" value={contractStats.total} delta={contractStats.totalDelta} />
+                <EmployerStat icon={CirclePlay} color="#22c55e" label="Active contracts" value={contractStats.active} delta={contractStats.activeDelta} />
+                <EmployerStat icon={Check} color="#16a34a" label="Completed" value={contractStats.completed} delta={contractStats.completedDelta} />
+                <EmployerStat icon={Pause} color="#ef4444" label="Cancelled" value={contractStats.cancelled} delta={contractStats.cancelledDelta} />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="relative min-w-[16rem] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
+                  <Input
+                    className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
+                    placeholder="Search by role, candidate, or employer"
+                    value={contractQuery}
+                    onChange={(e) => {
+                      setContractQuery(e.target.value)
+                      setContractPage(0)
+                    }}
+                  />
+                </label>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={contractPhase}
+                  onChange={(e) => {
+                    setContractPhase(e.target.value as typeof contractPhase)
+                    setContractPage(0)
+                  }}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="progress">In progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={contractType}
+                  onChange={(e) => {
+                    setContractType(e.target.value)
+                    setContractPage(0)
+                  }}
+                >
+                  <option value="all">All types</option>
+                  {contractTypes.map((item) => (
+                    <option key={item} value={item}>
+                      {prettyContractType(item)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={contractCompany}
+                  onChange={(e) => {
+                    setContractCompany(e.target.value)
+                    setContractPage(0)
+                  }}
+                >
+                  <option value="all">All employers</option>
+                  {contractCompanies.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={`grid gap-5 ${contractOpen && selectedContract ? 'xl:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
+                <Panel className="overflow-hidden p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[58rem] text-left text-sm">
+                      <thead className="text-xs text-[#8a918c]">
+                        <tr className="border-b border-[#eef1ee]">
+                          <th className="px-4 py-3 font-medium">Role</th>
+                          <th className="px-3 py-3 font-medium">Candidate</th>
+                          <th className="px-3 py-3 font-medium">Employer</th>
+                          <th className="px-3 py-3 font-medium">Type</th>
+                          <th className="px-3 py-3 font-medium">Amount</th>
+                          <th className="px-3 py-3 font-medium">Status</th>
+                          <th className="px-3 py-3 font-medium">Start</th>
+                          <th className="px-3 py-3 font-medium">End</th>
+                          <th className="px-3 py-3 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {contractSlice.map((row) => (
+                          <tr
+                            key={row.id}
+                            className={`cursor-pointer border-b border-[#eef1ee] ${selectedContract?.id === row.id && contractOpen ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
+                            onClick={() => {
+                              setPickedContract(row.id)
+                              setContractOpen(true)
+                            }}
+                          >
+                            <td className="px-4 py-3">
+                              <p className="font-medium">{row.title}</p>
+                              <p className="text-xs text-[#8a918c]">{row.live ? 'Clock live' : formatHoursMinutes(row.hours)}</p>
+                            </td>
+                            <td className="px-3 py-3">
+                              <span className="flex items-center gap-3">
+                                <span className="grid size-9 place-items-center rounded-full bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
+                                  {initials(row.candidate)}
+                                </span>
+                                <span>
+                                  <span className="block font-medium">{row.candidate}</span>
+                                  <span className="block text-xs text-[#8a918c]">{row.candidateEmail || '—'}</span>
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">{row.company || '—'}</td>
+                            <td className="px-3 py-3 text-[#5c635f]">{prettyContractType(row.type)}</td>
+                            <td className="px-3 py-3 tabular-nums">{row.amount ? money(row.amount, data?.finance?.currency) : '—'}</td>
+                            <td className="px-3 py-3">
+                              <ContractDot phase={row.phase} />
+                            </td>
+                            <td className="px-3 py-3 text-[#5c635f]">{day(row.startedAt)}</td>
+                            <td className="px-3 py-3 text-[#5c635f]">{row.endedAt ? day(row.endedAt) : '—'}</td>
+                            <td className="px-3 py-3">
+                              <MoreHorizontal className="size-4 text-[#8a918c]" />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!contractSlice.length ? <p className="px-4 py-8 text-sm text-[#8a918c]">No hired roles match this search.</p> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
+                    <p>
+                      Showing {contractRows.length ? contractPageSafe * 10 + 1 : 0}-{Math.min(contractRows.length, contractPageSafe * 10 + 10)} of {contractRows.length} contracts
+                    </p>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: contractPages }, (_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setContractPage(i)}
+                          className={`grid size-7 place-items-center rounded-md ${contractPageSafe === i ? 'bg-[#13261f] text-white' : 'hover:bg-[#f3f5f4]'}`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </Panel>
+
+                {contractOpen && selectedContract ? (
+                  <Panel>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-[#8a918c]">Contract details</p>
+                        <h2 className="mt-1 font-sans text-base font-semibold">{selectedContract.title}</h2>
+                      </div>
+                      <button type="button" className="grid size-8 place-items-center rounded-full hover:bg-[#f3f5f4]" aria-label="Close" onClick={() => setContractOpen(false)}>
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <div className="mt-3">
+                      <ContractDot phase={selectedContract.phase} />
+                    </div>
+                    <p className="mt-2 text-sm text-[#5c635f]">{selectedContract.company || '—'}</p>
+                    <div className="mt-4 flex items-center gap-3">
+                      <span className="grid size-12 place-items-center rounded-full bg-[#e8f6ee] text-sm font-medium text-[#147a48]">
+                        {initials(selectedContract.candidate)}
+                      </span>
+                      <div>
+                        <p className="font-medium">{selectedContract.candidate}</p>
+                        <p className="text-sm text-[#5c635f]">{selectedContract.candidateEmail || 'No email'}</p>
+                      </div>
+                    </div>
+                    <Button className="mt-4 w-full" type="button" onClick={() => go('people', 'candidate')}>
+                      View candidate
+                    </Button>
+                    <div className="mt-5 space-y-2 text-sm">
+                      <OverviewRow label="Contract ID" value={shortContractId(selectedContract.id)} />
+                      <OverviewRow label="Type" value={prettyContractType(selectedContract.type)} />
+                      <OverviewRow label="Amount" value={selectedContract.amount ? money(selectedContract.amount, data?.finance?.currency) : '—'} />
+                      <OverviewRow label="Hours" value={formatHoursMinutes(selectedContract.hours)} />
+                      <OverviewRow label="Start" value={day(selectedContract.startedAt)} />
+                      <OverviewRow label="End" value={selectedContract.endedAt ? day(selectedContract.endedAt) : '—'} />
+                      <OverviewRow label="Pay entries" value={`${selectedContract.payDone}/${Math.max(selectedContract.payCount, 1)}`} />
+                    </div>
+                    <div className="mt-5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">Recent activity</p>
+                        <button type="button" className="text-xs font-medium text-[#147a48]" onClick={() => go('inbox')}>
+                          View all
+                        </button>
+                      </div>
+                      <ul className="mt-3 space-y-3">
+                        {selectedContract.activity.map((row) => (
+                          <li key={row.id} className="flex gap-2 text-sm">
+                            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#22c55e]" />
+                            <div>
+                              <p className="text-[#161c19]">{row.body || 'Studio message'}</p>
+                              <p className="mt-0.5 text-xs capitalize text-[#8a918c]">
+                                {row.senderRole || 'studio'} · {ago(row.at)}
+                              </p>
+                            </div>
+                          </li>
+                        ))}
+                        {!selectedContract.activity.length ? (
+                          <li className="text-sm text-[#8a918c]">
+                            {selectedContract.live ? 'Clock is live on this role.' : 'No studio messages on this hire yet.'}
+                          </li>
+                        ) : null}
+                      </ul>
+                    </div>
+                    {setPacket.isError ? (
+                      <p className="mt-3 text-sm text-[#b85c38]">{setPacket.error instanceof Error ? setPacket.error.message : 'Could not update the contract.'}</p>
+                    ) : null}
+                    <div className="mt-5 space-y-2">
+                      <Button className="w-full" type="button" onClick={() => go('tracker')}>
+                        <Timer className="size-4" />
+                        Open tracker
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        type="button"
+                        disabled={setPacket.isPending || selectedContract.phase === 'completed' || selectedContract.phase === 'cancelled'}
+                        onClick={() => setPacket.mutate({ id: selectedContract.id, status: 'completed' })}
+                      >
+                        Mark complete
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full border-[#ef4444] text-[#b91c1c] hover:bg-[#fef2f2]"
+                        type="button"
+                        disabled={setPacket.isPending || selectedContract.phase === 'cancelled'}
+                        onClick={() => setPacket.mutate({ id: selectedContract.id, status: 'rejected' })}
+                      >
+                        End contract
+                      </Button>
+                    </div>
+                  </Panel>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           {view === 'tracker' ? (
             <div className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-3">
@@ -1759,28 +2269,282 @@ export function AdminPage() {
 
           {view === 'finances' ? (
             <div className="space-y-5">
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard icon={Wallet} tone="green" label="Received" value={money(data?.finance?.received ?? 0, data?.finance?.currency)} hint="From employers" />
-                <MetricCard icon={Wallet} tone="gold" label="Pending" value={money(data?.finance?.pending ?? 0, data?.finance?.currency)} hint="Not yet available" />
-                <MetricCard icon={Wallet} tone="teal" label="Available" value={money(data?.finance?.available ?? 0, data?.finance?.currency)} hint="Ready to withdraw" />
-                <MetricCard icon={Wallet} tone="blue" label="Withdrawn" value={money(data?.finance?.withdrawn ?? 0, data?.finance?.currency)} hint="Sent to candidates" />
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-[#8a918c]">
+                    Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Payments</span>
+                  </p>
+                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Payments</h1>
+                  <p className="mt-1 text-sm text-[#5c635f]">Employer pay and candidate withdrawals stay on Atelier. Outside boards are not involved.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-2 rounded-xl border border-[#e4e8e5] bg-white px-3 py-2 text-sm text-[#5c635f]">
+                    <Calendar className="size-4" />
+                    {monthRange}
+                  </span>
+                  <Button variant="outline" type="button" onClick={exportPayments}>
+                    <Download className="size-4" />
+                    Export
+                  </Button>
+                </div>
               </div>
-              <Panel>
-                <h2 className="font-sans text-lg font-semibold">Pay ledger</h2>
-                <p className="mt-1 text-sm text-[#5c635f]">Employer pay stays on Atelier. Outside boards are not involved.</p>
-                <DeskTable
-                  columns={['Company', 'Role', 'Amount', 'Kind', 'Status', 'Date']}
-                  rows={ledger.map((row) => [
-                    row.company || '—',
-                    row.jobTitle || '—',
-                    money(row.amount, data?.finance?.currency),
-                    prettyStatus(row.kind),
-                    prettyStatus(row.status),
-                    day(row.createdAt),
-                  ])}
-                  empty="No ledger entries yet."
-                />
-              </Panel>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MoneyStat icon={DollarSign} color="#14a35a" label="Total volume" value={data?.finance?.received ?? 0} currency={data?.finance?.currency} delta={payStats.receivedDelta} />
+                <MoneyStat icon={Clock} color="#3b82f6" label="Pending" value={data?.finance?.pending ?? 0} currency={data?.finance?.currency} delta={payStats.pendingDelta} />
+                <MoneyStat icon={ArrowDownToLine} color="#8b5cf6" label="Candidate payouts" value={data?.finance?.withdrawn ?? 0} currency={data?.finance?.currency} delta={payStats.withdrawnDelta} />
+                <MoneyStat icon={Building2} color="#14a35a" label="Available" value={data?.finance?.available ?? 0} currency={data?.finance?.currency} delta={payStats.availableDelta} />
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.75fr)]">
+                <Panel>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="font-sans text-base font-semibold">Payment volume</h2>
+                    <div className="flex rounded-lg border border-[#e4e8e5] p-0.5 text-xs">
+                      {(['7D', '30D', '3M', '1Y'] as const).map((id) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => {
+                            setRange(id)
+                            setPayPage(0)
+                          }}
+                          className={`rounded-md px-2.5 py-1 ${range === id ? 'bg-[#13261f] text-white' : 'text-[#5c635f]'}`}
+                        >
+                          {id}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <PayVolumeChart points={payVolume} currency={data?.finance?.currency} />
+                </Panel>
+                <Panel>
+                  <h2 className="font-sans text-base font-semibold">Pay mix</h2>
+                  <PayMixChart
+                    segs={payMix}
+                    total={data?.finance?.received ?? 0}
+                    currency={data?.finance?.currency}
+                  />
+                </Panel>
+              </div>
+
+              <div className="flex flex-wrap gap-5 border-b border-[#e4e8e5] text-sm">
+                {(
+                  [
+                    ['all', 'All transactions'],
+                    ['employer', 'Employer pay'],
+                    ['payout', 'Candidate payouts'],
+                    ['pending', 'Pending'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`-mb-px border-b-2 pb-2 ${payTab === id ? 'border-[#13261f] font-medium text-[#161c19]' : 'border-transparent text-[#8a918c]'}`}
+                    onClick={() => {
+                      setPayTab(id)
+                      setPayPage(0)
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="relative min-w-[16rem] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
+                  <Input
+                    className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
+                    placeholder="Search by employer, candidate, role, or id"
+                    value={payQuery}
+                    onChange={(e) => {
+                      setPayQuery(e.target.value)
+                      setPayPage(0)
+                    }}
+                  />
+                </label>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={payKind}
+                  onChange={(e) => {
+                    setPayKind(e.target.value as typeof payKind)
+                    setPayPage(0)
+                  }}
+                >
+                  <option value="all">All types</option>
+                  <option value="from_employer">Employer pay</option>
+                  <option value="withdraw">Candidate payout</option>
+                </select>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={payStatus}
+                  onChange={(e) => {
+                    setPayStatus(e.target.value as typeof payStatus)
+                    setPayPage(0)
+                  }}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="available">Available</option>
+                  <option value="sent">Sent</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </div>
+
+              <div className={`grid gap-5 ${payOpen && selectedPay ? 'xl:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
+                <Panel className="overflow-hidden p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[58rem] text-left text-sm">
+                      <thead className="text-xs text-[#8a918c]">
+                        <tr className="border-b border-[#eef1ee]">
+                          <th className="px-4 py-3 font-medium">Date</th>
+                          <th className="px-3 py-3 font-medium">Transaction ID</th>
+                          <th className="px-3 py-3 font-medium">Type</th>
+                          <th className="px-3 py-3 font-medium">From / To</th>
+                          <th className="px-3 py-3 font-medium">Amount</th>
+                          <th className="px-3 py-3 font-medium">Method</th>
+                          <th className="px-3 py-3 font-medium">Status</th>
+                          <th className="px-3 py-3 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paySlice.map((row) => (
+                          <tr
+                            key={row.id}
+                            className={`cursor-pointer border-b border-[#eef1ee] ${selectedPay?.id === row.id && payOpen ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
+                            onClick={() => {
+                              setPickedPay(row.id)
+                              setPayOpen(true)
+                            }}
+                          >
+                            <td className="px-4 py-3 text-[#5c635f]">{when(row.createdAt)}</td>
+                            <td className="px-3 py-3 font-medium tabular-nums">{shortPayId(row.id)}</td>
+                            <td className="px-3 py-3">
+                              <PayKindChip kind={row.kind} />
+                            </td>
+                            <td className="px-3 py-3">
+                              <p className="font-medium">{row.kind === 'withdraw' ? row.candidate : row.company || row.candidate}</p>
+                              <p className="text-xs text-[#8a918c]">{row.jobTitle || '—'}</p>
+                            </td>
+                            <td className="px-3 py-3 tabular-nums">{money(row.amount, data?.finance?.currency)}</td>
+                            <td className="px-3 py-3 text-[#5c635f]">Atelier ledger</td>
+                            <td className="px-3 py-3">
+                              <PayDot status={row.status} />
+                            </td>
+                            <td className="px-3 py-3">
+                              <MoreHorizontal className="size-4 text-[#8a918c]" />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!paySlice.length ? <p className="px-4 py-8 text-sm text-[#8a918c]">No payments match this search.</p> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
+                    <p>
+                      Showing {ledger.length ? payPageSafe * 10 + 1 : 0}-{Math.min(ledger.length, payPageSafe * 10 + 10)} of {ledger.length} transactions
+                    </p>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: payPages }, (_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setPayPage(i)}
+                          className={`grid size-7 place-items-center rounded-md ${payPageSafe === i ? 'bg-[#13261f] text-white' : 'hover:bg-[#f3f5f4]'}`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </Panel>
+
+                {payOpen && selectedPay ? (
+                  <Panel>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-[#8a918c]">Transaction details</p>
+                        <h2 className="mt-1 font-sans text-base font-semibold">{payKindLabel(selectedPay.kind)}</h2>
+                      </div>
+                      <button type="button" className="grid size-8 place-items-center rounded-full hover:bg-[#f3f5f4]" aria-label="Close" onClick={() => setPayOpen(false)}>
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <PayDot status={selectedPay.status} />
+                      <p className="text-xs text-[#8a918c]">{when(selectedPay.createdAt)}</p>
+                    </div>
+                    <div className="mt-5 space-y-2 text-sm">
+                      <OverviewRow label="Transaction ID" value={shortPayId(selectedPay.id)} />
+                      <OverviewRow label="Type" value={payKindLabel(selectedPay.kind)} />
+                      <OverviewRow label="Amount" value={money(selectedPay.amount, data?.finance?.currency)} />
+                      <OverviewRow label="Method" value="Atelier ledger" />
+                    </div>
+                    <div className="mt-5 rounded-xl bg-[#f7f8f7] p-3">
+                      <p className="text-xs text-[#8a918c]">{selectedPay.kind === 'withdraw' ? 'Candidate' : 'Employer'}</p>
+                      <p className="mt-1 font-medium">{selectedPay.kind === 'withdraw' ? selectedPay.candidate : selectedPay.company || selectedPay.candidate}</p>
+                      <p className="text-sm text-[#5c635f]">
+                        {selectedPay.kind === 'withdraw' ? selectedPay.candidateEmail || '—' : selectedPay.employerName || selectedPay.candidateEmail || '—'}
+                      </p>
+                    </div>
+                    <div className="mt-5 space-y-2 text-sm">
+                      <OverviewRow label="Related role" value={selectedPay.jobTitle || '—'} />
+                      <OverviewRow label="Status" value={prettyStatus(selectedPay.status)} />
+                    </div>
+                    {selectedPay.note ? (
+                      <div className="mt-5">
+                        <p className="text-sm font-medium">Notes</p>
+                        <p className="mt-2 text-sm leading-relaxed text-[#5c635f]">{selectedPay.note}</p>
+                      </div>
+                    ) : (
+                      <p className="mt-5 text-sm text-[#8a918c]">No note on this ledger row.</p>
+                    )}
+                    <div className="mt-5">
+                      <p className="text-sm font-medium">Timeline</p>
+                      <ul className="mt-3 space-y-2 text-sm">
+                        <li className="flex gap-2">
+                          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#22c55e]" />
+                          <span>
+                            Recorded on Atelier
+                            <span className="mt-0.5 block text-xs text-[#8a918c]">{when(selectedPay.createdAt)}</span>
+                          </span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${selectedPay.status === 'failed' ? 'bg-[#ef4444]' : 'bg-[#22c55e]'}`} />
+                          <span>{payTimeline(selectedPay.status)}</span>
+                        </li>
+                      </ul>
+                    </div>
+                    <div className="mt-5 space-y-2">
+                      <Button
+                        className="w-full"
+                        type="button"
+                        disabled={!selectedPay.applicationId}
+                        onClick={() => {
+                          if (!selectedPay.applicationId) return
+                          setPickedContract(selectedPay.applicationId)
+                          go('contracts')
+                        }}
+                      >
+                        View contract
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        type="button"
+                        onClick={() => {
+                          const hit = (data?.employers ?? []).find((row) => row.company.trim().toLowerCase() === selectedPay.company.trim().toLowerCase())
+                          if (hit) setPickedEmployer(hit.id)
+                          go(selectedPay.kind === 'withdraw' ? 'people' : 'employers', selectedPay.kind === 'withdraw' ? 'candidate' : 'all')
+                        }}
+                      >
+                        {selectedPay.kind === 'withdraw' ? 'View candidate' : 'View employer'}
+                      </Button>
+                    </div>
+                  </Panel>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
@@ -1897,10 +2661,242 @@ function StatusDot({ status }: { status: 'active' | 'pending' | 'suspended' }) {
 }
 
 function packetBucket(status: string): PacketBucket {
-  if (status === 'offer' || status === 'hired') return 'accepted'
+  if (status === 'offer' || status === 'hired' || status === 'completed') return 'accepted'
   if (status === 'rejected' || status === 'withdrawn' || status === 'closed') return 'declined'
   if (status === 'draft') return 'draft'
   return 'pending'
+}
+
+function prettyContractType(type: string) {
+  if (type === 'hourly') return 'Hourly'
+  if (type === 'milestone') return 'Milestone'
+  if (type === 'role') return 'Hired role'
+  return prettyStatus(type)
+}
+
+function shortContractId(id: string) {
+  return `#${id.replaceAll('-', '').slice(0, 8).toUpperCase()}`
+}
+
+function ContractDot({ phase }: { phase: ContractPhase }) {
+  const map = {
+    active: { label: 'Active', className: 'bg-[#d1fae5] text-[#047857]', dot: '#22c55e' },
+    progress: { label: 'In progress', className: 'bg-[#dbeafe] text-[#1d4ed8]', dot: '#3b82f6' },
+    completed: { label: 'Completed', className: 'bg-[#e8f6ee] text-[#147a48]', dot: '#16a34a' },
+    cancelled: { label: 'Cancelled', className: 'bg-[#fee2e2] text-[#b91c1c]', dot: '#ef4444' },
+  }
+  const row = map[phase]
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${row.className}`}>
+      <span className="size-1.5 rounded-full" style={{ background: row.dot }} />
+      {row.label}
+    </span>
+  )
+}
+
+function rangeMs(range: '7D' | '30D' | '3M' | '1Y') {
+  if (range === '7D') return 7 * 86_400_000
+  if (range === '30D') return 30 * 86_400_000
+  if (range === '3M') return 90 * 86_400_000
+  return 365 * 86_400_000
+}
+
+function localDateKey(ms: number) {
+  const d = new Date(ms)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function payKindLabel(kind: string) {
+  return kind === 'withdraw' ? 'Candidate payout' : 'Employer pay'
+}
+
+function shortPayId(id: string) {
+  return `PAY-${id.replaceAll('-', '').slice(0, 8).toUpperCase()}`
+}
+
+function payTimeline(status: string) {
+  if (status === 'pending') return 'Waiting to become available'
+  if (status === 'available') return 'Ready for candidate withdraw'
+  if (status === 'sent') return 'Sent to the candidate'
+  if (status === 'failed') return 'This payout failed'
+  return prettyStatus(status)
+}
+
+function when(iso?: string) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+function PayKindChip({ kind }: { kind: string }) {
+  const payout = kind === 'withdraw'
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${payout ? 'bg-[#ede9fe] text-[#6d28d9]' : 'bg-[#d1fae5] text-[#047857]'}`}>
+      {payKindLabel(kind)}
+    </span>
+  )
+}
+
+function PayDot({ status }: { status: string }) {
+  const map: Record<string, { label: string; className: string; dot: string }> = {
+    pending: { label: 'Pending', className: 'bg-[#fef3c7] text-[#b45309]', dot: '#f59e0b' },
+    available: { label: 'Available', className: 'bg-[#dbeafe] text-[#1d4ed8]', dot: '#3b82f6' },
+    sent: { label: 'Sent', className: 'bg-[#d1fae5] text-[#047857]', dot: '#22c55e' },
+    failed: { label: 'Failed', className: 'bg-[#fee2e2] text-[#b91c1c]', dot: '#ef4444' },
+  }
+  const row = map[status] ?? { label: prettyStatus(status), className: 'bg-[#eef1ee] text-[#5c635f]', dot: '#8a918c' }
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${row.className}`}>
+      <span className="size-1.5 rounded-full" style={{ background: row.dot }} />
+      {row.label}
+    </span>
+  )
+}
+
+function MoneyStat({
+  icon: Icon,
+  label,
+  value,
+  delta,
+  color,
+  currency,
+}: {
+  icon: LucideIcon
+  label: string
+  value: number
+  delta: number
+  color: string
+  currency?: string
+}) {
+  const up = delta >= 0
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]">
+      <div className="flex items-start gap-3">
+        <span className="grid size-9 place-items-center rounded-full" style={{ background: `${color}1a`, color }}>
+          <Icon className="size-4" />
+        </span>
+        <div>
+          <p className="text-sm text-[#5c635f]">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{money(value, currency)}</p>
+          <p className={`mt-1 text-xs ${up ? 'text-[#14a35a]' : 'text-[#b85c38]'}`}>
+            {up ? '+' : ''}
+            {delta}% vs last 30 days
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PayVolumeChart({ points, currency }: { points: { date: string; amount: number }[]; currency?: string }) {
+  const max = Math.max(1, ...points.map((p) => p.amount))
+  const w = 640
+  const h = 200
+  const pad = 28
+  const pts = points.map((p, i) => {
+    const x = pad + (i * (w - pad * 2)) / Math.max(1, points.length - 1)
+    const y = h - pad - (p.amount / max) * (h - pad * 2)
+    return { x, y }
+  })
+  const line = pts.map((p) => `${p.x},${p.y}`).join(' ')
+  const area = pts.length ? `${pad},${h - pad} ${line} ${w - pad},${h - pad}` : ''
+  const ticks = [0, Math.round(max / 2), max]
+  const first = points[0]?.date
+  const last = points.at(-1)?.date
+  return (
+    <div className="mt-3">
+      <svg viewBox={`0 0 ${w} ${h}`} className="h-48 w-full" role="img" aria-label="Employer pay volume">
+        <defs>
+          <linearGradient id="pay-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#14a35a" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#14a35a" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {ticks.map((n) => {
+          const y = h - pad - (n / max) * (h - pad * 2)
+          return (
+            <g key={n}>
+              <line x1={pad} y1={y} x2={w - pad} y2={y} stroke="#eef1ee" />
+              <text x={4} y={y + 4} className="fill-[#8a918c]" fontSize="10">
+                {n ? money(n, currency) : '0'}
+              </text>
+            </g>
+          )
+        })}
+        {area ? <polygon points={area} fill="url(#pay-fill)" /> : null}
+        {line ? <polyline points={line} fill="none" stroke="#14a35a" strokeWidth="2.5" /> : null}
+      </svg>
+      <div className="mt-1 flex justify-between text-xs text-[#8a918c]">
+        <span>{first ? day(first) : ''}</span>
+        <span>{last ? day(last) : ''}</span>
+      </div>
+    </div>
+  )
+}
+
+function PayMixChart({
+  segs,
+  total,
+  currency,
+}: {
+  segs: { label: string; n: number; color: string }[]
+  total: number
+  currency?: string
+}) {
+  const sum = segs.reduce((n, s) => n + s.n, 0) || 1
+  const r = 58
+  const c = 2 * Math.PI * r
+  let offset = 0
+  return (
+    <div className="mt-3 flex items-center gap-4">
+      <svg viewBox="0 0 160 160" className="size-40 shrink-0">
+        <circle cx="80" cy="80" r={r} fill="none" stroke="#eef1ee" strokeWidth="18" />
+        {segs.map((seg) => {
+          const len = (seg.n / sum) * c
+          const dash = `${len} ${c - len}`
+          const el = (
+            <circle
+              key={seg.label}
+              cx="80"
+              cy="80"
+              r={r}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth="18"
+              strokeDasharray={dash}
+              strokeDashoffset={-offset}
+              strokeLinecap="butt"
+              transform="rotate(-90 80 80)"
+            />
+          )
+          offset += len
+          return el
+        })}
+        <text x="80" y="76" textAnchor="middle" className="fill-[#161c19]" fontSize="16" fontWeight="600">
+          {money(total, currency)}
+        </text>
+        <text x="80" y="96" textAnchor="middle" className="fill-[#8a918c]" fontSize="10">
+          Volume
+        </text>
+      </svg>
+      <ul className="min-w-0 flex-1 space-y-2 text-sm">
+        {segs.map((seg) => (
+          <li key={seg.label} className="flex items-center justify-between gap-3">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="size-2.5 shrink-0 rounded-full" style={{ background: seg.color }} />
+              <span className="truncate">{seg.label}</span>
+            </span>
+            <span className="shrink-0 tabular-nums text-[#5c635f]">
+              {money(seg.n, currency)} · {Math.round((seg.n / sum) * 100)}%
+            </span>
+          </li>
+        ))}
+        {!segs.length ? <li className="text-[#8a918c]">No pay mix yet.</li> : null}
+      </ul>
+    </div>
+  )
 }
 
 function PacketDot({ status }: { status: string }) {

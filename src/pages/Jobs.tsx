@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Check, CircleAlert, ExternalLink, MapPin, Search, Wallet } from 'lucide-react'
@@ -32,11 +32,13 @@ export function JobsPage() {
   const jobs = useQuery({
     queryKey: ['jobs'],
     queryFn: () => api<JobMatch[]>('/api/jobs'),
+    staleTime: 30_000,
   })
   const discovery = useQuery({
     queryKey: ['discovery'],
     queryFn: () => api<DiscoverySummary | null>('/api/agent/discovery'),
     enabled: jobs.isSuccess,
+    staleTime: 30_000,
   })
   const search = useMutation({
     mutationFn: () =>
@@ -55,17 +57,29 @@ export function JobsPage() {
     onSuccess: (row) => navigate(`/app/applications/${row.id}`),
     onSettled: () => setApplyingId(null),
   })
+  const liveOnce = useRef(false)
+  useEffect(() => {
+    if (!jobs.isSuccess || liveOnce.current) return
+    liveOnce.current = true
+    const timer = window.setTimeout(() => {
+      search.mutate()
+    }, 700)
+    return () => window.clearTimeout(timer)
+    // Refresh live boards once after the fast catalog scores paint.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs.isSuccess])
   const report = discovery.data
   const all = jobs.data ?? []
   const sources = [...new Set(all.map((m) => m.job.source))]
-  let list = all
-  if (filter === '70') list = list.filter((m) => m.score >= 70)
-  else if (filter !== 'all') list = list.filter((m) => m.category === filter)
-  if (source !== 'all') list = list.filter((m) => m.job.source === source)
-  const live = report?.providers?.filter((p) => p.status === 'ok') ?? []
   const recommended = all.filter((m) => m.score >= 70).length
   const excellent = all.filter((m) => m.category === 'excellent').length
   const strong = all.filter((m) => m.category === 'strong').length
+  const effectiveFilter = filter === '70' && !jobs.isLoading && recommended === 0 && all.length > 0 ? 'all' : filter
+  let list = all
+  if (effectiveFilter === '70') list = list.filter((m) => m.score >= 70)
+  else if (effectiveFilter !== 'all') list = list.filter((m) => m.category === effectiveFilter)
+  if (source !== 'all') list = list.filter((m) => m.job.source === source)
+  const live = report?.providers?.filter((p) => p.status === 'ok') ?? []
 
   return (
     <div className="space-y-6">
@@ -76,10 +90,14 @@ export function JobsPage() {
             <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">Jobs scored for you</h1>
             <p className="mt-2 max-w-xl text-sm text-[#d8d0c0]">
               {jobs.isLoading
-                ? 'Loading live listings…'
-                : recommended
-                  ? `${recommended} roles clear your 70% bar.`
-                  : 'Search authorized boards and we will score every listing against you.'}
+                ? 'Loading scored listings…'
+                : search.isPending
+                  ? 'Refreshing authorized boards in the background…'
+                  : recommended
+                    ? `${recommended} roles clear your 70% bar.`
+                    : all.length
+                      ? `${all.length} roles scored. None clear 70% yet — showing all matches.`
+                      : 'Search authorized boards and we will score every listing against you.'}
             </p>
           </div>
           <Button variant="copper" onClick={() => search.mutate()} disabled={search.isPending}>
@@ -158,7 +176,14 @@ export function JobsPage() {
         ) : null}
       </div>
 
-      {jobs.isLoading ? (
+      {jobs.isError ? (
+        <EmptyState
+          title="Could not load matches"
+          body={jobs.error instanceof Error ? jobs.error.message : 'Try again in a moment.'}
+          actionLabel="Retry"
+          onClick={() => void jobs.refetch()}
+        />
+      ) : jobs.isLoading ? (
         <div className="space-y-3">
           <Card className="h-28 animate-pulse bg-muted/60" />
           <Card className="h-28 animate-pulse bg-muted/60" />
@@ -166,7 +191,7 @@ export function JobsPage() {
       ) : list.length === 0 ? (
         <EmptyState
           title="Nothing in this view"
-          body="Try Recommended, or search again to refresh live listings."
+          body="Try All, or search again to refresh live listings."
           actionLabel="Search platforms"
           onClick={() => search.mutate()}
         />

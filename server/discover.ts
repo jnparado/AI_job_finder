@@ -7,8 +7,9 @@ import type { CandidateProfile, DiscoveryProvider, DiscoveryReport, Job, MarketS
 export type { DiscoveryProvider, DiscoveryReport, OfficialBoard }
 
 const UA = 'AtelierJobAssistant/1.0 (authorized job discovery; local app)'
-const TIMEOUT_MS = 10_000
+const TIMEOUT_MS = 4_500
 const PER_SOURCE = 50
+const DISCOVER_DEADLINE_MS = 7_000
 
 function idFor(source: string, unique: string): string {
   return `${source}-${createHash('sha1').update(unique).digest('hex').slice(0, 12)}`
@@ -80,6 +81,26 @@ async function runProvider(name: string, fn: () => Promise<Job[]>): Promise<{ na
       result: { name, status: 'error', count: 0, error: err instanceof Error ? err.message : 'failed' },
     }
   }
+}
+
+function emptyProvider(name: string): { name: string; jobs: Job[]; result: DiscoveryProvider } {
+  return { name, jobs: [], result: { name, status: 'error', count: 0, error: 'slow — skipped so matches can load' } }
+}
+
+function raceMs<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      () => {
+        clearTimeout(timer)
+        resolve(fallback)
+      },
+    )
+  })
 }
 
 function publisherSource(publisher: string): string {
@@ -928,37 +949,39 @@ async function fromUsaJobs(query: string): Promise<Job[]> {
 
 export async function discoverJobs(
   profile: CandidateProfile,
-  opts?: { query?: string },
+  opts?: { query?: string; deadlineMs?: number },
 ): Promise<DiscoveryReport> {
   const query = opts?.query?.trim() || searchQuery(profile)
   const catalog = JOB_CATALOG.map((job) => asJob(job))
+  const deadline = opts?.deadlineMs ?? DISCOVER_DEADLINE_MS
+  const cap = (name: string, fn: () => Promise<Job[]>) => raceMs(runProvider(name, fn), deadline, emptyProvider(name))
   const tasks = [
-    runProvider('Remotive', () => fromRemotive(query)),
-    runProvider('Remote OK', () => fromRemoteOk()),
-    runProvider('Arbeitnow', () => fromArbeitnow(profile)),
-    runProvider('The Muse', () => fromTheMuse()),
-    runProvider('Himalayas', () => fromHimalayas()),
-    runProvider('Jobicy', () => fromJobicy(query)),
-    runProvider('We Work Remotely', () => fromWeWorkRemotely()),
-    runProvider('Career pages (Greenhouse)', () => fromGreenhouse(profile)),
+    cap('Remotive', () => fromRemotive(query)),
+    cap('Remote OK', () => fromRemoteOk()),
+    cap('Arbeitnow', () => fromArbeitnow(profile)),
+    cap('The Muse', () => fromTheMuse()),
+    cap('Himalayas', () => fromHimalayas()),
+    cap('Jobicy', () => fromJobicy(query)),
+    cap('We Work Remotely', () => fromWeWorkRemotely()),
+    cap('Career pages (Greenhouse)', () => fromGreenhouse(profile)),
   ]
   const salaryTask = process.env.RAPIDAPI_KEY ? fromJobsApiSalary(query, profile).catch(() => null) : Promise.resolve(null)
   if (process.env.RAPIDAPI_KEY) {
-    tasks.push(runProvider('Google for Jobs (JSearch)', () => fromJSearch(query, profile)))
-    tasks.push(runProvider('Bing Jobs (Jobs API)', () => fromJobsApiBing(query, profile)))
-    tasks.push(runProvider('Indeed (Jobs API)', () => fromJobsApiIndeed(query, profile)))
-    tasks.push(runProvider('LinkedIn (Jobs API)', () => fromJobsApiLinkedIn(query, profile)))
-    tasks.push(runProvider('Xing (Jobs API)', () => fromJobsApiXing(query, profile)))
-    tasks.push(runProvider('Jobs Search API', () => fromJobsSearchApi(query, profile)))
+    tasks.push(cap('Google for Jobs (JSearch)', () => fromJSearch(query, profile)))
+    tasks.push(cap('Bing Jobs (Jobs API)', () => fromJobsApiBing(query, profile)))
+    tasks.push(cap('Indeed (Jobs API)', () => fromJobsApiIndeed(query, profile)))
+    tasks.push(cap('LinkedIn (Jobs API)', () => fromJobsApiLinkedIn(query, profile)))
+    tasks.push(cap('Xing (Jobs API)', () => fromJobsApiXing(query, profile)))
+    tasks.push(cap('Jobs Search API', () => fromJobsSearchApi(query, profile)))
   }
   if (process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY) {
-    tasks.push(runProvider('Adzuna', () => fromAdzuna(query, profile)))
+    tasks.push(cap('Adzuna', () => fromAdzuna(query, profile)))
   }
   if (process.env.USAJOBS_EMAIL) {
-    tasks.push(runProvider('USAJOBS', () => fromUsaJobs(query)))
+    tasks.push(cap('USAJOBS', () => fromUsaJobs(query)))
   }
 
-  const [settled, marketSalary] = await Promise.all([Promise.all(tasks), salaryTask])
+  const [settled, marketSalary] = await Promise.all([Promise.all(tasks), raceMs(salaryTask, deadline, null)])
   const jobs = [...catalog, ...settled.flatMap((s) => s.jobs)]
   const providers: DiscoveryProvider[] = [
     { name: 'Atelier catalog', status: 'ok', count: catalog.length, note: 'Seeded roles for matching demos' },

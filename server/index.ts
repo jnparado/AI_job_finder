@@ -5,7 +5,7 @@ import { careerInsights, followUps, interviewQuestions, preparePacket } from '..
 import { matchJobs } from '../shared/engine/matcher'
 import { canonicalKey, normalizeAndDedupe } from '../shared/engine/normalize'
 import { configuredProviders, discoverJobs } from './discover'
-import { coachInterview, enrichMatches, parseJobs, planSearch, strategizeCareer, writePacket } from './agents'
+import { coachInterview, enrichMatches, planSearch, strategizeCareer, writePacket } from './agents'
 import { routerStatus } from './ai'
 import { asJob, inferSeniority } from '../shared/engine/jobFields'
 import type {
@@ -357,9 +357,9 @@ function threadSummary(
 function findMatch(userId: string, jobId: string, profile: CandidateProfile): JobMatch | undefined {
   const existing = memory.getMatches(userId).find((m) => m.job.id === jobId)
   if (existing) return existing
-  const job = memory.getJob(jobId)
+  const job = memory.getJob(jobId) ?? JOB_CATALOG.find((row) => row.id === jobId)
   if (!job) return undefined
-  return matchJobs([job], profile)[0]
+  return matchJobs([asJob(job)], profile)[0]
 }
 
 async function applyStaffInvite(email: string, userId: string) {
@@ -684,7 +684,7 @@ async function persistMatches(userId: string, list: JobMatch[]) {
   memory.setMatches(userId, list)
   if (!supabaseAdmin) return
   try {
-    const rows = list.map((m) => ({
+    const rows = list.slice(0, 80).map((m) => ({
       user_id: userId,
       job_id: m.job.id,
       overall_score: m.score,
@@ -711,16 +711,57 @@ async function persistMatches(userId: string, list: JobMatch[]) {
   }
 }
 
+async function scoreReadyJobs(user: AuthUser): Promise<JobMatch[]> {
+  const profile = await loadProfile(user)
+  const live = await Promise.race([
+    loadCandidateJobs(),
+    new Promise<Job[]>((resolve) => setTimeout(() => resolve(memory.allJobs()), 600)),
+  ])
+  const byId = new Map<string, Job>()
+  for (const job of JOB_CATALOG) byId.set(job.id, asJob(job))
+  for (const job of live) byId.set(job.id, job)
+  for (const job of memory.atelierJobs()) byId.set(job.id, job)
+  for (const match of memory.getMatches(user.id)) byId.set(match.job.id, match.job)
+  const jobs = [...byId.values()].filter((job) => job.title && job.company)
+  memory.setJobs(jobs)
+  const scored = matchJobs(jobs, profile)
+  const cached = new Map(memory.getMatches(user.id).map((row) => [row.job.id, row]))
+  const merged = scored.map((row) => {
+    const prev = cached.get(row.job.id)
+    if (!prev) return row
+    return {
+      ...row,
+      summary: prev.summary || row.summary,
+      recommendation: prev.recommendation || row.recommendation,
+      aiLane: prev.aiLane ?? row.aiLane,
+      aiNote: prev.aiNote ?? row.aiNote,
+    }
+  })
+  memory.setMatches(user.id, merged)
+  return merged
+}
+
 async function runSearch(user: AuthUser, minMatch = 0, maxJobs = 40) {
   const profile = await loadProfile(user)
-  const plan = await planSearch(profile)
-  const discovered = await discoverJobs(profile, { query: plan.query })
+  const fallback = [profile.desiredTitle || profile.currentTitle || profile.headline || 'software engineer', ...profile.skills.slice(0, 2)]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const planned = await Promise.race([
+    planSearch(profile).catch(() => ({ query: fallback })),
+    new Promise<{ query: string }>((resolve) => setTimeout(() => resolve({ query: fallback }), 1200)),
+  ])
+  const discovered = await discoverJobs(profile, { query: planned.query || fallback, deadlineMs: 7000 })
   const posted = memory.atelierJobs()
-  const parsedJobs = await parseJobs([...posted, ...discovered.jobs])
+  const parsedJobs = [...posted, ...discovered.jobs]
   const { jobs, duplicatesRemoved } = normalizeAndDedupe(parsedJobs)
   await persistJobs(jobs)
   const scored = matchJobs(jobs, profile)
-  const all = await enrichMatches(scored, profile)
+  const all = await Promise.race([
+    enrichMatches(scored, profile).catch(() => scored),
+    new Promise<typeof scored>((resolve) => setTimeout(() => resolve(scored), 3500)),
+  ])
   const filtered = all.filter((m) => m.score >= minMatch).slice(0, maxJobs)
   await persistMatches(user.id, all)
   const counts = {
@@ -1072,13 +1113,9 @@ app.get('/api/agent/discovery', async (c) => {
 app.get('/api/jobs', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
-  let list = memory.getMatches(user.id)
-  if (!list.length) {
-    const result = await runSearch(user)
-    list = result.all
-  }
+  const list = await scoreReadyJobs(user)
   const min = Number(c.req.query('min') ?? 0)
-  return c.json(list.filter((m) => m.score >= min))
+  return c.json(list.filter((m) => m.score >= min).slice(0, 80))
 })
 
 app.get('/api/jobs/:id', async (c) => {
@@ -2027,6 +2064,16 @@ async function loadLiveJobs(): Promise<Job[]> {
   return (data ?? []).map((row) => jobFromRow(row as Record<string, unknown>))
 }
 
+async function loadCandidateJobs(): Promise<Job[]> {
+  if (!supabaseAdmin) return memory.allJobs()
+  const { data, error } = await supabaseAdmin.from('jobs').select('*').order('posted_at', { ascending: false }).limit(100)
+  if (error) {
+    console.warn('loadCandidateJobs', error.message)
+    return memory.allJobs()
+  }
+  return (data ?? []).map((row) => jobFromRow(row as Record<string, unknown>))
+}
+
 async function loadInviteJobs(): Promise<Job[]> {
   const byId = new Map<string, Job>()
   for (const job of JOB_CATALOG) byId.set(job.id, job)
@@ -2255,6 +2302,7 @@ app.get('/api/admin/dashboard', async (c) => {
     const seconds = sessionSeconds(row)
     return {
       id: row.id,
+      applicationId: row.applicationId,
       jobTitle: row.jobTitle,
       company: row.company,
       candidate: person?.name || person?.email || 'Candidate',
@@ -2277,15 +2325,24 @@ app.get('/api/admin/dashboard', async (c) => {
     available: financeOverview.available,
     withdrawn: financeOverview.withdrawn,
     currency: financeOverview.currency,
-    entries: financeOverview.entries.slice(0, 40).map((row) => ({
-      id: row.id,
-      company: row.company ?? '',
-      jobTitle: row.jobTitle ?? '',
-      amount: row.amount,
-      status: row.status,
-      kind: row.kind,
-      createdAt: row.createdAt,
-    })),
+    entries: financeOverview.entries.slice(0, 200).map((row) => {
+      const person = peopleById.get(row.candidateId)
+      const employer = accounts.find((account) => account.id === row.employerId)
+      return {
+        id: row.id,
+        company: row.company ?? '',
+        jobTitle: row.jobTitle ?? '',
+        amount: row.amount,
+        status: row.status,
+        kind: row.kind,
+        createdAt: row.createdAt,
+        candidate: person?.name || person?.email || 'Candidate',
+        candidateEmail: person?.email ?? '',
+        employerName: employer?.name || '',
+        applicationId: row.applicationId ?? '',
+        note: row.note ?? '',
+      }
+    }),
   }
 
   const inbox = {
@@ -2438,6 +2495,93 @@ app.get('/api/admin/dashboard', async (c) => {
       }
     })
 
+  const sessionsByApp = new Map<string, typeof sessionRows>()
+  for (const row of sessionRows) {
+    const list = sessionsByApp.get(row.applicationId) ?? []
+    list.push(row)
+    sessionsByApp.set(row.applicationId, list)
+  }
+  const ledgerByApp = new Map<string, typeof ledgerRows>()
+  for (const row of ledgerRows) {
+    if (!row.applicationId) continue
+    const list = ledgerByApp.get(row.applicationId) ?? []
+    list.push(row)
+    ledgerByApp.set(row.applicationId, list)
+  }
+  const notesByApp = new Map<string, typeof inboxRecent>()
+  for (const row of inboxRecent) {
+    const list = notesByApp.get(row.applicationId) ?? []
+    list.push(row)
+    notesByApp.set(row.applicationId, list)
+  }
+
+  const contracts = appRows
+    .filter((row) => {
+      if (row.status === 'offer' || row.status === 'hired' || row.status === 'completed') return true
+      if (row.status !== 'rejected') return false
+      return Boolean(sessionsByApp.get(row.id)?.length || ledgerByApp.get(row.id)?.length)
+    })
+    .map((row) => {
+      const job = jobsById.get(row.jobId)
+      const person = peopleById.get(row.userId)
+      const sessions = sessionsByApp.get(row.id) ?? []
+      const pay = ledgerByApp.get(row.id) ?? []
+      const notes = notesByApp.get(row.id) ?? []
+      const seconds = sessions.reduce((n, session) => n + sessionSeconds(session), 0)
+      const live = sessions.some((session) => !session.endedAt)
+      const startedAt = [...sessions.map((session) => session.startedAt), row.submittedAt || row.createdAt].filter(Boolean).sort()[0] ?? ''
+      const lastEnd = sessions
+        .map((session) => session.endedAt)
+        .filter((at): at is string => Boolean(at))
+        .sort()
+        .at(-1) ?? ''
+      const closed = row.status === 'completed' || row.status === 'rejected'
+      const amount = pay.filter((entry) => entry.kind === 'from_employer').reduce((n, entry) => n + entry.amount, 0)
+      const employer = accounts.find((account) => account.id === job?.employerId)
+      const type = sessions.length
+        ? 'hourly'
+        : job?.employmentType === 'contract' || job?.employmentType === 'freelance'
+          ? job.employmentType
+          : amount
+            ? 'milestone'
+            : job?.employmentType || 'role'
+      const phase =
+        row.status === 'rejected' || row.status === 'withdrawn'
+          ? 'cancelled'
+          : row.status === 'completed'
+            ? 'completed'
+            : live || row.status === 'offer'
+              ? 'progress'
+              : 'active'
+      return {
+        id: row.id,
+        title: job?.title ?? 'Role',
+        candidate: person?.name || person?.email || 'Candidate',
+        candidateEmail: person?.email ?? '',
+        company: job?.company ?? '',
+        employerName: employer?.name || '',
+        type,
+        amount,
+        hours: seconds,
+        phase,
+        status: row.status,
+        startedAt,
+        endedAt: closed || !live ? lastEnd : '',
+        live,
+        location: job?.location ?? '',
+        payCount: pay.length,
+        payDone: pay.filter((entry) => entry.status === 'sent' || entry.status === 'available').length,
+        activity: notes.slice(0, 4).map((note) => ({
+          id: note.id,
+          body: note.body,
+          at: note.at,
+          senderRole: note.senderRole,
+        })),
+        createdAt: row.createdAt,
+      }
+    })
+    .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))
+
   return c.json({
     live: Boolean(supabaseAdmin),
     role: profile.role,
@@ -2446,6 +2590,7 @@ app.get('/api/admin/dashboard', async (c) => {
     counts,
     accounts,
     employers,
+    contracts,
     invites,
     boards,
     listings,
@@ -2467,7 +2612,7 @@ app.patch('/api/admin/packets/:id', async (c) => {
   const id = c.req.param('id')
   const body = (await c.req.json().catch(() => ({}))) as { status?: string }
   const next = String(body.status ?? '').trim()
-  const allowed = ['submitted', 'under_review', 'interview', 'offer', 'hired', 'rejected']
+  const allowed = ['submitted', 'under_review', 'interview', 'offer', 'hired', 'completed', 'rejected']
   if (!allowed.includes(next)) return c.json({ error: 'Use a studio packet status.' }, 400)
   const row = (await hydrateApplication(id)) ?? memory.getApplicationById(id)
   if (!row) return c.json({ error: 'Packet not found.' }, 404)
@@ -2479,12 +2624,19 @@ app.patch('/api/admin/packets/:id', async (c) => {
   }
   const job = memory.getJob(row.jobId)
   const hired = isHiredStatus(next)
+  const done = next === 'completed'
   await notifyUser(
     row.userId,
-    hired ? `${job?.title ?? 'Role'} is hired — Atelier time tracker is open` : `${job?.title ?? 'Packet'} is now ${next.replaceAll('_', ' ')}`,
+    hired
+      ? `${job?.title ?? 'Role'} is hired — Atelier time tracker is open`
+      : done
+        ? `${job?.title ?? 'Role'} is marked complete`
+        : `${job?.title ?? 'Packet'} is now ${next.replaceAll('_', ' ')}`,
     hired
       ? `${job?.company ?? 'Atelier'} marked you hired. Open Atelier time tracker to log hours on this role.`
-      : `Staff updated this packet to ${next.replaceAll('_', ' ')}.`,
+      : done
+        ? `Staff closed this hired role on Atelier.`
+        : `Staff updated this packet to ${next.replaceAll('_', ' ')}.`,
     hired ? '/app/ateliar' : `/app/applications/${row.id}`,
   )
   return c.json({ ok: true, id, status: next })
@@ -2671,7 +2823,7 @@ const demoRole = asJob({
   postedAt: new Date().toISOString().slice(0, 10),
   employerId: DEMO_EMPLOYER,
 })
-memory.setJobs([demoRole])
+memory.setJobs([demoRole, ...JOB_CATALOG.map((job) => asJob(job))])
 memory.setMatches(DEMO_USER, matchJobs([demoRole], seeded))
 
 const demoAppId = 'a0000000-0000-4000-8000-000000000001'

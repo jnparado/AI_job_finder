@@ -46,6 +46,7 @@ export function ApplicationsPage() {
   const jobs = useQuery({
     queryKey: ['jobs'],
     queryFn: () => api<JobMatch[]>('/api/jobs'),
+    staleTime: 30_000,
   })
   const list = q.data ?? []
   const counts = {

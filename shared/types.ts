@@ -29,6 +29,7 @@ export type ApplicationStatus =
   | 'final_interview'
   | 'offer'
   | 'hired'
+  | 'completed'
   | 'rejected'
   | 'withdrawn'
 
