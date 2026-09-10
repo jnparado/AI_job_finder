@@ -10,12 +10,16 @@ import {
   ChevronDown,
   ChevronRight,
   CircleHelp,
+  Download,
+  ExternalLink,
   FileText,
   LayoutDashboard,
+  Lock,
   LogOut,
   Mail,
   MessagesSquare,
   MoreHorizontal,
+  Plus,
   Search,
   Settings,
   Shield,
@@ -31,7 +35,7 @@ import { Input } from '@/components/ui/input'
 import { InviteEmployer } from '@/components/jobs/InviteEmployer'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
-import { initials, money, prettyStatus } from '@/lib/utils'
+import { cn, initials, money, prettyStatus } from '@/lib/utils'
 import { formatHoursMinutes } from '@shared/tracker'
 import { sourceLabel, type AccountRole } from '@shared/types'
 import type { LucideIcon } from 'lucide-react'
@@ -135,11 +139,29 @@ interface AdminDashboard {
     status: 'pending' | 'accepted'
     invitedAt: string
   }[]
+  employers: AdminEmployer[]
   activity: { kind: 'person' | 'invite'; title: string; body: string; at: string }[]
   promoteSql: string
 }
 
-type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'tracker' | 'inbox' | 'finances' | 'reports' | 'staff' | 'roles'
+interface AdminEmployer {
+  id: string
+  name: string
+  email: string
+  company: string
+  industry: string
+  city: string
+  country: string
+  website: string
+  joinedAt: string
+  jobs: number
+  packets: number
+  hired: number
+  spent: number
+  status: 'active' | 'pending' | 'suspended'
+}
+
+type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'tracker' | 'inbox' | 'finances' | 'reports' | 'staff' | 'roles' | 'employers'
 type PeopleFilter = 'all' | AccountRole
 
 interface NavLinkItem {
@@ -161,7 +183,7 @@ const NAV: NavSection[] = [
     items: [
       { id: 'people', label: 'Users', icon: Users, people: 'all' },
       { id: 'people', label: 'Candidates', icon: User, people: 'candidate' },
-      { id: 'people', label: 'Employers', icon: Building2, people: 'employer' },
+      { id: 'employers', label: 'Employers', icon: Building2 },
     ],
   },
   {
@@ -214,6 +236,12 @@ export function AdminPage() {
   const [staffEmail, setStaffEmail] = useState('')
   const [staffQuery, setStaffQuery] = useState('')
   const [staffMenu, setStaffMenu] = useState('')
+  const [employerQuery, setEmployerQuery] = useState('')
+  const [employerStatus, setEmployerStatus] = useState<'all' | 'active' | 'pending'>('all')
+  const [employerIndustry, setEmployerIndustry] = useState('all')
+  const [employerPage, setEmployerPage] = useState(0)
+  const [pickedEmployer, setPickedEmployer] = useState('')
+  const [employerTab, setEmployerTab] = useState<'overview' | 'jobs' | 'packets'>('overview')
   const dash = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: () => api<AdminDashboard>('/api/admin/dashboard'),
@@ -322,6 +350,65 @@ export function AdminPage() {
     })
   }, [data?.staffInvites, query, staffQuery, view])
 
+  const employerRows = useMemo(() => {
+    const q = (view === 'employers' ? employerQuery : query).trim().toLowerCase()
+    return (data?.employers ?? []).filter((row) => {
+      if (employerStatus !== 'all' && row.status !== employerStatus) return false
+      if (employerIndustry !== 'all' && row.industry !== employerIndustry) return false
+      if (!q) return true
+      return `${row.name} ${row.email} ${row.company} ${row.industry}`.toLowerCase().includes(q)
+    })
+  }, [data?.employers, employerIndustry, employerQuery, employerStatus, query, view])
+
+  const employerIndustries = useMemo(() => {
+    return [...new Set((data?.employers ?? []).map((row) => row.industry).filter(Boolean))].sort()
+  }, [data?.employers])
+
+  const pageSize = 10
+  const employerPages = Math.max(1, Math.ceil(employerRows.length / pageSize))
+  const employerPageSafe = Math.min(employerPage, employerPages - 1)
+  const employerSlice = employerRows.slice(employerPageSafe * pageSize, employerPageSafe * pageSize + pageSize)
+  const selectedEmployer = employerRows.find((row) => row.id === pickedEmployer) ?? employerSlice[0]
+  const employerJobs = useMemo(() => {
+    if (!selectedEmployer) return []
+    const company = selectedEmployer.company.trim().toLowerCase()
+    return (data?.listings ?? []).filter((row) => row.atelier && row.company.trim().toLowerCase() === company)
+  }, [data?.listings, selectedEmployer])
+  const employerPackets = useMemo(() => {
+    if (!selectedEmployer) return []
+    const company = selectedEmployer.company.trim().toLowerCase()
+    return (data?.packetsList ?? []).filter((row) => row.company.trim().toLowerCase() === company)
+  }, [data?.packetsList, selectedEmployer])
+  const nowMs = Date.now()
+  const employerStats = useMemo(() => {
+    const rows = data?.employers ?? []
+    const month = 30 * 24 * 60 * 60 * 1000
+    const total = rows.length
+    const active = rows.filter((row) => row.status === 'active').length
+    const pending = rows.filter((row) => row.status !== 'active').length
+    const fresh = rows.filter((row) => row.joinedAt && nowMs - new Date(row.joinedAt).getTime() <= month).length
+    const prior = rows.filter((row) => {
+      if (!row.joinedAt) return false
+      const age = nowMs - new Date(row.joinedAt).getTime()
+      return age > month && age <= month * 2
+    }).length
+    const delta = (cur: number, prev: number) => {
+      if (!prev && !cur) return 0
+      if (!prev) return 100
+      return Math.round(((cur - prev) / prev) * 100)
+    }
+    return {
+      total,
+      active,
+      pending,
+      fresh,
+      totalDelta: delta(fresh, prior),
+      activeDelta: delta(active, Math.max(0, active - fresh)),
+      newDelta: delta(fresh, prior),
+      pendingDelta: delta(pending, Math.max(0, pending - 1)),
+    }
+  }, [data?.employers, nowMs])
+
   const candidates = (data?.accounts ?? []).filter((a) => a.role === 'candidate')
 
   function onInviteStaff(e: FormEvent) {
@@ -341,6 +428,22 @@ export function AdminPage() {
     })
   }
 
+  function exportEmployers() {
+    const header = 'Name,Email,Company,Industry,Jobs,Packets,Hired,Spent,Status,Joined'
+    const lines = employerRows.map((row) =>
+      [row.name, row.email, row.company, row.industry, row.jobs, row.packets, row.hired, row.spent, row.status, row.joinedAt]
+        .map((v) => `"${String(v).replaceAll('"', '""')}"`)
+        .join(','),
+    )
+    const blob = new Blob([`${header}\n${lines.join('\n')}`], { type: 'text/csv' })
+    const href = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = href
+    a.download = 'atelier-employers.csv'
+    a.click()
+    URL.revokeObjectURL(href)
+  }
+
   function go(next: DeskView, role: PeopleFilter = 'all') {
     setView(next)
     if (next === 'people') setPeopleRole(role)
@@ -350,6 +453,7 @@ export function AdminPage() {
     setAccountOpen(false)
     setStaffMenu('')
     setQuery('')
+    if (next === 'employers') setEmployerPage(0)
   }
 
   function linkActive(item: NavLinkItem) {
@@ -357,11 +461,14 @@ export function AdminPage() {
     return view === item.id
   }
 
-  const searchValue = view === 'people' || view === 'roles' ? peopleQuery : view === 'staff' ? staffQuery : query
+  const searchValue = view === 'people' || view === 'roles' ? peopleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : query
   const onSearch = (value: string) => {
     if (view === 'people' || view === 'roles') setPeopleQuery(value)
     else if (view === 'staff') setStaffQuery(value)
-    else setQuery(value)
+    else if (view === 'employers') {
+      setEmployerQuery(value)
+      setEmployerPage(0)
+    } else setQuery(value)
   }
   const alertCount = (counts?.companiesToInvite ?? 0) + (counts?.messages ?? 0)
   const searchHint =
@@ -373,9 +480,11 @@ export function AdminPage() {
           ? 'Search pay ledger'
           : view === 'inbox'
             ? 'Search messages'
-            : view === 'packets'
+              : view === 'packets'
               ? 'Search packets'
-              : 'Search users, jobs, packets, or companies'
+              : view === 'employers'
+                ? 'Search employers by name, email, or company'
+                : 'Search users, jobs, packets, or companies'
 
   return (
     <div className="min-h-svh bg-[#f3f5f4] lg:grid lg:grid-cols-[252px_minmax(0,1fr)]">
@@ -1010,6 +1119,249 @@ export function AdminPage() {
             </div>
           ) : null}
 
+          {view === 'employers' ? (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-[#8a918c]">
+                    Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Employers</span>
+                  </p>
+                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Employers</h1>
+                  <p className="mt-1 text-sm text-[#5c635f]">Manage hiring accounts, posted jobs, and pay on Atelier.</p>
+                </div>
+                <Button type="button" onClick={() => go('invite')}>
+                  <Plus className="size-4" />
+                  Add Employer
+                </Button>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_18rem]">
+                <EmployerStat icon={Building2} color="#14a35a" label="Total Employers" value={employerStats.total} delta={employerStats.totalDelta} />
+                <EmployerStat icon={User} color="#22c55e" label="Active Employers" value={employerStats.active} delta={employerStats.activeDelta} />
+                <EmployerStat icon={UserPlus} color="#3b82f6" label="New Employers" value={employerStats.fresh} delta={employerStats.newDelta} />
+                <EmployerStat icon={Lock} color="#8a918c" label="Pending Employers" value={employerStats.pending} delta={employerStats.pendingDelta} />
+                {selectedEmployer ? (
+                  <section className="rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="grid size-10 place-items-center rounded-xl bg-[#e8f6ee] text-sm font-semibold text-[#147a48]">
+                        {initials(selectedEmployer.company || selectedEmployer.name)}
+                      </span>
+                      <StatusDot status={selectedEmployer.status} />
+                    </div>
+                    <p className="mt-3 font-medium">{selectedEmployer.company}</p>
+                    <p className="truncate text-sm text-[#5c635f]">{selectedEmployer.email}</p>
+                    <p className="mt-1 text-xs text-[#8a918c]">
+                      {[selectedEmployer.city, selectedEmployer.country].filter(Boolean).join(', ') || 'Location not set'}
+                    </p>
+                    <p className="mt-1 text-xs text-[#8a918c]">Joined {day(selectedEmployer.joinedAt)}</p>
+                    {selectedEmployer.website ? (
+                      <a href={selectedEmployer.website} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm text-[#147a48]">
+                        View website <ExternalLink className="size-3.5" />
+                      </a>
+                    ) : (
+                      <button type="button" className="mt-3 inline-flex items-center gap-1 text-sm text-[#147a48]" onClick={() => go('invite')}>
+                        Invite to hire <ExternalLink className="size-3.5" />
+                      </button>
+                    )}
+                  </section>
+                ) : (
+                  <section className="rounded-2xl bg-white p-4 text-sm text-[#8a918c] shadow-[0_1px_2px_rgba(19,38,31,0.06)]">No employers yet.</section>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="relative min-w-[16rem] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
+                  <Input
+                    className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
+                    placeholder="Search employers by name, email, or company"
+                    value={employerQuery}
+                    onChange={(e) => {
+                      setEmployerQuery(e.target.value)
+                      setEmployerPage(0)
+                    }}
+                  />
+                </label>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={employerStatus}
+                  onChange={(e) => {
+                    setEmployerStatus(e.target.value as typeof employerStatus)
+                    setEmployerPage(0)
+                  }}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="pending">Pending</option>
+                </select>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={employerIndustry}
+                  onChange={(e) => {
+                    setEmployerIndustry(e.target.value)
+                    setEmployerPage(0)
+                  }}
+                >
+                  <option value="all">All industries</option>
+                  {employerIndustries.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+                <Button variant="outline" type="button" onClick={exportEmployers}>
+                  <Download className="size-4" />
+                  Export
+                </Button>
+              </div>
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+                <Panel className="overflow-hidden p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[52rem] text-left text-sm">
+                      <thead className="text-xs text-[#8a918c]">
+                        <tr className="border-b border-[#eef1ee]">
+                          <th className="px-4 py-3 font-medium">Employer</th>
+                          <th className="px-3 py-3 font-medium">Company</th>
+                          <th className="px-3 py-3 font-medium">Industry</th>
+                          <th className="px-3 py-3 font-medium">Paid out</th>
+                          <th className="px-3 py-3 font-medium">Jobs</th>
+                          <th className="px-3 py-3 font-medium">Status</th>
+                          <th className="px-3 py-3 font-medium">Joined</th>
+                          <th className="px-3 py-3 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {employerSlice.map((row) => (
+                          <tr
+                            key={row.id}
+                            className={`cursor-pointer border-b border-[#eef1ee] ${selectedEmployer?.id === row.id ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
+                            onClick={() => {
+                              setPickedEmployer(row.id)
+                              setEmployerTab('overview')
+                            }}
+                          >
+                            <td className="px-4 py-3">
+                              <span className="flex items-center gap-3">
+                                <span className="grid size-9 place-items-center rounded-full bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
+                                  {initials(row.company || row.name)}
+                                </span>
+                                <span>
+                                  <span className="block font-medium">{row.name}</span>
+                                  <span className="block text-xs text-[#8a918c]">{row.email}</span>
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">{row.company}</td>
+                            <td className="px-3 py-3 text-[#5c635f]">{row.industry || '—'}</td>
+                            <td className="px-3 py-3">{money(row.spent)}</td>
+                            <td className="px-3 py-3">{row.jobs}</td>
+                            <td className="px-3 py-3">
+                              <StatusDot status={row.status} />
+                            </td>
+                            <td className="px-3 py-3 text-[#5c635f]">{day(row.joinedAt)}</td>
+                            <td className="px-3 py-3">
+                              <button
+                                type="button"
+                                className="grid size-8 place-items-center rounded-full hover:bg-white"
+                                aria-label="Actions"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setPickedEmployer(row.id)
+                                  setStaffMenu(staffMenu === row.id ? '' : row.id)
+                                }}
+                              >
+                                <MoreHorizontal className="size-4 text-[#8a918c]" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!employerSlice.length ? <p className="px-4 py-8 text-sm text-[#8a918c]">No employers match this search.</p> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
+                    <p>
+                      Showing {employerRows.length ? employerPageSafe * pageSize + 1 : 0}-{Math.min(employerRows.length, employerPageSafe * pageSize + pageSize)} of {employerRows.length} employers
+                    </p>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: employerPages }, (_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setEmployerPage(i)}
+                          className={`grid size-7 place-items-center rounded-md ${employerPageSafe === i ? 'bg-[#13261f] text-white' : 'hover:bg-[#f3f5f4]'}`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </Panel>
+
+                <div className="space-y-4">
+                  <Panel>
+                    <div className="flex gap-3 border-b border-[#eef1ee] text-sm">
+                      {(['overview', 'jobs', 'packets'] as const).map((tab) => (
+                        <button
+                          key={tab}
+                          type="button"
+                          onClick={() => setEmployerTab(tab)}
+                          className={`-mb-px border-b-2 pb-2 capitalize ${employerTab === tab ? 'border-[#14a35a] font-medium text-[#161c19]' : 'border-transparent text-[#8a918c]'}`}
+                        >
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+                    {selectedEmployer && employerTab === 'overview' ? (
+                      <dl className="mt-4 space-y-3 text-sm">
+                        <OverviewRow label="Paid out" value={money(selectedEmployer.spent)} />
+                        <OverviewRow label="Active jobs" value={String(selectedEmployer.jobs)} />
+                        <OverviewRow label="Packets" value={String(selectedEmployer.packets)} />
+                        <OverviewRow label="Hired" value={String(selectedEmployer.hired)} />
+                        <OverviewRow label="Industry" value={selectedEmployer.industry || '—'} />
+                      </dl>
+                    ) : null}
+                    {employerTab === 'jobs' ? (
+                      <ul className="mt-4 space-y-2 text-sm">
+                        {employerJobs.map((row) => (
+                          <li key={row.id} className="rounded-xl bg-[#f7f8f7] px-3 py-2">
+                            <p className="font-medium">{row.title}</p>
+                            <p className="text-xs text-[#8a918c]">{row.postedAt || 'Open'}</p>
+                          </li>
+                        ))}
+                        {!employerJobs.length ? <li className="text-[#8a918c]">No Atelier jobs posted yet.</li> : null}
+                      </ul>
+                    ) : null}
+                    {employerTab === 'packets' ? (
+                      <ul className="mt-4 space-y-2 text-sm">
+                        {employerPackets.map((row) => (
+                          <li key={row.id} className="rounded-xl bg-[#f7f8f7] px-3 py-2">
+                            <p className="font-medium">{row.candidate}</p>
+                            <p className="text-xs text-[#8a918c]">
+                              {row.jobTitle} · {prettyStatus(row.status)}
+                            </p>
+                          </li>
+                        ))}
+                        {!employerPackets.length ? <li className="text-[#8a918c]">No packets in this inbox yet.</li> : null}
+                      </ul>
+                    ) : null}
+                  </Panel>
+                  <Panel>
+                    <h2 className="font-sans text-base font-semibold">Actions</h2>
+                    <div className="mt-2 divide-y divide-[#eef1ee]">
+                      <QuickRow icon={Mail} label="Copy email" onClick={() => selectedEmployer && void navigator.clipboard.writeText(selectedEmployer.email)} />
+                      <QuickRow icon={UserPlus} label="Invite this company" onClick={() => go('invite')} />
+                      <QuickRow icon={Briefcase} label="View jobs" onClick={() => go('listings')} />
+                      <QuickRow icon={Wallet} label="Open finances" onClick={() => go('finances')} />
+                      <QuickRow icon={FileText} label="Review packets" onClick={() => go('packets')} />
+                    </div>
+                  </Panel>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {view === 'people' ? (
             <Panel>
               <h2 className="font-sans text-lg font-semibold">Users</h2>
@@ -1191,7 +1543,64 @@ function SideRow({
 }
 
 function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-2xl bg-white p-5 shadow-[0_1px_2px_rgba(19,38,31,0.06)] ${className}`}>{children}</section>
+  return <section className={cn('rounded-2xl bg-white p-5 shadow-[0_1px_2px_rgba(19,38,31,0.06)]', className)}>{children}</section>
+}
+
+function EmployerStat({
+  icon: Icon,
+  label,
+  value,
+  delta,
+  color,
+}: {
+  icon: LucideIcon
+  label: string
+  value: number
+  delta: number
+  color: string
+}) {
+  const up = delta >= 0
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]">
+      <div className="flex items-start gap-3">
+        <span className="grid size-9 place-items-center rounded-full" style={{ background: `${color}1a`, color }}>
+          <Icon className="size-4" />
+        </span>
+        <div>
+          <p className="text-sm text-[#5c635f]">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{value.toLocaleString()}</p>
+          <p className={`mt-1 text-xs ${up ? 'text-[#14a35a]' : 'text-[#b85c38]'}`}>
+            {up ? '+' : ''}
+            {delta}% vs last 30 days
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StatusDot({ status }: { status: 'active' | 'pending' | 'suspended' }) {
+  const map = {
+    active: { label: 'Active', className: 'bg-[#d1fae5] text-[#047857]', dot: '#22c55e' },
+    pending: { label: 'Pending', className: 'bg-[#fef3c7] text-[#b45309]', dot: '#f59e0b' },
+    suspended: { label: 'Suspended', className: 'bg-[#fee2e2] text-[#b91c1c]', dot: '#ef4444' },
+  }
+  const row = map[status]
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${row.className}`}>
+      <span className="size-1.5 rounded-full" style={{ background: row.dot }} />
+      {row.label}
+    </span>
+  )
+}
+
+function OverviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-[#8a918c]">{label}</dt>
+      <dd className="font-medium">{value}</dd>
+    </div>
+  )
 }
 
 function MetricCard({

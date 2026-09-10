@@ -2080,18 +2080,23 @@ app.get('/api/admin/dashboard', async (c) => {
     role: AccountRole
     companyName: string
     joinedAt: string
+    industry: string
+    city: string
+    country: string
+    website: string
+    onboarded: boolean
   }[] = []
 
   if (supabaseAdmin) {
     let { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('id, email, role, first_name, last_name, company_name, created_at')
+      .select('id, email, role, first_name, last_name, company_name, created_at, industry, city, country, company_website, onboarding_completed')
       .order('created_at', { ascending: false })
       .limit(200)
-    if (error && /created_at/.test(error.message)) {
+    if (error && /industry|city|country|company_website|onboarding_completed|created_at/.test(error.message)) {
       const retry = await supabaseAdmin
         .from('profiles')
-        .select('id, email, role, first_name, last_name, company_name')
+        .select('id, email, role, first_name, last_name, company_name, created_at')
         .limit(200)
       data = retry.data as typeof data
       error = retry.error
@@ -2107,6 +2112,11 @@ app.get('/api/admin/dashboard', async (c) => {
         role,
         companyName: String(row.company_name ?? ''),
         joinedAt: row.created_at ? String(row.created_at) : '',
+        industry: String(row.industry ?? ''),
+        city: String(row.city ?? ''),
+        country: String(row.country ?? ''),
+        website: String(row.company_website ?? ''),
+        onboarded: Boolean(row.onboarding_completed),
       }
     })
   }
@@ -2353,6 +2363,62 @@ app.get('/api/admin/dashboard', async (c) => {
   }
   staffInvites.sort((a, b) => String(b.invitedAt).localeCompare(String(a.invitedAt)))
 
+  const spendByEmployer = new Map<string, number>()
+  for (const row of ledgerRows) {
+    if (!row.employerId || row.kind !== 'from_employer') continue
+    spendByEmployer.set(row.employerId, (spendByEmployer.get(row.employerId) ?? 0) + row.amount)
+  }
+  const jobsByEmployer = new Map<string, typeof jobs>()
+  for (const job of jobs) {
+    const key = job.employerId || ''
+    if (!key) continue
+    const list = jobsByEmployer.get(key) ?? []
+    list.push(job)
+    jobsByEmployer.set(key, list)
+  }
+  const packetByJob = new Map<string, { packets: number; hired: number }>()
+  for (const row of appRows) {
+    const cur = packetByJob.get(row.jobId) ?? { packets: 0, hired: 0 }
+    cur.packets += 1
+    if (isHiredStatus(row.status)) cur.hired += 1
+    packetByJob.set(row.jobId, cur)
+  }
+  const employers = accounts
+    .filter((row) => row.role === 'employer')
+    .map((row) => {
+      const mine = jobsByEmployer.get(row.id) ?? []
+      const companyKey = row.companyName.trim().toLowerCase()
+      const extras = companyKey
+        ? jobs.filter((job) => !job.employerId && job.source === 'atelier' && job.company.trim().toLowerCase() === companyKey)
+        : []
+      const allMine = [...mine, ...extras.filter((job) => !mine.some((m) => m.id === job.id))]
+      let packetsFor = 0
+      let hiredFor = 0
+      for (const job of allMine) {
+        const hit = packetByJob.get(job.id)
+        if (!hit) continue
+        packetsFor += hit.packets
+        hiredFor += hit.hired
+      }
+      const status = allMine.length ? 'active' : row.onboarded ? 'active' : 'pending'
+      return {
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        company: row.companyName || row.name,
+        industry: row.industry,
+        city: row.city,
+        country: row.country,
+        website: row.website,
+        joinedAt: row.joinedAt,
+        jobs: allMine.length,
+        packets: packetsFor,
+        hired: hiredFor,
+        spent: spendByEmployer.get(row.id) ?? 0,
+        status,
+      }
+    })
+
   return c.json({
     live: Boolean(supabaseAdmin),
     role: profile.role,
@@ -2360,6 +2426,7 @@ app.get('/api/admin/dashboard', async (c) => {
     name: displayName(profile),
     counts,
     accounts,
+    employers,
     invites,
     boards,
     listings,
