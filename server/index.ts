@@ -2011,14 +2011,23 @@ app.get('/api/admin/dashboard', async (c) => {
     name: string
     role: AccountRole
     companyName: string
+    joinedAt: string
   }[] = []
 
   if (supabaseAdmin) {
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('id, email, role, first_name, last_name, company_name')
+      .select('id, email, role, first_name, last_name, company_name, created_at')
       .order('created_at', { ascending: false })
       .limit(200)
+    if (error && /created_at/.test(error.message)) {
+      const retry = await supabaseAdmin
+        .from('profiles')
+        .select('id, email, role, first_name, last_name, company_name')
+        .limit(200)
+      data = retry.data
+      error = retry.error
+    }
     if (error) console.warn('admin accounts', error.message)
     accounts = (data ?? []).map((row) => {
       const role = parseAccountRole(row.role)
@@ -2029,9 +2038,51 @@ app.get('/api/admin/dashboard', async (c) => {
         name: name || String(row.email ?? 'Account'),
         role,
         companyName: String(row.company_name ?? ''),
+        joinedAt: row.created_at ? String(row.created_at) : '',
       }
     })
   }
+
+  let packets = 0
+  if (supabaseAdmin) {
+    const { count, error } = await supabaseAdmin.from('applications').select('id', { count: 'exact', head: true })
+    if (error) console.warn('admin packets', error.message)
+    else packets = count ?? 0
+  }
+
+  const boardMap = new Map<string, number>()
+  for (const job of jobs) boardMap.set(job.source, (boardMap.get(job.source) ?? 0) + 1)
+  const boards = [...boardMap.entries()]
+    .map(([source, count]) => ({ source, count }))
+    .sort((a, b) => b.count - a.count)
+
+  const listings = [...jobs]
+    .sort((a, b) => String(b.postedAt ?? '').localeCompare(String(a.postedAt ?? '')))
+    .slice(0, 8)
+    .map((job) => ({
+      id: job.id,
+      title: job.title,
+      company: job.company,
+      source: job.source,
+      remote: Boolean(job.remote),
+      postedAt: job.postedAt ?? '',
+      atelier: Boolean(job.employerId || job.source === 'atelier'),
+    }))
+
+  const activity = [
+    ...accounts.slice(0, 4).map((row) => ({
+      kind: 'person' as const,
+      title: row.name,
+      body: `${row.role.replace('_', ' ')} · ${row.email}`,
+      at: row.joinedAt,
+    })),
+    ...invites.slice(0, 4).map((row) => ({
+      kind: 'invite' as const,
+      title: row.company,
+      body: `${row.listings} listing${row.listings === 1 ? '' : 's'} waiting on ${row.sources[0] ?? 'a board'}`,
+      at: '',
+    })),
+  ]
 
   const counts = {
     candidates: accounts.filter((a) => a.role === 'candidate').length,
@@ -2039,6 +2090,8 @@ app.get('/api/admin/dashboard', async (c) => {
     admins: accounts.filter((a) => isStaffRole(a.role)).length,
     jobs: jobs.length,
     companiesToInvite: invites.length,
+    packets,
+    people: accounts.length,
   }
 
   return c.json({
@@ -2048,6 +2101,9 @@ app.get('/api/admin/dashboard', async (c) => {
     counts,
     accounts,
     invites,
+    boards,
+    listings,
+    activity,
     promoteSql: "update public.profiles set role = 'admin' where email = 'you@example.com';",
   })
 })
