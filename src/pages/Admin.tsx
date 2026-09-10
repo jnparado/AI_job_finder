@@ -21,9 +21,11 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Send,
   Settings,
   Shield,
   Timer,
+  X,
   User,
   UserPlus,
   Users,
@@ -94,7 +96,14 @@ interface AdminDashboard {
     jobTitle: string
     company: string
     candidate: string
+    candidateEmail: string
     createdAt: string
+    submittedAt: string
+    coverLetter: string
+    channel: string
+    atelier: boolean
+    location: string
+    postedAt: string
   }[]
   tracker: {
     live: number
@@ -163,6 +172,7 @@ interface AdminEmployer {
 
 type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'tracker' | 'inbox' | 'finances' | 'reports' | 'staff' | 'roles' | 'employers'
 type PeopleFilter = 'all' | AccountRole
+type PacketBucket = 'pending' | 'accepted' | 'declined' | 'draft'
 
 interface NavLinkItem {
   id: DeskView
@@ -242,6 +252,12 @@ export function AdminPage() {
   const [employerPage, setEmployerPage] = useState(0)
   const [pickedEmployer, setPickedEmployer] = useState('')
   const [employerTab, setEmployerTab] = useState<'overview' | 'jobs' | 'packets'>('overview')
+  const [packetQuery, setPacketQuery] = useState('')
+  const [packetStatus, setPacketStatus] = useState<'all' | PacketBucket>('all')
+  const [packetCompany, setPacketCompany] = useState('all')
+  const [packetPage, setPacketPage] = useState(0)
+  const [pickedPacket, setPickedPacket] = useState('')
+  const [packetOpen, setPacketOpen] = useState(true)
   const dash = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: () => api<AdminDashboard>('/api/admin/dashboard'),
@@ -266,6 +282,13 @@ export function AdminPage() {
     mutationFn: (inviteEmail: string) => api('/api/admin/invite/cancel', { method: 'POST', body: JSON.stringify({ email: inviteEmail }) }),
     onSuccess: () => {
       setStaffMenu('')
+      void qc.invalidateQueries({ queryKey: ['admin-dashboard'] })
+    },
+  })
+  const setPacket = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api(`/api/admin/packets/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['admin-dashboard'] })
     },
   })
@@ -302,6 +325,8 @@ export function AdminPage() {
     })
   }, [data?.accounts, peopleQuery, peopleRole, query, view])
 
+  const nowMs = Date.now()
+
   const searchListings = useMemo(() => {
     const q = query.trim().toLowerCase()
     return (data?.listings ?? []).filter((row) => {
@@ -311,12 +336,59 @@ export function AdminPage() {
   }, [data?.listings, query])
 
   const packets = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = (view === 'packets' ? packetQuery : query).trim().toLowerCase()
     return (data?.packetsList ?? []).filter((row) => {
+      if (packetStatus !== 'all' && packetBucket(row.status) !== packetStatus) return false
+      if (packetCompany !== 'all' && row.company !== packetCompany) return false
       if (!q) return true
       return `${row.candidate} ${row.jobTitle} ${row.company} ${row.status}`.toLowerCase().includes(q)
     })
-  }, [data?.packetsList, query])
+  }, [data?.packetsList, packetCompany, packetQuery, packetStatus, query, view])
+
+  const packetCompanies = useMemo(() => {
+    return [...new Set((data?.packetsList ?? []).map((row) => row.company).filter(Boolean))].sort()
+  }, [data?.packetsList])
+
+  const packetPages = Math.max(1, Math.ceil(packets.length / 10))
+  const packetPageSafe = Math.min(packetPage, packetPages - 1)
+  const packetSlice = packets.slice(packetPageSafe * 10, packetPageSafe * 10 + 10)
+  const selectedPacket = packets.find((row) => row.id === pickedPacket) ?? packetSlice[0]
+  const packetStats = useMemo(() => {
+    const rows = data?.packetsList ?? []
+    const month = 30 * 24 * 60 * 60 * 1000
+    const fresh = (status: PacketBucket | 'all') =>
+      rows.filter((row) => {
+        const at = row.submittedAt || row.createdAt
+        if (!at || nowMs - new Date(at).getTime() > month) return false
+        return status === 'all' || packetBucket(row.status) === status
+      }).length
+    const prior = (status: PacketBucket | 'all') =>
+      rows.filter((row) => {
+        const at = row.submittedAt || row.createdAt
+        if (!at) return false
+        const age = nowMs - new Date(at).getTime()
+        if (age <= month || age > month * 2) return false
+        return status === 'all' || packetBucket(row.status) === status
+      }).length
+    const delta = (cur: number, prev: number) => {
+      if (!prev && !cur) return 0
+      if (!prev) return 100
+      return Math.round(((cur - prev) / prev) * 100)
+    }
+    const pending = rows.filter((row) => packetBucket(row.status) === 'pending').length
+    const accepted = rows.filter((row) => packetBucket(row.status) === 'accepted').length
+    const declined = rows.filter((row) => packetBucket(row.status) === 'declined').length
+    return {
+      total: rows.length,
+      pending,
+      accepted,
+      declined,
+      totalDelta: delta(fresh('all'), prior('all')),
+      pendingDelta: delta(fresh('pending'), prior('pending')),
+      acceptedDelta: delta(fresh('accepted'), prior('accepted')),
+      declinedDelta: delta(fresh('declined'), prior('declined')),
+    }
+  }, [data?.packetsList, nowMs])
 
   const sessions = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -379,7 +451,6 @@ export function AdminPage() {
     const company = selectedEmployer.company.trim().toLowerCase()
     return (data?.packetsList ?? []).filter((row) => row.company.trim().toLowerCase() === company)
   }, [data?.packetsList, selectedEmployer])
-  const nowMs = Date.now()
   const employerStats = useMemo(() => {
     const rows = data?.employers ?? []
     const month = 30 * 24 * 60 * 60 * 1000
@@ -444,6 +515,22 @@ export function AdminPage() {
     URL.revokeObjectURL(href)
   }
 
+  function exportPackets() {
+    const header = 'Candidate,Email,Role,Company,Status,Submitted'
+    const lines = packets.map((row) =>
+      [row.candidate, row.candidateEmail, row.jobTitle, row.company, row.status, row.submittedAt || row.createdAt]
+        .map((v) => `"${String(v).replaceAll('"', '""')}"`)
+        .join(','),
+    )
+    const blob = new Blob([`${header}\n${lines.join('\n')}`], { type: 'text/csv' })
+    const href = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = href
+    a.download = 'atelier-packets.csv'
+    a.click()
+    URL.revokeObjectURL(href)
+  }
+
   function go(next: DeskView, role: PeopleFilter = 'all') {
     setView(next)
     if (next === 'people') setPeopleRole(role)
@@ -454,6 +541,10 @@ export function AdminPage() {
     setStaffMenu('')
     setQuery('')
     if (next === 'employers') setEmployerPage(0)
+    if (next === 'packets') {
+      setPacketPage(0)
+      setPacketOpen(true)
+    }
   }
 
   function linkActive(item: NavLinkItem) {
@@ -461,13 +552,16 @@ export function AdminPage() {
     return view === item.id
   }
 
-  const searchValue = view === 'people' || view === 'roles' ? peopleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : query
+  const searchValue = view === 'people' || view === 'roles' ? peopleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'packets' ? packetQuery : query
   const onSearch = (value: string) => {
     if (view === 'people' || view === 'roles') setPeopleQuery(value)
     else if (view === 'staff') setStaffQuery(value)
     else if (view === 'employers') {
       setEmployerQuery(value)
       setEmployerPage(0)
+    } else if (view === 'packets') {
+      setPacketQuery(value)
+      setPacketPage(0)
     } else setQuery(value)
   }
   const alertCount = (counts?.companiesToInvite ?? 0) + (counts?.messages ?? 0)
@@ -1399,15 +1493,223 @@ export function AdminPage() {
           ) : null}
 
           {view === 'packets' ? (
-            <Panel>
-              <h2 className="font-sans text-lg font-semibold">Packets</h2>
-              <p className="mt-2 text-sm text-[#5c635f]">{counts?.packets ?? 0} packets in the studio.</p>
-              <DeskTable
-                columns={['Candidate', 'Role', 'Company', 'Status', 'Created']}
-                rows={packets.map((row) => [row.candidate, row.jobTitle, row.company || '—', prettyStatus(row.status), day(row.createdAt)])}
-                empty="No packets yet."
-              />
-            </Panel>
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-[#8a918c]">
+                    Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Packets</span>
+                  </p>
+                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Packets</h1>
+                  <p className="mt-1 text-sm text-[#5c635f]">Review packets candidates approved. They leave only after that send.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-2 rounded-xl border border-[#e4e8e5] bg-white px-3 py-2 text-sm text-[#5c635f]">
+                    <Calendar className="size-4" />
+                    Last 30 days
+                  </span>
+                  <Button variant="outline" type="button" onClick={exportPackets}>
+                    <Download className="size-4" />
+                    Export
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <EmployerStat icon={FileText} color="#14a35a" label="Total Packets" value={packetStats.total} delta={packetStats.totalDelta} />
+                <EmployerStat icon={Send} color="#3b82f6" label="Pending review" value={packetStats.pending} delta={packetStats.pendingDelta} />
+                <EmployerStat icon={Check} color="#22c55e" label="Hired / offer" value={packetStats.accepted} delta={packetStats.acceptedDelta} />
+                <EmployerStat icon={X} color="#ef4444" label="Declined" value={packetStats.declined} delta={packetStats.declinedDelta} />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="relative min-w-[16rem] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
+                  <Input
+                    className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
+                    placeholder="Search packets by candidate, role, or company"
+                    value={packetQuery}
+                    onChange={(e) => {
+                      setPacketQuery(e.target.value)
+                      setPacketPage(0)
+                    }}
+                  />
+                </label>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={packetStatus}
+                  onChange={(e) => {
+                    setPacketStatus(e.target.value as typeof packetStatus)
+                    setPacketPage(0)
+                  }}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="accepted">Hired / offer</option>
+                  <option value="declined">Declined</option>
+                  <option value="draft">Draft</option>
+                </select>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={packetCompany}
+                  onChange={(e) => {
+                    setPacketCompany(e.target.value)
+                    setPacketPage(0)
+                  }}
+                >
+                  <option value="all">All employers</option>
+                  {packetCompanies.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={`grid gap-5 ${packetOpen && selectedPacket ? 'xl:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
+                <Panel className="overflow-hidden p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[52rem] text-left text-sm">
+                      <thead className="text-xs text-[#8a918c]">
+                        <tr className="border-b border-[#eef1ee]">
+                          <th className="px-4 py-3 font-medium">Candidate</th>
+                          <th className="px-3 py-3 font-medium">Role</th>
+                          <th className="px-3 py-3 font-medium">Employer</th>
+                          <th className="px-3 py-3 font-medium">Status</th>
+                          <th className="px-3 py-3 font-medium">Submitted</th>
+                          <th className="px-3 py-3 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {packetSlice.map((row) => (
+                          <tr
+                            key={row.id}
+                            className={`cursor-pointer border-b border-[#eef1ee] ${selectedPacket?.id === row.id && packetOpen ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
+                            onClick={() => {
+                              setPickedPacket(row.id)
+                              setPacketOpen(true)
+                            }}
+                          >
+                            <td className="px-4 py-3">
+                              <span className="flex items-center gap-3">
+                                <span className="grid size-9 place-items-center rounded-full bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
+                                  {initials(row.candidate)}
+                                </span>
+                                <span>
+                                  <span className="block font-medium">{row.candidate}</span>
+                                  <span className="block text-xs text-[#8a918c]">{row.candidateEmail || '—'}</span>
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">
+                              <p className="font-medium">{row.jobTitle}</p>
+                              <p className="text-xs text-[#8a918c]">{row.atelier ? 'Atelier' : row.channel || 'Open listing'}</p>
+                            </td>
+                            <td className="px-3 py-3">{row.company || '—'}</td>
+                            <td className="px-3 py-3">
+                              <PacketDot status={row.status} />
+                            </td>
+                            <td className="px-3 py-3 text-[#5c635f]">{ago(row.submittedAt || row.createdAt)}</td>
+                            <td className="px-3 py-3">
+                              <MoreHorizontal className="size-4 text-[#8a918c]" />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!packetSlice.length ? <p className="px-4 py-8 text-sm text-[#8a918c]">No packets match this search.</p> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
+                    <p>
+                      Showing {packets.length ? packetPageSafe * 10 + 1 : 0}-{Math.min(packets.length, packetPageSafe * 10 + 10)} of {packets.length} packets
+                    </p>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: packetPages }, (_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setPacketPage(i)}
+                          className={`grid size-7 place-items-center rounded-md ${packetPageSafe === i ? 'bg-[#13261f] text-white' : 'hover:bg-[#f3f5f4]'}`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </Panel>
+
+                {packetOpen && selectedPacket ? (
+                  <Panel>
+                    <div className="flex items-start justify-between gap-2">
+                      <h2 className="font-sans text-base font-semibold">Packet details</h2>
+                      <button type="button" className="grid size-8 place-items-center rounded-full hover:bg-[#f3f5f4]" aria-label="Close" onClick={() => setPacketOpen(false)}>
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <div className="mt-4 flex items-center gap-3">
+                      <span className="grid size-12 place-items-center rounded-full bg-[#e8f6ee] text-sm font-medium text-[#147a48]">
+                        {initials(selectedPacket.candidate)}
+                      </span>
+                      <div>
+                        <p className="font-medium">{selectedPacket.candidate}</p>
+                        <p className="text-sm text-[#5c635f]">{selectedPacket.candidateEmail || 'No email'}</p>
+                      </div>
+                    </div>
+                    <Button className="mt-4 w-full" type="button" onClick={() => go('people', 'candidate')}>
+                      View candidates
+                    </Button>
+                    <div className="mt-5 space-y-3 text-sm">
+                      <p className="font-medium">{selectedPacket.jobTitle}</p>
+                      <p className="text-[#5c635f]">{selectedPacket.company || '—'}</p>
+                      <p className="text-xs text-[#8a918c]">
+                        {selectedPacket.location || (selectedPacket.atelier ? 'Atelier listing' : 'Open listing')}
+                        {selectedPacket.postedAt ? ` · posted ${day(selectedPacket.postedAt)}` : ''}
+                      </p>
+                    </div>
+                    <div className="mt-5 space-y-2 text-sm">
+                      <OverviewRow label="Submitted" value={ago(selectedPacket.submittedAt || selectedPacket.createdAt)} />
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[#8a918c]">Status</span>
+                        <PacketDot status={selectedPacket.status} />
+                      </div>
+                    </div>
+                    {selectedPacket.coverLetter ? (
+                      <div className="mt-5">
+                        <p className="text-sm font-medium">Cover letter</p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#5c635f]">{selectedPacket.coverLetter}</p>
+                      </div>
+                    ) : (
+                      <p className="mt-5 text-sm text-[#8a918c]">No cover letter on this packet yet.</p>
+                    )}
+                    {setPacket.isError ? (
+                      <p className="mt-3 text-sm text-[#b85c38]">{setPacket.error instanceof Error ? setPacket.error.message : 'Could not update the packet.'}</p>
+                    ) : null}
+                    <div className="mt-5 space-y-2">
+                      <Button
+                        className="w-full"
+                        type="button"
+                        disabled={setPacket.isPending || packetBucket(selectedPacket.status) === 'accepted'}
+                        onClick={() => setPacket.mutate({ id: selectedPacket.id, status: 'hired' })}
+                      >
+                        Mark hired
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full border-[#ef4444] text-[#b91c1c] hover:bg-[#fef2f2]"
+                        type="button"
+                        disabled={setPacket.isPending || packetBucket(selectedPacket.status) === 'declined'}
+                        onClick={() => setPacket.mutate({ id: selectedPacket.id, status: 'rejected' })}
+                      >
+                        Decline packet
+                      </Button>
+                      <Button variant="outline" className="w-full" type="button" onClick={() => go('inbox')}>
+                        <MessagesSquare className="size-4" />
+                        Open inbox
+                      </Button>
+                    </div>
+                  </Panel>
+                ) : null}
+              </div>
+            </div>
           ) : null}
 
           {view === 'tracker' ? (
@@ -1592,6 +1894,43 @@ function StatusDot({ status }: { status: 'active' | 'pending' | 'suspended' }) {
       {row.label}
     </span>
   )
+}
+
+function packetBucket(status: string): PacketBucket {
+  if (status === 'offer' || status === 'hired') return 'accepted'
+  if (status === 'rejected' || status === 'withdrawn' || status === 'closed') return 'declined'
+  if (status === 'draft') return 'draft'
+  return 'pending'
+}
+
+function PacketDot({ status }: { status: string }) {
+  const bucket = packetBucket(status)
+  const map = {
+    pending: { label: prettyStatus(status || 'pending'), className: 'bg-[#fef3c7] text-[#b45309]', dot: '#f59e0b' },
+    accepted: { label: prettyStatus(status), className: 'bg-[#d1fae5] text-[#047857]', dot: '#22c55e' },
+    declined: { label: prettyStatus(status), className: 'bg-[#fee2e2] text-[#b91c1c]', dot: '#ef4444' },
+    draft: { label: 'Draft', className: 'bg-[#eef1ee] text-[#5c635f]', dot: '#8a918c' },
+  }
+  const row = map[bucket]
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${row.className}`}>
+      <span className="size-1.5 rounded-full" style={{ background: row.dot }} />
+      {row.label}
+    </span>
+  )
+}
+
+function ago(iso?: string) {
+  if (!iso) return '—'
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return '—'
+  const mins = Math.max(0, Math.round((Date.now() - t) / 60000))
+  if (mins < 60) return `${Math.max(1, mins)}m ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.round(hours / 24)
+  if (days < 8) return `${days}d ago`
+  return new Date(iso).toLocaleDateString()
 }
 
 function OverviewRow({ label, value }: { label: string; value: string }) {

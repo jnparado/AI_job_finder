@@ -2124,7 +2124,16 @@ app.get('/api/admin/dashboard', async (c) => {
   let packets = 0
   let hired = 0
   let jobCount = jobs.length
-  let appRows: { id: string; status: string; jobId: string; userId: string; createdAt: string }[] = []
+  let appRows: {
+    id: string
+    status: string
+    jobId: string
+    userId: string
+    createdAt: string
+    submittedAt: string
+    coverLetter: string
+    channel: string
+  }[] = []
   let sessionRows = supabaseAdmin ? [] : memory.allTrackerSessions()
   let ledgerRows = supabaseAdmin ? [] : memory.allLedger()
   let inboxRecent: { id: string; body: string; at: string; applicationId: string; senderRole: string }[] = []
@@ -2153,7 +2162,7 @@ app.get('/api/admin/dashboard', async (c) => {
       supabaseAdmin.from('applications').select('id', { count: 'exact', head: true }),
       supabaseAdmin.from('applications').select('id', { count: 'exact', head: true }).in('status', ['hired', 'offer']),
       supabaseAdmin.from('jobs').select('id', { count: 'exact', head: true }),
-      supabaseAdmin.from('applications').select('id, status, job_id, user_id, created_at').order('created_at', { ascending: false }).limit(80),
+      supabaseAdmin.from('applications').select('id, status, job_id, user_id, created_at, submitted_at, cover_letter, channel').order('created_at', { ascending: false }).limit(120),
       supabaseAdmin.from('ateliar_sessions').select('*').order('started_at', { ascending: false }).limit(80),
       supabaseAdmin.from('ledger_entries').select('*').order('created_at', { ascending: false }).limit(200),
       supabaseAdmin.from('thread_messages').select('id', { count: 'exact', head: true }),
@@ -2175,6 +2184,9 @@ app.get('/api/admin/dashboard', async (c) => {
         jobId: String(row.job_id ?? ''),
         userId: String(row.user_id ?? ''),
         createdAt: row.created_at ? String(row.created_at) : '',
+        submittedAt: row.submitted_at ? String(row.submitted_at) : '',
+        coverLetter: String(row.cover_letter ?? '').slice(0, 400),
+        channel: String(row.channel ?? ''),
       }))
     }
     if (sessionsRes.error) console.warn('admin tracker', sessionsRes.error.message)
@@ -2226,7 +2238,14 @@ app.get('/api/admin/dashboard', async (c) => {
       jobTitle: job?.title ?? 'Role',
       company: job?.company ?? '',
       candidate: person?.name || person?.email || 'Candidate',
+      candidateEmail: person?.email ?? '',
       createdAt: row.createdAt,
+      submittedAt: row.submittedAt || row.createdAt,
+      coverLetter: row.coverLetter,
+      channel: row.channel,
+      atelier: Boolean(job?.employerId || job?.source === 'atelier'),
+      location: job?.location ?? '',
+      postedAt: job?.postedAt ?? '',
     }
   })
 
@@ -2438,6 +2457,37 @@ app.get('/api/admin/dashboard', async (c) => {
     staffInvites,
     promoteSql: "update public.profiles set role = 'admin' where email = 'you@example.com';",
   })
+})
+
+app.patch('/api/admin/packets/:id', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (!isStaffRole(profile.role)) return c.json({ error: 'Admin account required' }, 403)
+  const id = c.req.param('id')
+  const body = (await c.req.json().catch(() => ({}))) as { status?: string }
+  const next = String(body.status ?? '').trim()
+  const allowed = ['submitted', 'under_review', 'interview', 'offer', 'hired', 'rejected']
+  if (!allowed.includes(next)) return c.json({ error: 'Use a studio packet status.' }, 400)
+  const row = (await hydrateApplication(id)) ?? memory.getApplicationById(id)
+  if (!row) return c.json({ error: 'Packet not found.' }, 404)
+  row.status = next
+  memory.addApplication(row)
+  if (supabaseAdmin) {
+    const { error } = await supabaseAdmin.from('applications').update({ status: next }).eq('id', id)
+    if (error) return c.json({ error: error.message }, 400)
+  }
+  const job = memory.getJob(row.jobId)
+  const hired = isHiredStatus(next)
+  await notifyUser(
+    row.userId,
+    hired ? `${job?.title ?? 'Role'} is hired — Atelier time tracker is open` : `${job?.title ?? 'Packet'} is now ${next.replaceAll('_', ' ')}`,
+    hired
+      ? `${job?.company ?? 'Atelier'} marked you hired. Open Atelier time tracker to log hours on this role.`
+      : `Staff updated this packet to ${next.replaceAll('_', ' ')}.`,
+    hired ? '/app/ateliar' : `/app/applications/${row.id}`,
+  )
+  return c.json({ ok: true, id, status: next })
 })
 
 app.post('/api/admin/role', async (c) => {
