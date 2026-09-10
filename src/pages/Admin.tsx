@@ -9,6 +9,7 @@ import {
   Calendar,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CircleHelp,
   CirclePlay,
@@ -21,6 +22,7 @@ import {
   ExternalLink,
   FileText,
   LayoutDashboard,
+  ListFilter,
   Lock,
   LogOut,
   Mail,
@@ -35,7 +37,9 @@ import {
   Shield,
   Timer,
   X,
+  Menu,
   User,
+  UserCheck,
   UserPlus,
   Users,
   Wallet,
@@ -246,6 +250,7 @@ type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' 
 type PeopleFilter = 'all' | AccountRole
 type UserTypeFilter = 'all' | 'candidate' | 'employer' | 'admin'
 type PacketBucket = 'pending' | 'accepted' | 'declined' | 'draft'
+type CandidateDeskTab = 'all' | 'active' | 'pending' | 'onboarded' | 'hired'
 type PayTab = 'all' | 'employer' | 'payout' | 'pending'
 type InviteDeskTab = 'all' | 'linkedin' | 'upwork' | InviteDeskStatus
 
@@ -298,10 +303,6 @@ const NAV: NavSection[] = [
   },
   { label: 'Settings', items: [{ id: 'keys', label: 'Settings', icon: Settings }] },
 ]
-
-const MOBILE_NAV: { id: DeskView; label: string; people?: PeopleFilter }[] = NAV.flatMap((section) =>
-  section.items.map((item) => ({ id: item.id, label: item.label, people: item.people })),
-)
 
 const STUDIO_ROLES: {
   id: AccountRole
@@ -383,6 +384,11 @@ export function AdminPage() {
   const [peoplePage, setPeoplePage] = useState(0)
   const [pickedPerson, setPickedPerson] = useState('')
   const [peopleInviteOpen, setPeopleInviteOpen] = useState(false)
+  const [peopleInviteKind, setPeopleInviteKind] = useState<'' | 'candidate' | 'employer' | 'admin'>('')
+  const [peopleInviteEmail, setPeopleInviteEmail] = useState('')
+  const [peopleInviteCompany, setPeopleInviteCompany] = useState('')
+  const [peopleInviteNotice, setPeopleInviteNotice] = useState('')
+  const [peopleNextRole, setPeopleNextRole] = useState<'admin' | 'employer' | 'candidate'>('candidate')
   const [roleQuery, setRoleQuery] = useState('')
   const [pickedRole, setPickedRole] = useState<AccountRole>('admin')
   const [roleTab, setRoleTab] = useState<'access' | 'users' | 'assign'>('access')
@@ -404,11 +410,16 @@ export function AdminPage() {
   const [pickedEmployer, setPickedEmployer] = useState('')
   const [employerTab, setEmployerTab] = useState<'overview' | 'jobs' | 'packets'>('overview')
   const [candidateQuery, setCandidateQuery] = useState('')
+  const [candidateTab, setCandidateTab] = useState<CandidateDeskTab>('all')
   const [candidateStatus, setCandidateStatus] = useState<'all' | 'active' | 'pending'>('all')
   const [candidatePlace, setCandidatePlace] = useState('all')
+  const [candidateSkill, setCandidateSkill] = useState('all')
   const [candidateSort, setCandidateSort] = useState<'newest' | 'name' | 'packets'>('newest')
   const [candidatePage, setCandidatePage] = useState(0)
+  const [candidatePageSize, setCandidatePageSize] = useState(10)
   const [pickedCandidate, setPickedCandidate] = useState('')
+  const [candidateOpen, setCandidateOpen] = useState(true)
+  const [candidateInviteOpen, setCandidateInviteOpen] = useState(false)
   const [candidateCopied, setCandidateCopied] = useState('')
   const [packetQuery, setPacketQuery] = useState('')
   const [packetStatus, setPacketStatus] = useState<'all' | PacketBucket>('all')
@@ -455,6 +466,26 @@ export function AdminPage() {
       setStaffEmail('')
       void qc.invalidateQueries({ queryKey: ['admin-dashboard'] })
     },
+  })
+  const inviteUser = useMutation({
+    mutationFn: (body: { email: string; role: 'candidate' | 'employer' | 'admin'; company?: string }) =>
+      api<{ status?: string; mailed?: boolean; message?: string; already?: boolean; joinUrl?: string }>('/api/admin/users/invite', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (row) => {
+      setPeopleInviteNotice(row.message || (row.already ? 'That email is already on Atelier.' : 'Invitation saved.'))
+      if (row.joinUrl && !row.mailed && !row.already) {
+        void navigator.clipboard.writeText(row.joinUrl).catch(() => undefined)
+      }
+      void qc.invalidateQueries({ queryKey: ['admin-dashboard'] })
+    },
+    onError: (err) => setPeopleInviteNotice(err instanceof Error ? err.message : 'Could not send the invite.'),
+  })
+  const changeUserRole = useMutation({
+    mutationFn: (body: { email: string; role: 'admin' | 'employer' | 'candidate' }) =>
+      api('/api/admin/role', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-dashboard'] }),
   })
   const cancelInvite = useMutation({
     mutationFn: (inviteEmail: string) => api('/api/admin/invite/cancel', { method: 'POST', body: JSON.stringify({ email: inviteEmail }) }),
@@ -902,8 +933,13 @@ export function AdminPage() {
   const candidateRows = useMemo(() => {
     const q = (view === 'candidates' ? candidateQuery : query).trim().toLowerCase()
     const rows = [...(data?.candidates ?? [])].filter((row) => {
+      if (candidateTab === 'active' && row.status !== 'active') return false
+      if (candidateTab === 'pending' && row.status !== 'pending') return false
+      if (candidateTab === 'onboarded' && !row.onboarded) return false
+      if (candidateTab === 'hired' && row.hired < 1) return false
       if (candidateStatus !== 'all' && row.status !== candidateStatus) return false
       if (candidatePlace !== 'all' && placeLabel(row.city, row.country) !== candidatePlace) return false
+      if (candidateSkill !== 'all' && !row.skills.includes(candidateSkill)) return false
       if (!q) return true
       return `${row.name} ${row.email} ${row.headline} ${row.skills.join(' ')} ${row.city} ${row.country}`.toLowerCase().includes(q)
     })
@@ -913,15 +949,18 @@ export function AdminPage() {
       return String(b.joinedAt).localeCompare(String(a.joinedAt))
     })
     return rows
-  }, [candidatePlace, candidateQuery, candidateSort, candidateStatus, data?.candidates, query, view])
+  }, [candidatePlace, candidateQuery, candidateSkill, candidateSort, candidateStatus, candidateTab, data?.candidates, query, view])
 
   const candidatePlaces = useMemo(() => {
     return [...new Set((data?.candidates ?? []).map((row) => placeLabel(row.city, row.country)).filter(Boolean))].sort()
   }, [data?.candidates])
+  const candidateSkills = useMemo(() => {
+    return [...new Set((data?.candidates ?? []).flatMap((row) => row.skills).filter(Boolean))].sort()
+  }, [data?.candidates])
 
-  const candidatePages = Math.max(1, Math.ceil(candidateRows.length / pageSize))
+  const candidatePages = Math.max(1, Math.ceil(candidateRows.length / candidatePageSize))
   const candidatePageSafe = Math.min(candidatePage, candidatePages - 1)
-  const candidateSlice = candidateRows.slice(candidatePageSafe * pageSize, candidatePageSafe * pageSize + pageSize)
+  const candidateSlice = candidateRows.slice(candidatePageSafe * candidatePageSize, candidatePageSafe * candidatePageSize + candidatePageSize)
   const selectedCandidate = candidateRows.find((row) => row.id === pickedCandidate) ?? candidateSlice[0]
   const candidatePackets = useMemo(() => {
     if (!selectedCandidate) return []
@@ -935,6 +974,7 @@ export function AdminPage() {
     const onboarded = rows.filter((row) => row.onboarded).length
     const active = rows.filter((row) => row.status === 'active').length
     const pending = rows.filter((row) => row.status === 'pending').length
+    const hired = rows.filter((row) => row.hired > 0).length
     const fresh = rows.filter((row) => row.joinedAt && nowMs - new Date(row.joinedAt).getTime() <= month).length
     const prior = rows.filter((row) => {
       if (!row.joinedAt) return false
@@ -951,10 +991,12 @@ export function AdminPage() {
       onboarded,
       active,
       pending,
+      hired,
       totalDelta: delta(fresh, prior),
       onboardedDelta: delta(onboarded, Math.max(0, onboarded - fresh)),
       activeDelta: delta(active, Math.max(0, active - fresh)),
       pendingDelta: delta(pending, Math.max(0, pending - 1)),
+      hiredDelta: delta(hired, Math.max(0, hired - Math.min(hired, fresh))),
     }
   }, [data?.candidates, nowMs])
   const candidateOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://ai-job-finder-ecru.vercel.app'
@@ -1137,6 +1179,53 @@ export function AdminPage() {
     })
   }
 
+  function openAddUser(kind: 'candidate' | 'employer' | 'admin') {
+    setPeopleInviteKind(kind)
+    setPeopleInviteOpen(false)
+    setPeopleInviteNotice('')
+    setPeopleInviteEmail('')
+    setPeopleInviteCompany('')
+    inviteUser.reset()
+  }
+
+  function closeAddUser() {
+    setPeopleInviteKind('')
+    setPeopleInviteNotice('')
+    inviteUser.reset()
+  }
+
+  function addUserJoinUrl() {
+    if (peopleInviteKind === 'employer') {
+      const company = peopleInviteCompany.trim() || 'your company'
+      return `${candidateOrigin}/register?role=employer&company=${encodeURIComponent(company)}`
+    }
+    if (peopleInviteKind === 'admin') return `${candidateOrigin}/register`
+    return candidateJoin
+  }
+
+  function copyAddUserLink() {
+    void navigator.clipboard.writeText(addUserJoinUrl()).then(() => {
+      setPeopleInviteNotice('Join link copied.')
+    })
+  }
+
+  function onAddUserSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!peopleInviteKind) return
+    setPeopleInviteNotice('')
+    inviteUser.mutate({
+      email: peopleInviteEmail.trim(),
+      role: peopleInviteKind,
+      company: peopleInviteCompany.trim() || undefined,
+    })
+  }
+
+  function pickPerson(row: AdminAccount) {
+    setPickedPerson(row.id)
+    setPeopleNextRole(row.role === 'employer' ? 'employer' : row.role === 'admin' || row.role === 'super_admin' ? 'admin' : 'candidate')
+    changeUserRole.reset()
+  }
+
   function openCandidate(email: string) {
     const hit = (data?.candidates ?? []).find((row) => row.email.toLowerCase() === email.toLowerCase())
     if (hit) setPickedCandidate(hit.id)
@@ -1192,6 +1281,8 @@ export function AdminPage() {
       setPeopleCountry('all')
       setPeoplePage(0)
       setPeopleInviteOpen(false)
+      setPeopleInviteKind('')
+      setPeopleInviteNotice('')
     }
     if (next === 'roles') {
       setRoleTab('access')
@@ -1202,6 +1293,10 @@ export function AdminPage() {
     setAlertsOpen(false)
     setStaffMenu('')
     setQuery('')
+    if (next !== 'people') {
+      setPeopleInviteKind('')
+      setPeopleInviteOpen(false)
+    }
     if (next === 'employers') setEmployerPage(0)
     if (next === 'candidates') setCandidatePage(0)
     if (next === 'packets') {
@@ -1277,14 +1372,32 @@ export function AdminPage() {
                 : 'Search users, jobs, packets, or companies'
 
   return (
-    <div className="min-h-svh bg-[#f3f5f4] lg:grid lg:grid-cols-[252px_minmax(0,1fr)]">
-      <aside className="hidden bg-[#13261f] text-white lg:flex lg:flex-col">
-        <div className="flex items-center gap-2.5 px-5 py-5">
-          <img src="/brand/atelier-logo.jpg" alt="Atelier" className="size-9 rounded-lg object-cover" />
-          <div>
-            <p className="font-serif text-lg leading-none">Atelier</p>
-            <p className="mt-1 text-[0.65rem] text-white/55">Admin Panel</p>
+    <div className="min-h-svh overflow-x-clip bg-[#f3f5f4] lg:grid lg:grid-cols-[252px_minmax(0,1fr)]">
+      {navOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          aria-label="Close menu"
+          onClick={() => setNavOpen(false)}
+        />
+      ) : null}
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 h-svh w-[min(18.5rem,88vw)] flex-col overflow-y-auto bg-[#13261f] text-white lg:static lg:flex lg:h-auto lg:w-auto',
+          navOpen ? 'flex' : 'hidden lg:flex',
+        )}
+      >
+        <div className="flex items-center justify-between gap-2 px-5 py-5">
+          <div className="flex items-center gap-2.5">
+            <img src="/brand/atelier-logo.jpg" alt="Atelier" className="size-9 rounded-lg object-cover" />
+            <div>
+              <p className="font-serif text-lg leading-none">Atelier</p>
+              <p className="mt-1 text-[0.65rem] text-white/55">Admin Panel</p>
+            </div>
           </div>
+          <button type="button" className="grid size-9 place-items-center rounded-lg text-white/70 lg:hidden" aria-label="Close menu" onClick={() => setNavOpen(false)}>
+            <X className="size-5" />
+          </button>
         </div>
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-4">
           {NAV.map((section, i) => (
@@ -1316,9 +1429,14 @@ export function AdminPage() {
       </aside>
 
       <div className="min-w-0">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-[#e4e8e5] bg-white px-4 py-3 sm:px-6">
-          <button type="button" className="rounded-lg border border-[#e4e8e5] px-3 py-2 text-sm lg:hidden" onClick={() => setNavOpen((v) => !v)}>
-            Menu
+        <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-[#e4e8e5] bg-white px-3 py-3 sm:gap-3 sm:px-6">
+          <button
+            type="button"
+            className="grid size-10 shrink-0 place-items-center rounded-lg border border-[#e4e8e5] text-[#5c635f] lg:hidden"
+            aria-label={navOpen ? 'Close menu' : 'Open menu'}
+            onClick={() => setNavOpen((v) => !v)}
+          >
+            {navOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
           <label className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
@@ -1349,7 +1467,7 @@ export function AdminPage() {
                 ) : null}
               </button>
               {alertsOpen ? (
-                <div className="absolute right-0 top-12 z-40 w-[22rem] overflow-hidden rounded-2xl border border-[#e4e8e5] bg-white shadow-[0_12px_32px_rgba(19,38,31,0.12)]">
+                <div className="fixed inset-x-3 top-[4.25rem] z-40 max-h-[min(32rem,calc(100svh-5rem))] overflow-y-auto rounded-2xl border border-[#e4e8e5] bg-white shadow-[0_12px_32px_rgba(19,38,31,0.12)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-[22rem] sm:max-h-none">
                   <div className="flex items-center justify-between border-b border-[#eef1ee] px-4 py-3">
                     <p className="text-sm font-medium">Notifications</p>
                     <span className="text-xs text-[#8a918c]">{alertCount} waiting</span>
@@ -1359,7 +1477,7 @@ export function AdminPage() {
                     <p className="mt-1 text-xs leading-relaxed text-[#8a918c]">
                       Copy a join link and share it. Atelier does not email them. Packets leave only after they approve.
                     </p>
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <Button
                         className="flex-1"
                         type="button"
@@ -1441,7 +1559,7 @@ export function AdminPage() {
             <div className="relative">
               <button
                 type="button"
-                className="grid size-10 place-items-center rounded-full text-[#5c635f] hover:bg-[#f3f5f4]"
+                className="hidden size-10 shrink-0 place-items-center rounded-full text-[#5c635f] hover:bg-[#f3f5f4] sm:grid"
                 aria-label="Help"
                 onClick={() => {
                   setAccountOpen(false)
@@ -1452,7 +1570,7 @@ export function AdminPage() {
                 <CircleHelp className="size-5" />
               </button>
               {helpOpen ? (
-                <div className="absolute right-0 top-12 z-40 w-72 rounded-2xl border border-[#e4e8e5] bg-white p-4 text-sm shadow-[0_12px_32px_rgba(19,38,31,0.12)]">
+                <div className="absolute right-0 top-12 z-40 w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl border border-[#e4e8e5] bg-white p-4 text-sm shadow-[0_12px_32px_rgba(19,38,31,0.12)]">
                   <p className="font-medium text-[#161c19]">Admin help</p>
                   <p className="mt-2 leading-relaxed text-[#5c635f]">
                     Packets leave only after a candidate approves. Invite is staff-only. Tracker and pay stay on Atelier.
@@ -1514,22 +1632,7 @@ export function AdminPage() {
           </div>
         </header>
 
-        {navOpen ? (
-          <div className="flex gap-1 overflow-x-auto bg-[#13261f] px-3 py-2 lg:hidden">
-            {MOBILE_NAV.map((item) => (
-              <button
-                key={`${item.label}-m`}
-                type="button"
-                onClick={() => go(item.id, item.people ?? 'all')}
-                className="shrink-0 rounded-lg px-3 py-1.5 text-sm text-white/80"
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        <main className="space-y-5 px-4 py-6 sm:px-6">
+        <main className="min-w-0 space-y-5 overflow-x-clip px-3 py-5 sm:px-6 sm:py-6">
           {dash.isError ? (
             <div className="rounded-2xl bg-white p-4 text-sm text-[#b85c38]">
               {dash.error instanceof Error ? dash.error.message : 'Could not load the admin panel.'}
@@ -1540,7 +1643,7 @@ export function AdminPage() {
             <>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h1 className="font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Admin Dashboard</h1>
+                  <h1 className="font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Admin Dashboard</h1>
                   <p className="mt-1 text-sm text-[#5c635f]">Platform overview and key metrics at a glance.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1557,7 +1660,7 @@ export function AdminPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <button type="button" className="text-left" onClick={() => go('people')}>
                   <MetricCard icon={Users} tone="green" label="Total Users" value={counts?.people ?? 0} hint="From Supabase" />
                 </button>
@@ -1584,7 +1687,7 @@ export function AdminPage() {
                 </button>
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
                 <div className="space-y-4">
                   <Panel>
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1596,7 +1699,7 @@ export function AdminPage() {
                     <GrowthChart boards={data?.boards ?? []} />
                   </Panel>
 
-                  <div className="grid gap-4 xl:grid-cols-2">
+                  <div className="grid gap-4 lg:grid-cols-2">
                     <Panel>
                       <div className="flex items-center justify-between">
                         <h2 className="font-sans text-base font-semibold">Recent Jobs</h2>
@@ -1605,12 +1708,12 @@ export function AdminPage() {
                         </button>
                       </div>
                       <div className="mt-4 overflow-x-auto">
-                        <table className="w-full min-w-[28rem] text-left text-sm">
+                        <table className="w-full min-w-0 text-left text-sm md:min-w-[24rem]">
                           <thead className="text-xs text-[#8a918c]">
                             <tr>
                               <th className="pb-2 font-medium">Job Title</th>
-                              <th className="pb-2 font-medium">Company</th>
-                              <th className="pb-2 font-medium">Board</th>
+                              <th className="hidden pb-2 font-medium md:table-cell">Company</th>
+                              <th className="hidden pb-2 font-medium lg:table-cell">Board</th>
                               <th className="pb-2 font-medium">Status</th>
                             </tr>
                           </thead>
@@ -1618,8 +1721,8 @@ export function AdminPage() {
                             {(data?.listings ?? []).slice(0, 5).map((row) => (
                               <tr key={row.id} className="border-t border-[#eef1ee]">
                                 <td className="py-3 font-medium text-[#161c19]">{row.title}</td>
-                                <td className="py-3 text-[#5c635f]">{row.company}</td>
-                                <td className="py-3">{sourceLabel(row.source)}</td>
+                                <td className="hidden py-3 text-[#5c635f] md:table-cell">{row.company}</td>
+                                <td className="hidden py-3 lg:table-cell">{sourceLabel(row.source)}</td>
                                 <td className="py-3">
                                   <span className={`rounded-full px-2 py-0.5 text-xs ${row.atelier ? 'bg-[#e8f6ee] text-[#147a48]' : 'bg-[#eef1ee] text-[#5c635f]'}`}>
                                     {row.atelier ? 'Atelier' : row.remote ? 'Open' : 'On-site'}
@@ -1711,13 +1814,13 @@ export function AdminPage() {
                 <p className="text-sm text-[#8a918c]">
                   Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Invite Admin</span>
                 </p>
-                <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Invite Admin</h1>
+                <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Invite Admin</h1>
                 <p className="mt-1 max-w-2xl text-sm text-[#5c635f]">
                   Add administrators to help run Atelier. They get access to users, jobs, packets, tracker, and pay. Signup still cannot grant admin on its own.
                 </p>
               </div>
 
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
                 <Panel className="p-6">
                   <h2 className="font-sans text-lg font-semibold">Send Invitation</h2>
                   <form className="mt-5 space-y-4" onSubmit={onInviteStaff}>
@@ -1807,14 +1910,14 @@ export function AdminPage() {
                   </label>
                 </div>
                 <div className="mt-4 overflow-x-auto">
-                  <table className="w-full min-w-[40rem] text-left text-sm">
+                  <table className="w-full min-w-0 text-left text-sm md:min-w-[32rem]">
                     <thead className="text-xs text-[#8a918c]">
                       <tr>
                         <th className="pb-2 font-medium">Name</th>
-                        <th className="pb-2 font-medium">Email</th>
+                        <th className="hidden pb-2 font-medium md:table-cell">Email</th>
                         <th className="pb-2 font-medium">Role</th>
                         <th className="pb-2 font-medium">Status</th>
-                        <th className="pb-2 font-medium">Invited On</th>
+                        <th className="hidden pb-2 font-medium lg:table-cell">Invited On</th>
                         <th className="pb-2 font-medium">Actions</th>
                       </tr>
                     </thead>
@@ -1829,7 +1932,7 @@ export function AdminPage() {
                               <span className="font-medium">{row.name || row.email.split('@')[0]}</span>
                             </span>
                           </td>
-                          <td className="py-3 text-[#5c635f]">{row.email}</td>
+                          <td className="hidden py-3 text-[#5c635f] md:table-cell">{row.email}</td>
                           <td className="py-3 capitalize">{row.role.replace('_', ' ')}</td>
                           <td className="py-3">
                             <span
@@ -1840,7 +1943,7 @@ export function AdminPage() {
                               {row.status === 'pending' ? 'Pending' : 'Accepted'}
                             </span>
                           </td>
-                          <td className="py-3 text-[#5c635f]">{day(row.invitedAt)}</td>
+                          <td className="hidden py-3 text-[#5c635f] lg:table-cell">{day(row.invitedAt)}</td>
                           <td className="relative py-3">
                             <button
                               type="button"
@@ -1891,7 +1994,7 @@ export function AdminPage() {
                   <p className="text-sm text-[#8a918c]">
                     Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Invite Employers</span>
                   </p>
-                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Invite Employers to Atelier</h1>
+                  <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Invite Employers to Atelier</h1>
                   <p className="mt-1 text-sm text-[#5c635f]">
                     Companies from scored listings. Open official LinkedIn or Upwork search — Atelier does not scrape those sites.
                   </p>
@@ -1954,7 +2057,7 @@ export function AdminPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="relative min-w-[16rem] flex-1">
+                <label className="relative min-w-0 w-full flex-1 sm:min-w-[16rem]">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
                   <Input
                     className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
@@ -1967,7 +2070,7 @@ export function AdminPage() {
                   />
                 </label>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={source}
                   onChange={(e) => {
                     setSource(e.target.value)
@@ -1983,7 +2086,7 @@ export function AdminPage() {
                 </select>
                 {inviteIndustries.length ? (
                   <select
-                    className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                    className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                     value={inviteIndustry}
                     onChange={(e) => {
                       setInviteIndustry(e.target.value)
@@ -2013,16 +2116,16 @@ export function AdminPage() {
                 </Button>
               </div>
 
-              <div className={`grid gap-5 ${selected ? 'xl:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
+              <div className={`grid gap-5 ${selected ? 'lg:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
                 <Panel className="overflow-hidden p-0">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[52rem] text-left text-sm">
+                    <table className="w-full min-w-0 text-left text-sm md:min-w-[36rem]">
                       <thead className="text-xs text-[#8a918c]">
                         <tr className="border-b border-[#eef1ee]">
                           <th className="px-4 py-3 font-medium">Company</th>
-                          <th className="px-3 py-3 font-medium">Platform</th>
-                          <th className="px-3 py-3 font-medium">Industry</th>
-                          <th className="px-3 py-3 font-medium">Listings</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Platform</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Industry</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Listings</th>
                           <th className="px-3 py-3 font-medium">Status</th>
                           <th className="px-3 py-3 font-medium">Action</th>
                         </tr>
@@ -2045,11 +2148,11 @@ export function AdminPage() {
                                 </span>
                               </span>
                             </td>
-                            <td className="px-3 py-3">
+                            <td className="hidden px-3 py-3 lg:table-cell">
                               <PlatformChip source={row.source} />
                             </td>
-                            <td className="px-3 py-3 text-[#5c635f]">{row.industry || '—'}</td>
-                            <td className="px-3 py-3 tabular-nums text-[#5c635f]">{row.listings ? `${row.listings}` : '—'}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{row.industry || '—'}</td>
+                            <td className="hidden px-3 py-3 tabular-nums text-[#5c635f] md:table-cell">{row.listings ? `${row.listings}` : '—'}</td>
                             <td className="px-3 py-3">
                               <InviteStatusChip status={deskInviteStatus(row, localInvited)} />
                             </td>
@@ -2084,7 +2187,7 @@ export function AdminPage() {
                     <p>
                       Showing {invites.length ? invitePageSafe * 10 + 1 : 0}-{Math.min(invites.length, invitePageSafe * 10 + 10)} of {invites.length}
                     </p>
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1 overflow-x-auto">
                       {Array.from({ length: invitePages }, (_, i) => (
                         <button
                           key={i}
@@ -2155,7 +2258,7 @@ export function AdminPage() {
                   <p className="text-sm text-[#8a918c]">
                     Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Manage Roles</span>
                   </p>
-                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Manage Roles</h1>
+                  <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Manage Roles</h1>
                   <p className="mt-1 max-w-2xl text-sm text-[#5c635f]">
                     Atelier has four system roles. Invite people into them — signup cannot grant admin, and super admin stays in SQL.
                   </p>
@@ -2166,7 +2269,7 @@ export function AdminPage() {
                 </Button>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <HintStat icon={Shield} color="#14a35a" label="System roles" value={STUDIO_ROLES.length} hint="Candidate, employer, admin, super admin" />
                 <HintStat icon={Check} color="#22c55e" label="In use" value={STUDIO_ROLES.filter((row) => (data?.accounts ?? []).some((account) => account.role === row.id)).length} hint="Roles with at least one account" />
                 <HintStat icon={Users} color="#8b5cf6" label="Users assigned" value={data?.accounts.length ?? 0} hint="Live accounts on Atelier" />
@@ -2174,7 +2277,7 @@ export function AdminPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="relative min-w-[16rem] flex-1">
+                <label className="relative min-w-0 w-full flex-1 sm:min-w-[16rem]">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
                   <Input
                     className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
@@ -2185,17 +2288,17 @@ export function AdminPage() {
                 </label>
               </div>
 
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
                 <Panel className="overflow-hidden p-0">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[40rem] text-left text-sm">
+                    <table className="w-full min-w-0 text-left text-sm md:min-w-[32rem]">
                       <thead className="text-xs text-[#8a918c]">
                         <tr className="border-b border-[#eef1ee]">
                           <th className="px-4 py-3 font-medium">Role</th>
-                          <th className="px-3 py-3 font-medium">Description</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Description</th>
                           <th className="px-3 py-3 font-medium">Users</th>
                           <th className="px-3 py-3 font-medium">Status</th>
-                          <th className="px-3 py-3 font-medium">Kind</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Kind</th>
                           <th className="px-3 py-3 font-medium">Actions</th>
                         </tr>
                       </thead>
@@ -2224,12 +2327,12 @@ export function AdminPage() {
                                   </span>
                                 </span>
                               </td>
-                              <td className="max-w-[18rem] px-3 py-3 text-[#5c635f]">{row.blurb}</td>
+                              <td className="hidden max-w-[18rem] px-3 py-3 text-[#5c635f] lg:table-cell">{row.blurb}</td>
                               <td className="px-3 py-3">{users}</td>
                               <td className="px-3 py-3">
                                 <StatusDot status="active" />
                               </td>
-                              <td className="px-3 py-3">
+                              <td className="hidden px-3 py-3 md:table-cell">
                                 <span className="rounded-full bg-[#eef1ee] px-2 py-0.5 text-xs text-[#5c635f]">System</span>
                               </td>
                               <td className="relative px-3 py-3">
@@ -2404,148 +2507,195 @@ export function AdminPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm text-[#8a918c]">
-                    Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Invite Candidates</span>
+                    Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Candidates</span>
                   </p>
-                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Invite Candidates</h1>
-                  <p className="mt-1 text-sm text-[#5c635f]">Share a join link, then review people who already signed up on Atelier.</p>
+                  <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Candidates</h1>
+                  <p className="mt-1 text-sm text-[#5c635f]">Manage candidate accounts, packets, and hiring progress.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-2 rounded-xl border border-[#e4e8e5] bg-white px-3 py-2 text-sm text-[#5c635f]">
-                    <Calendar className="size-4" />
-                    {monthRange}
-                  </span>
+                  <div className="relative">
+                    <Button
+                      type="button"
+                      className="bg-[#147a48] hover:bg-[#0f6a3d]"
+                      onClick={() => setCandidateInviteOpen((v) => !v)}
+                    >
+                      <Plus className="size-4" />
+                      Invite Candidate
+                    </Button>
+                    {candidateInviteOpen ? (
+                      <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-[#e4e8e5] bg-white py-1 text-sm shadow-[0_8px_24px_rgba(19,38,31,0.12)]">
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                          onClick={() => {
+                            copyCandidateInvite('link')
+                            setCandidateInviteOpen(false)
+                          }}
+                        >
+                          Copy join link
+                        </button>
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                          onClick={() => {
+                            copyCandidateInvite('note')
+                            setCandidateInviteOpen(false)
+                          }}
+                        >
+                          Copy invite note
+                        </button>
+                        <a
+                          href={linkedInPeople}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block px-3 py-2 hover:bg-[#f3f5f4]"
+                          onClick={() => setCandidateInviteOpen(false)}
+                        >
+                          Find people on LinkedIn
+                        </a>
+                      </div>
+                    ) : null}
+                  </div>
                   <Button variant="outline" type="button" onClick={exportCandidates}>
                     <Download className="size-4" />
                     Export
                   </Button>
-                  <Button type="button" onClick={() => copyCandidateInvite('link')}>
-                    <Copy className="size-4" />
-                    {candidateCopied === 'link' ? 'Copied' : 'Copy join link'}
-                  </Button>
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <a
-                  href={linkedInPeople}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]"
-                >
-                  <span className="grid size-12 place-items-center rounded-xl bg-[#0a66c2] text-sm font-bold text-white">in</span>
-                  <span>
-                    <span className="block font-medium">Find people on LinkedIn</span>
-                    <span className="mt-1 block text-sm text-[#5c635f]">Opens LinkedIn’s official people search. Copy an Atelier join link — we do not scrape or message them from here.</span>
-                  </span>
-                  <ExternalLink className="ml-auto size-4 shrink-0 text-[#8a918c]" />
-                </a>
-                <div className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]">
-                  <span className="grid size-12 place-items-center rounded-xl bg-[#13261f] text-white">
-                    <UserPlus className="size-5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-medium">Invite with an Atelier link</span>
-                    <span className="mt-1 block truncate text-sm text-[#5c635f]">{candidateJoin}</span>
-                  </span>
-                  <Button variant="outline" type="button" onClick={() => copyCandidateInvite('note')}>
-                    {candidateCopied === 'note' ? 'Copied' : 'Copy note'}
-                  </Button>
-                </div>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <EmployerStat icon={Briefcase} color="#2563eb" label="Total Candidates" value={candidateStats.total} delta={candidateStats.totalDelta} />
+                <EmployerStat icon={Check} color="#22c55e" label="Active Candidates" value={candidateStats.active} delta={candidateStats.activeDelta} />
+                <EmployerStat icon={Pause} color="#f59e0b" label="Pending" value={candidateStats.pending} delta={candidateStats.pendingDelta} />
+                <EmployerStat icon={UserCheck} color="#3b82f6" label="Hired" value={candidateStats.hired} delta={candidateStats.hiredDelta} />
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_18rem]">
-                <EmployerStat icon={Users} color="#14a35a" label="Total Candidates" value={candidateStats.total} delta={candidateStats.totalDelta} />
-                <EmployerStat icon={Check} color="#22c55e" label="Onboarded" value={candidateStats.onboarded} delta={candidateStats.onboardedDelta} />
-                <EmployerStat icon={Zap} color="#8b5cf6" label="Active Candidates" value={candidateStats.active} delta={candidateStats.activeDelta} />
-                <EmployerStat icon={Clock} color="#8a918c" label="Pending" value={candidateStats.pending} delta={candidateStats.pendingDelta} />
-                {selectedCandidate ? (
-                  <section className="rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="grid size-10 place-items-center rounded-full bg-[#e8f6ee] text-sm font-semibold text-[#147a48]">
-                        {initials(selectedCandidate.name || selectedCandidate.email)}
-                      </span>
-                      <StatusDot status={selectedCandidate.status} />
-                    </div>
-                    <p className="mt-3 font-medium">{selectedCandidate.name}</p>
-                    <p className="truncate text-sm text-[#5c635f]">{selectedCandidate.headline || 'Candidate'}</p>
-                    <p className="mt-1 text-xs text-[#8a918c]">{placeLabel(selectedCandidate.city, selectedCandidate.country) || 'Location not set'}</p>
-                    <p className="mt-1 text-xs text-[#8a918c]">Joined {day(selectedCandidate.joinedAt)}</p>
-                    <button type="button" className="mt-3 inline-flex items-center gap-1 text-sm text-[#147a48]" onClick={() => go('packets')}>
-                      View packets <ExternalLink className="size-3.5" />
-                    </button>
-                  </section>
-                ) : (
-                  <section className="rounded-2xl bg-white p-4 text-sm text-[#8a918c] shadow-[0_1px_2px_rgba(19,38,31,0.06)]">No candidates yet.</section>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="relative min-w-[16rem] flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
-                  <Input
-                    className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
-                    placeholder="Search by name, email, skills, or location"
-                    value={candidateQuery}
-                    onChange={(e) => {
-                      setCandidateQuery(e.target.value)
+              <div className="flex gap-5 overflow-x-auto border-b border-[#e4e8e5] text-sm">
+                {(
+                  [
+                    ['all', 'All Candidates', candidateStats.total],
+                    ['active', 'Active', candidateStats.active],
+                    ['pending', 'Pending', candidateStats.pending],
+                    ['onboarded', 'Onboarded', candidateStats.onboarded],
+                    ['hired', 'Hired', candidateStats.hired],
+                  ] as const
+                ).map(([id, label, n]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`-mb-px shrink-0 border-b-2 pb-2.5 ${
+                      candidateTab === id ? 'border-[#147a48] font-medium text-[#161c19]' : 'border-transparent text-[#8a918c]'
+                    }`}
+                    onClick={() => {
+                      setCandidateTab(id)
                       setCandidatePage(0)
                     }}
-                  />
-                </label>
-                <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
-                  value={candidatePlace}
-                  onChange={(e) => {
-                    setCandidatePlace(e.target.value)
-                    setCandidatePage(0)
-                  }}
-                >
-                  <option value="all">All locations</option>
-                  {candidatePlaces.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
-                  value={candidateStatus}
-                  onChange={(e) => {
-                    setCandidateStatus(e.target.value as typeof candidateStatus)
-                    setCandidatePage(0)
-                  }}
-                >
-                  <option value="all">All statuses</option>
-                  <option value="active">Active</option>
-                  <option value="pending">Pending</option>
-                </select>
-                <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
-                  value={candidateSort}
-                  onChange={(e) => {
-                    setCandidateSort(e.target.value as typeof candidateSort)
-                    setCandidatePage(0)
-                  }}
-                >
-                  <option value="newest">Sort by newest</option>
-                  <option value="name">Sort by name</option>
-                  <option value="packets">Sort by packets</option>
-                </select>
+                  >
+                    {label} ({n.toLocaleString()})
+                  </button>
+                ))}
               </div>
 
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+              <div className={`grid gap-5 ${candidateOpen && selectedCandidate ? 'lg:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
                 <Panel className="overflow-hidden p-0">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-[#eef1ee] px-4 py-3">
+                    <label className="relative min-w-0 w-full flex-1 sm:min-w-[16rem]">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
+                      <Input
+                        className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
+                        placeholder="Search by name, skills, or location"
+                        value={candidateQuery}
+                        onChange={(e) => {
+                          setCandidateQuery(e.target.value)
+                          setCandidatePage(0)
+                        }}
+                      />
+                    </label>
+                    <select
+                      className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
+                      value={candidateSkill}
+                      onChange={(e) => {
+                        setCandidateSkill(e.target.value)
+                        setCandidatePage(0)
+                      }}
+                    >
+                      <option value="all">All skills</option>
+                      {candidateSkills.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
+                      value={candidatePlace}
+                      onChange={(e) => {
+                        setCandidatePlace(e.target.value)
+                        setCandidatePage(0)
+                      }}
+                    >
+                      <option value="all">All locations</option>
+                      {candidatePlaces.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
+                      value={candidateStatus}
+                      onChange={(e) => {
+                        setCandidateStatus(e.target.value as typeof candidateStatus)
+                        setCandidatePage(0)
+                      }}
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="active">Active</option>
+                      <option value="pending">Pending</option>
+                    </select>
+                    <select
+                      className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
+                      value={candidateSort}
+                      onChange={(e) => {
+                        setCandidateSort(e.target.value as typeof candidateSort)
+                        setCandidatePage(0)
+                      }}
+                    >
+                      <option value="newest">Newest</option>
+                      <option value="name">Name</option>
+                      <option value="packets">Packets</option>
+                    </select>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() => {
+                        setCandidateQuery('')
+                        setCandidateTab('all')
+                        setCandidateStatus('all')
+                        setCandidatePlace('all')
+                        setCandidateSkill('all')
+                        setCandidateSort('newest')
+                        setCandidatePage(0)
+                      }}
+                    >
+                      <ListFilter className="size-4" />
+                      Reset
+                    </Button>
+                  </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[52rem] text-left text-sm">
+                    <table className="w-full min-w-0 text-left text-sm md:min-w-[44rem]">
                       <thead className="text-xs text-[#8a918c]">
                         <tr className="border-b border-[#eef1ee]">
-                          <th className="px-4 py-3 font-medium">Candidate</th>
-                          <th className="px-3 py-3 font-medium">Skills</th>
-                          <th className="px-3 py-3 font-medium">Location</th>
-                          <th className="px-3 py-3 font-medium">Packets</th>
-                          <th className="px-3 py-3 font-medium">Hired</th>
+                          <th className="w-10 px-4 py-3 font-medium">
+                            <span className="sr-only">Select</span>
+                          </th>
+                          <th className="px-3 py-3 font-medium">Candidate</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Skills</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Location</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Packets</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Hired</th>
                           <th className="px-3 py-3 font-medium">Status</th>
-                          <th className="px-3 py-3 font-medium">Joined</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Joined</th>
                           <th className="px-3 py-3 font-medium">Actions</th>
                         </tr>
                       </thead>
@@ -2553,30 +2703,50 @@ export function AdminPage() {
                         {candidateSlice.map((row) => (
                           <tr
                             key={row.id}
-                            className={`cursor-pointer border-b border-[#eef1ee] ${selectedCandidate?.id === row.id ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
-                            onClick={() => setPickedCandidate(row.id)}
+                            className={`cursor-pointer border-b border-[#eef1ee] ${selectedCandidate?.id === row.id && candidateOpen ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
+                            onClick={() => {
+                              setPickedCandidate(row.id)
+                              setCandidateOpen(true)
+                              setStaffMenu('')
+                            }}
                           >
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                className="size-4 rounded border-[#d4dbd6] accent-[#147a48]"
+                                checked={selectedCandidate?.id === row.id && candidateOpen}
+                                onChange={() => {
+                                  setPickedCandidate(row.id)
+                                  setCandidateOpen(true)
+                                }}
+                                aria-label={`Select ${row.name}`}
+                              />
+                            </td>
+                            <td className="px-3 py-3">
                               <span className="flex items-center gap-3">
-                                <span className="grid size-9 place-items-center rounded-full bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
+                                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
                                   {initials(row.name || row.email)}
                                 </span>
-                                <span>
+                                <span className="min-w-0">
                                   <span className="block font-medium">{row.name}</span>
-                                  <span className="block text-xs text-[#8a918c]">{handleFromEmail(row.email) || row.email}</span>
+                                  <span className="block truncate text-xs text-[#8a918c]">{row.headline || handleFromEmail(row.email) || row.email}</span>
                                 </span>
                               </span>
                             </td>
-                            <td className="px-3 py-3">
-                              <SkillPills skills={row.skills} />
+                            <td className="hidden px-3 py-3 lg:table-cell">
+                              {row.skills[0] ? (
+                                <span className="rounded-md bg-[#eef6ff] px-2 py-0.5 text-xs text-[#1d4ed8]">{row.skills[0]}</span>
+                              ) : (
+                                <span className="text-[#8a918c]">—</span>
+                              )}
                             </td>
-                            <td className="px-3 py-3 text-[#5c635f]">{placeLabel(row.city, row.country) || '—'}</td>
-                            <td className="px-3 py-3">{row.packets}</td>
-                            <td className="px-3 py-3">{row.hired}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] md:table-cell">{placeLabel(row.city, row.country) || '—'}</td>
+                            <td className="hidden px-3 py-3 tabular-nums md:table-cell">{row.packets}</td>
+                            <td className="hidden px-3 py-3 tabular-nums lg:table-cell">{row.hired}</td>
                             <td className="px-3 py-3">
                               <StatusDot status={row.status} />
                             </td>
-                            <td className="px-3 py-3 text-[#5c635f]">{day(row.joinedAt)}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{day(row.joinedAt)}</td>
                             <td className="relative px-3 py-3">
                               <button
                                 type="button"
@@ -2585,6 +2755,7 @@ export function AdminPage() {
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   setPickedCandidate(row.id)
+                                  setCandidateOpen(true)
                                   setStaffMenu(staffMenu === row.id ? '' : row.id)
                                 }}
                               >
@@ -2634,87 +2805,163 @@ export function AdminPage() {
                     </table>
                     {!candidateSlice.length ? <p className="px-4 py-8 text-sm text-[#8a918c]">No candidates match this search.</p> : null}
                   </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
                     <p>
-                      Showing {candidateRows.length ? candidatePageSafe * pageSize + 1 : 0}-{Math.min(candidateRows.length, candidatePageSafe * pageSize + pageSize)} of {candidateRows.length} candidates
+                      Showing {candidateRows.length ? candidatePageSafe * candidatePageSize + 1 : 0}–
+                      {Math.min(candidateRows.length, candidatePageSafe * candidatePageSize + candidatePageSize)} of {candidateRows.length} candidates
                     </p>
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: candidatePages }, (_, i) => (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1">
                         <button
-                          key={i}
                           type="button"
-                          onClick={() => setCandidatePage(i)}
-                          className={`grid size-7 place-items-center rounded-md ${candidatePageSafe === i ? 'bg-[#13261f] text-white' : 'hover:bg-[#f3f5f4]'}`}
+                          className="grid size-7 place-items-center rounded-md hover:bg-[#f3f5f4] disabled:opacity-40"
+                          disabled={candidatePageSafe === 0}
+                          onClick={() => setCandidatePage((p) => Math.max(0, p - 1))}
+                          aria-label="Previous page"
                         >
-                          {i + 1}
+                          <ChevronLeft className="size-4" />
                         </button>
-                      ))}
+                        {Array.from({ length: candidatePages }, (_, i) => i)
+                          .filter((i) => i === 0 || i === candidatePages - 1 || Math.abs(i - candidatePageSafe) <= 1)
+                          .reduce<(number | 'gap')[]>((acc, i) => {
+                            if (acc.length && acc[acc.length - 1] !== 'gap' && typeof acc[acc.length - 1] === 'number' && i - (acc[acc.length - 1] as number) > 1) acc.push('gap')
+                            acc.push(i)
+                            return acc
+                          }, [])
+                          .map((item, idx) =>
+                            item === 'gap' ? (
+                              <span key={`gap-${idx}`} className="px-1">
+                                …
+                              </span>
+                            ) : (
+                              <button
+                                key={item}
+                                type="button"
+                                onClick={() => setCandidatePage(item)}
+                                className={`grid size-7 place-items-center rounded-md ${candidatePageSafe === item ? 'bg-[#147a48] text-white' : 'hover:bg-[#f3f5f4]'}`}
+                              >
+                                {item + 1}
+                              </button>
+                            ),
+                          )}
+                        <button
+                          type="button"
+                          className="grid size-7 place-items-center rounded-md hover:bg-[#f3f5f4] disabled:opacity-40"
+                          disabled={candidatePageSafe >= candidatePages - 1}
+                          onClick={() => setCandidatePage((p) => Math.min(candidatePages - 1, p + 1))}
+                          aria-label="Next page"
+                        >
+                          <ChevronRight className="size-4" />
+                        </button>
+                      </div>
+                      <label className="flex items-center gap-2">
+                        Show
+                        <select
+                          className="h-8 rounded-lg border border-[#e4e8e5] bg-white px-2"
+                          value={candidatePageSize}
+                          onChange={(e) => {
+                            setCandidatePageSize(Number(e.target.value))
+                            setCandidatePage(0)
+                          }}
+                        >
+                          <option value={10}>10</option>
+                          <option value={25}>25</option>
+                          <option value={50}>50</option>
+                        </select>
+                        per page
+                      </label>
                     </div>
                   </div>
                 </Panel>
 
-                <div className="space-y-4">
-                  {selectedCandidate ? (
-                    <>
-                      <Panel>
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="grid size-14 place-items-center rounded-full bg-[#e8f6ee] text-base font-semibold text-[#147a48]">
-                            {initials(selectedCandidate.name || selectedCandidate.email)}
-                          </span>
-                          {selectedCandidate.onboarded ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-[#e8f6ee] px-2 py-0.5 text-xs font-medium text-[#147a48]">
-                              <Check className="size-3.5" />
-                              Onboarded
-                            </span>
-                          ) : (
-                            <StatusDot status={selectedCandidate.status} />
-                          )}
+                {candidateOpen && selectedCandidate ? (
+                  <Panel className="h-fit p-0">
+                    <div className="flex items-start justify-between gap-3 border-b border-[#eef1ee] px-5 py-4">
+                      <div>
+                        <p className="text-sm font-medium text-[#161c19]">Candidate Details</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="grid size-8 place-items-center rounded-full text-[#8a918c] hover:bg-[#f3f5f4]"
+                        aria-label="Close details"
+                        onClick={() => setCandidateOpen(false)}
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <div className="space-y-5 px-5 py-5">
+                      <div>
+                        <div className="flex items-start justify-between gap-3">
+                          <h2 className="font-sans text-lg font-semibold leading-snug text-[#161c19]">{selectedCandidate.name}</h2>
+                          <StatusDot status={selectedCandidate.status} />
                         </div>
-                        <p className="mt-3 font-medium">{selectedCandidate.name}</p>
-                        <p className="text-sm text-[#8a918c]">{handleFromEmail(selectedCandidate.email)}</p>
-                        <p className="mt-1 text-sm text-[#5c635f]">{selectedCandidate.headline || 'Candidate'}</p>
-                        <p className="mt-1 flex items-center gap-1 text-xs text-[#8a918c]">
-                          <MapPin className="size-3.5" />
-                          {placeLabel(selectedCandidate.city, selectedCandidate.country) || 'Location not set'}
-                        </p>
-                        <Button className="mt-4 w-full" type="button" onClick={() => go('packets')}>
-                          View packets
-                        </Button>
-                        <Button variant="outline" className="mt-2 w-full" type="button" onClick={() => go('inbox')}>
-                          Message
-                        </Button>
-                        <Button variant="outline" className="mt-2 w-full" type="button" onClick={() => void navigator.clipboard.writeText(selectedCandidate.email)}>
-                          Copy email
-                        </Button>
-                      </Panel>
-                      <Panel>
-                        <h2 className="font-sans text-base font-semibold">Skills</h2>
-                        <div className="mt-3">
-                          <SkillPills skills={selectedCandidate.skills} all />
-                        </div>
-                      </Panel>
-                      <Panel>
-                        <h2 className="font-sans text-base font-semibold">About</h2>
-                        <p className="mt-2 text-sm leading-relaxed text-[#5c635f]">
+                        <p className="mt-1 text-sm text-[#8a918c]">Joined {day(selectedCandidate.joinedAt)}</p>
+                        <p className="mt-3 text-sm leading-relaxed text-[#5c635f]">
                           {selectedCandidate.headline || 'No profile headline yet.'}
                         </p>
-                      </Panel>
-                      <Panel>
-                        <h2 className="font-sans text-base font-semibold">Account</h2>
-                        <dl className="mt-3 space-y-3 text-sm">
-                          <OverviewRow label="Email" value={selectedCandidate.email} />
-                          <OverviewRow label="Location" value={placeLabel(selectedCandidate.city, selectedCandidate.country) || '—'} />
-                          <OverviewRow label="Joined" value={day(selectedCandidate.joinedAt)} />
-                          <OverviewRow label="Packets" value={String(selectedCandidate.packets)} />
-                          <OverviewRow label="Hired" value={String(selectedCandidate.hired)} />
-                          <OverviewRow label="Tracker" value={formatHoursMinutes(selectedCandidate.hours)} />
-                        </dl>
-                      </Panel>
+                      </div>
+                      {selectedCandidate.skills.length ? (
+                        <div>
+                          <SkillPills skills={selectedCandidate.skills} all />
+                        </div>
+                      ) : null}
+                      <ul className="space-y-2.5 text-sm text-[#5c635f]">
+                        <li className="flex items-center gap-2">
+                          <MapPin className="size-4 shrink-0 text-[#8a918c]" />
+                          {placeLabel(selectedCandidate.city, selectedCandidate.country) || 'Location not set'}
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <FileText className="size-4 shrink-0 text-[#8a918c]" />
+                          {selectedCandidate.packets} packets
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <UserCheck className="size-4 shrink-0 text-[#8a918c]" />
+                          {selectedCandidate.hired} hired
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Timer className="size-4 shrink-0 text-[#8a918c]" />
+                          {formatHoursMinutes(selectedCandidate.hours)} tracked
+                        </li>
+                      </ul>
+                      <div className="rounded-2xl border border-[#eef1ee] p-3">
+                        <p className="text-xs font-medium text-[#8a918c]">Account</p>
+                        <div className="mt-2 flex items-center gap-3">
+                          <span className="grid size-10 place-items-center rounded-full bg-[#e8f6ee] text-sm font-semibold text-[#147a48]">
+                            {initials(selectedCandidate.name || selectedCandidate.email)}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{selectedCandidate.name}</p>
+                            <p className="truncate text-xs text-[#8a918c]">{selectedCandidate.email}</p>
+                          </div>
+                        </div>
+                        {selectedCandidate.onboarded ? (
+                          <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-[#e8f6ee] px-2 py-0.5 text-xs font-medium text-[#147a48]">
+                            <Check className="size-3.5" />
+                            Onboarded
+                          </span>
+                        ) : (
+                          <span className="mt-3 inline-flex rounded-full bg-[#fef3c7] px-2 py-0.5 text-xs font-medium text-[#b45309]">Setup incomplete</span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded-xl bg-[#f7f8f7] py-3">
+                          <p className="text-lg font-semibold tabular-nums">{selectedCandidate.packets}</p>
+                          <p className="mt-0.5 text-[0.65rem] text-[#8a918c]">Packets</p>
+                        </div>
+                        <div className="rounded-xl bg-[#f7f8f7] py-3">
+                          <p className="text-lg font-semibold tabular-nums">{selectedCandidate.hired}</p>
+                          <p className="mt-0.5 text-[0.65rem] text-[#8a918c]">Hired</p>
+                        </div>
+                        <div className="rounded-xl bg-[#f7f8f7] py-3">
+                          <p className="text-lg font-semibold tabular-nums">{formatHoursMinutes(selectedCandidate.hours)}</p>
+                          <p className="mt-0.5 text-[0.65rem] text-[#8a918c]">Hours</p>
+                        </div>
+                      </div>
                       {candidatePackets.length ? (
-                        <Panel>
-                          <h2 className="font-sans text-base font-semibold">Recent packets</h2>
-                          <ul className="mt-3 space-y-2 text-sm">
-                            {candidatePackets.slice(0, 4).map((row) => (
+                        <div>
+                          <p className="text-sm font-medium">Recent packets</p>
+                          <ul className="mt-2 space-y-2 text-sm">
+                            {candidatePackets.slice(0, 3).map((row) => (
                               <li key={row.id} className="rounded-xl bg-[#f7f8f7] px-3 py-2">
                                 <p className="font-medium">{row.jobTitle}</p>
                                 <p className="text-xs text-[#8a918c]">
@@ -2723,15 +2970,22 @@ export function AdminPage() {
                               </li>
                             ))}
                           </ul>
-                        </Panel>
+                        </div>
                       ) : null}
-                    </>
-                  ) : (
-                    <Panel>
-                      <p className="text-sm text-[#8a918c]">Select a candidate to see their profile.</p>
-                    </Panel>
-                  )}
-                </div>
+                      <div className="space-y-2">
+                        <Button className="w-full bg-[#147a48] hover:bg-[#0f6a3d]" type="button" onClick={() => go('packets')}>
+                          View packets
+                        </Button>
+                        <Button variant="outline" className="w-full" type="button" onClick={() => void navigator.clipboard.writeText(selectedCandidate.email)}>
+                          Copy email
+                        </Button>
+                        <Button variant="outline" className="w-full" type="button" onClick={() => go('inbox')}>
+                          Message
+                        </Button>
+                      </div>
+                    </div>
+                  </Panel>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -2743,7 +2997,7 @@ export function AdminPage() {
                   <p className="text-sm text-[#8a918c]">
                     Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Employers</span>
                   </p>
-                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Employers</h1>
+                  <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Employers</h1>
                   <p className="mt-1 text-sm text-[#5c635f]">Manage hiring accounts, posted jobs, and pay on Atelier.</p>
                 </div>
                 <Button type="button" onClick={() => go('invite')}>
@@ -2752,7 +3006,7 @@ export function AdminPage() {
                 </Button>
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_18rem]">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
                 <EmployerStat icon={Building2} color="#14a35a" label="Total Employers" value={employerStats.total} delta={employerStats.totalDelta} />
                 <EmployerStat icon={User} color="#22c55e" label="Active Employers" value={employerStats.active} delta={employerStats.activeDelta} />
                 <EmployerStat icon={UserPlus} color="#3b82f6" label="New Employers" value={employerStats.fresh} delta={employerStats.newDelta} />
@@ -2787,7 +3041,7 @@ export function AdminPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="relative min-w-[16rem] flex-1">
+                <label className="relative min-w-0 w-full flex-1 sm:min-w-[16rem]">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
                   <Input
                     className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
@@ -2800,7 +3054,7 @@ export function AdminPage() {
                   />
                 </label>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={employerStatus}
                   onChange={(e) => {
                     setEmployerStatus(e.target.value as typeof employerStatus)
@@ -2812,7 +3066,7 @@ export function AdminPage() {
                   <option value="pending">Pending</option>
                 </select>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={employerIndustry}
                   onChange={(e) => {
                     setEmployerIndustry(e.target.value)
@@ -2832,19 +3086,19 @@ export function AdminPage() {
                 </Button>
               </div>
 
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
                 <Panel className="overflow-hidden p-0">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[52rem] text-left text-sm">
+                    <table className="w-full min-w-0 text-left text-sm md:min-w-[36rem]">
                       <thead className="text-xs text-[#8a918c]">
                         <tr className="border-b border-[#eef1ee]">
                           <th className="px-4 py-3 font-medium">Employer</th>
-                          <th className="px-3 py-3 font-medium">Company</th>
-                          <th className="px-3 py-3 font-medium">Industry</th>
-                          <th className="px-3 py-3 font-medium">Paid out</th>
-                          <th className="px-3 py-3 font-medium">Jobs</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Company</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Industry</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Paid out</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Jobs</th>
                           <th className="px-3 py-3 font-medium">Status</th>
-                          <th className="px-3 py-3 font-medium">Joined</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Joined</th>
                           <th className="px-3 py-3 font-medium">Actions</th>
                         </tr>
                       </thead>
@@ -2869,14 +3123,14 @@ export function AdminPage() {
                                 </span>
                               </span>
                             </td>
-                            <td className="px-3 py-3">{row.company}</td>
-                            <td className="px-3 py-3 text-[#5c635f]">{row.industry || '—'}</td>
-                            <td className="px-3 py-3">{money(row.spent)}</td>
-                            <td className="px-3 py-3">{row.jobs}</td>
+                            <td className="hidden px-3 py-3 md:table-cell">{row.company}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{row.industry || '—'}</td>
+                            <td className="hidden px-3 py-3 lg:table-cell">{money(row.spent)}</td>
+                            <td className="hidden px-3 py-3 md:table-cell">{row.jobs}</td>
                             <td className="px-3 py-3">
                               <StatusDot status={row.status} />
                             </td>
-                            <td className="px-3 py-3 text-[#5c635f]">{day(row.joinedAt)}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{day(row.joinedAt)}</td>
                             <td className="px-3 py-3">
                               <button
                                 type="button"
@@ -2901,7 +3155,7 @@ export function AdminPage() {
                     <p>
                       Showing {employerRows.length ? employerPageSafe * pageSize + 1 : 0}-{Math.min(employerRows.length, employerPageSafe * pageSize + pageSize)} of {employerRows.length} employers
                     </p>
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1 overflow-x-auto">
                       {Array.from({ length: employerPages }, (_, i) => (
                         <button
                           key={i}
@@ -2981,12 +3235,75 @@ export function AdminPage() {
 
           {view === 'people' ? (
             <div className="space-y-5">
+              {peopleInviteKind ? (
+                <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+                  <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close invite" onClick={closeAddUser} />
+                  <Panel className="relative z-10 w-full max-w-md p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="font-sans text-lg font-semibold">
+                          {peopleInviteKind === 'admin' ? 'Invite admin' : peopleInviteKind === 'employer' ? 'Invite employer' : 'Invite candidate'}
+                        </h2>
+                        <p className="mt-1 text-sm text-[#5c635f]">
+                          {peopleInviteKind === 'admin'
+                            ? 'They get the admin desk. Signup still cannot grant admin on its own.'
+                            : peopleInviteKind === 'employer'
+                              ? 'They create a hiring account. Approved packets land in their inbox.'
+                              : 'They create a candidate account. Packets leave only after they approve.'}
+                        </p>
+                      </div>
+                      <button type="button" className="grid size-8 place-items-center rounded-full hover:bg-[#f3f5f4]" aria-label="Close" onClick={closeAddUser}>
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <form className="mt-5 space-y-4" onSubmit={onAddUserSubmit}>
+                      <label className="block space-y-1.5">
+                        <span className="text-sm font-medium">
+                          Email <span className="text-[#b85c38]">*</span>
+                        </span>
+                        <Input
+                          type="email"
+                          required
+                          placeholder="name@company.com"
+                          value={peopleInviteEmail}
+                          onChange={(e) => setPeopleInviteEmail(e.target.value)}
+                        />
+                      </label>
+                      {peopleInviteKind === 'employer' ? (
+                        <label className="block space-y-1.5">
+                          <span className="text-sm font-medium">
+                            Company <span className="text-[#b85c38]">*</span>
+                          </span>
+                          <Input
+                            required
+                            placeholder="Company name"
+                            value={peopleInviteCompany}
+                            onChange={(e) => setPeopleInviteCompany(e.target.value)}
+                          />
+                        </label>
+                      ) : null}
+                      {peopleInviteNotice ? (
+                        <p className={`text-sm ${inviteUser.isError ? 'text-[#b85c38]' : 'text-[#147a48]'}`}>{peopleInviteNotice}</p>
+                      ) : null}
+                      <div className="flex flex-wrap justify-end gap-2 pt-1">
+                        <Button variant="outline" type="button" onClick={copyAddUserLink}>
+                          <Copy className="size-4" />
+                          Copy join link
+                        </Button>
+                        <Button type="submit" disabled={inviteUser.isPending || !peopleInviteEmail.trim()}>
+                          {inviteUser.isPending ? 'Sending…' : 'Send invite'}
+                        </Button>
+                      </div>
+                    </form>
+                  </Panel>
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm text-[#8a918c]">
                     Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Users</span>
                   </p>
-                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Users</h1>
+                  <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Users</h1>
                   <p className="mt-1 text-sm text-[#5c635f]">Invite people to Atelier, then review candidate, employer, and admin accounts.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -3000,24 +3317,21 @@ export function AdminPage() {
                         <button
                           type="button"
                           className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
-                          onClick={() => {
-                            copyCandidateInvite('link')
-                            setPeopleInviteOpen(false)
-                          }}
+                          onClick={() => openAddUser('candidate')}
                         >
                           Invite candidate
                         </button>
                         <button
                           type="button"
                           className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
-                          onClick={() => go('invite')}
+                          onClick={() => openAddUser('employer')}
                         >
                           Invite employer
                         </button>
                         <button
                           type="button"
                           className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
-                          onClick={() => go('staff')}
+                          onClick={() => openAddUser('admin')}
                         >
                           Invite admin
                         </button>
@@ -3031,7 +3345,7 @@ export function AdminPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <EmployerStat icon={Users} color="#14a35a" label="Total Users" value={userStats.total} delta={userStats.totalDelta} />
                 <EmployerStat icon={User} color="#3b82f6" label="Candidates" value={userStats.candidates} delta={userStats.candidatesDelta} />
                 <EmployerStat icon={Building2} color="#22c55e" label="Employers" value={userStats.employers} delta={userStats.employersDelta} />
@@ -3039,7 +3353,7 @@ export function AdminPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="relative min-w-[16rem] flex-1">
+                <label className="relative min-w-0 w-full flex-1 sm:min-w-[16rem]">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
                   <Input
                     className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
@@ -3052,7 +3366,7 @@ export function AdminPage() {
                   />
                 </label>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={peopleType}
                   onChange={(e) => {
                     setPeopleType(e.target.value as UserTypeFilter)
@@ -3065,7 +3379,7 @@ export function AdminPage() {
                   <option value="admin">Admins</option>
                 </select>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={peopleStatus}
                   onChange={(e) => {
                     setPeopleStatus(e.target.value as typeof peopleStatus)
@@ -3077,7 +3391,7 @@ export function AdminPage() {
                   <option value="pending">Pending</option>
                 </select>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={peopleCountry}
                   onChange={(e) => {
                     setPeopleCountry(e.target.value)
@@ -3093,19 +3407,19 @@ export function AdminPage() {
                 </select>
               </div>
 
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
                 <Panel className="overflow-hidden p-0">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[52rem] text-left text-sm">
+                    <table className="w-full min-w-0 text-left text-sm md:min-w-[36rem]">
                       <thead className="text-xs text-[#8a918c]">
                         <tr className="border-b border-[#eef1ee]">
                           <th className="px-4 py-3 font-medium">User</th>
                           <th className="px-3 py-3 font-medium">Type</th>
-                          <th className="px-3 py-3 font-medium">Email</th>
-                          <th className="px-3 py-3 font-medium">Country</th>
-                          <th className="px-3 py-3 font-medium">Joined</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Email</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Country</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Joined</th>
                           <th className="px-3 py-3 font-medium">Status</th>
-                          <th className="px-3 py-3 font-medium">Last active</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Last active</th>
                           <th className="px-3 py-3 font-medium">Actions</th>
                         </tr>
                       </thead>
@@ -3114,7 +3428,7 @@ export function AdminPage() {
                           <tr
                             key={row.id}
                             className={`cursor-pointer border-b border-[#eef1ee] ${selectedUser?.id === row.id ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
-                            onClick={() => setPickedPerson(row.id)}
+                            onClick={() => pickPerson(row)}
                           >
                             <td className="px-4 py-3">
                               <span className="flex items-center gap-3">
@@ -3130,13 +3444,13 @@ export function AdminPage() {
                             <td className="px-3 py-3">
                               <RoleChip role={row.role} />
                             </td>
-                            <td className="px-3 py-3 text-[#5c635f]">{row.email}</td>
-                            <td className="px-3 py-3 text-[#5c635f]">{row.country || '—'}</td>
-                            <td className="px-3 py-3 text-[#5c635f]">{day(row.joinedAt)}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{row.email}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] md:table-cell">{row.country || '—'}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{day(row.joinedAt)}</td>
                             <td className="px-3 py-3">
                               <StatusDot status={accountStatus(row)} />
                             </td>
-                            <td className="px-3 py-3 text-[#5c635f]">{ago(row.lastActive || row.joinedAt)}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{ago(row.lastActive || row.joinedAt)}</td>
                             <td className="relative px-3 py-3">
                               <button
                                 type="button"
@@ -3144,7 +3458,7 @@ export function AdminPage() {
                                 aria-label="Actions"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  setPickedPerson(row.id)
+                                  pickPerson(row)
                                   setStaffMenu(staffMenu === row.id ? '' : row.id)
                                 }}
                               >
@@ -3198,7 +3512,7 @@ export function AdminPage() {
                     <p>
                       Showing {userRows.length ? userPageSafe * pageSize + 1 : 0}-{Math.min(userRows.length, userPageSafe * pageSize + pageSize)} of {userRows.length} users
                     </p>
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1 overflow-x-auto">
                       {Array.from({ length: userPages }, (_, i) => (
                         <button
                           key={i}
@@ -3237,17 +3551,54 @@ export function AdminPage() {
                       <Button className="mt-4 w-full" type="button" onClick={() => openUserDesk(selectedUser)}>
                         View profile
                       </Button>
-                      <Button
-                        variant="outline"
-                        className="mt-2 w-full"
-                        type="button"
-                        onClick={() => {
-                          setEmail(selectedUser.email)
-                          go('roles')
-                        }}
-                      >
-                        Change role
-                      </Button>
+                      {selectedUser.role === 'super_admin' ? (
+                        <p className="mt-2 rounded-xl bg-[#f7f8f7] px-3 py-2 text-xs text-[#5c635f]">Super admin is SQL only.</p>
+                      ) : superAdmin ? (
+                        <form
+                          className="mt-2 space-y-2"
+                          onSubmit={(e) => {
+                            e.preventDefault()
+                            changeUserRole.mutate({ email: selectedUser.email, role: peopleNextRole })
+                          }}
+                        >
+                          <select
+                            className="h-10 w-full rounded-lg border border-[#e4e8e5] px-3 text-sm"
+                            value={peopleNextRole}
+                            onChange={(e) => setPeopleNextRole(e.target.value as typeof peopleNextRole)}
+                          >
+                            <option value="candidate">Candidate</option>
+                            <option value="employer">Employer</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                          <Button variant="outline" className="w-full" type="submit" disabled={changeUserRole.isPending}>
+                            {changeUserRole.isPending ? 'Saving…' : 'Save role'}
+                          </Button>
+                          {changeUserRole.isError ? (
+                            <p className="text-sm text-[#b85c38]">
+                              {changeUserRole.error instanceof Error ? changeUserRole.error.message : 'Could not update the role.'}
+                            </p>
+                          ) : null}
+                          {changeUserRole.isSuccess ? <p className="text-sm text-[#147a48]">Role updated.</p> : null}
+                        </form>
+                      ) : selectedUser.role === 'admin' ? (
+                        <p className="mt-2 rounded-xl bg-[#f7f8f7] px-3 py-2 text-xs text-[#5c635f]">Only a super admin can change an admin’s role.</p>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          className="mt-2 w-full"
+                          type="button"
+                          disabled={inviteUser.isPending}
+                          onClick={() => {
+                            setPeopleInviteNotice('')
+                            inviteUser.mutate({ email: selectedUser.email, role: 'admin' })
+                          }}
+                        >
+                          {inviteUser.isPending ? 'Saving…' : 'Make admin'}
+                        </Button>
+                      )}
+                      {!peopleInviteKind && peopleInviteNotice ? (
+                        <p className={`mt-2 text-sm ${inviteUser.isError ? 'text-[#b85c38]' : 'text-[#147a48]'}`}>{peopleInviteNotice}</p>
+                      ) : null}
                       <div className="mt-5">
                         <p className="text-sm font-medium">Account</p>
                         <dl className="mt-3 space-y-3 text-sm">
@@ -3323,7 +3674,7 @@ export function AdminPage() {
                   <p className="text-sm text-[#8a918c]">
                     Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Packets</span>
                   </p>
-                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Packets</h1>
+                  <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Packets</h1>
                   <p className="mt-1 text-sm text-[#5c635f]">Review packets candidates approved. They leave only after that send.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -3338,7 +3689,7 @@ export function AdminPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <EmployerStat icon={FileText} color="#14a35a" label="Total Packets" value={packetStats.total} delta={packetStats.totalDelta} />
                 <EmployerStat icon={Send} color="#3b82f6" label="Pending review" value={packetStats.pending} delta={packetStats.pendingDelta} />
                 <EmployerStat icon={Check} color="#22c55e" label="Hired / offer" value={packetStats.accepted} delta={packetStats.acceptedDelta} />
@@ -3346,7 +3697,7 @@ export function AdminPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="relative min-w-[16rem] flex-1">
+                <label className="relative min-w-0 w-full flex-1 sm:min-w-[16rem]">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
                   <Input
                     className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
@@ -3359,7 +3710,7 @@ export function AdminPage() {
                   />
                 </label>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={packetStatus}
                   onChange={(e) => {
                     setPacketStatus(e.target.value as typeof packetStatus)
@@ -3373,7 +3724,7 @@ export function AdminPage() {
                   <option value="draft">Draft</option>
                 </select>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={packetCompany}
                   onChange={(e) => {
                     setPacketCompany(e.target.value)
@@ -3389,17 +3740,17 @@ export function AdminPage() {
                 </select>
               </div>
 
-              <div className={`grid gap-5 ${packetOpen && selectedPacket ? 'xl:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
+              <div className={`grid gap-5 ${packetOpen && selectedPacket ? 'lg:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
                 <Panel className="overflow-hidden p-0">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[52rem] text-left text-sm">
+                    <table className="w-full min-w-0 text-left text-sm md:min-w-[36rem]">
                       <thead className="text-xs text-[#8a918c]">
                         <tr className="border-b border-[#eef1ee]">
                           <th className="px-4 py-3 font-medium">Candidate</th>
                           <th className="px-3 py-3 font-medium">Role</th>
-                          <th className="px-3 py-3 font-medium">Employer</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Employer</th>
                           <th className="px-3 py-3 font-medium">Status</th>
-                          <th className="px-3 py-3 font-medium">Submitted</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Submitted</th>
                           <th className="px-3 py-3 font-medium">Actions</th>
                         </tr>
                       </thead>
@@ -3428,11 +3779,11 @@ export function AdminPage() {
                               <p className="font-medium">{row.jobTitle}</p>
                               <p className="text-xs text-[#8a918c]">{row.atelier ? 'Atelier' : row.channel || 'Open listing'}</p>
                             </td>
-                            <td className="px-3 py-3">{row.company || '—'}</td>
+                            <td className="hidden px-3 py-3 md:table-cell">{row.company || '—'}</td>
                             <td className="px-3 py-3">
                               <PacketDot status={row.status} />
                             </td>
-                            <td className="px-3 py-3 text-[#5c635f]">{ago(row.submittedAt || row.createdAt)}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{ago(row.submittedAt || row.createdAt)}</td>
                             <td className="px-3 py-3">
                               <MoreHorizontal className="size-4 text-[#8a918c]" />
                             </td>
@@ -3446,7 +3797,7 @@ export function AdminPage() {
                     <p>
                       Showing {packets.length ? packetPageSafe * 10 + 1 : 0}-{Math.min(packets.length, packetPageSafe * 10 + 10)} of {packets.length} packets
                     </p>
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1 overflow-x-auto">
                       {Array.from({ length: packetPages }, (_, i) => (
                         <button
                           key={i}
@@ -3543,7 +3894,7 @@ export function AdminPage() {
                   <p className="text-sm text-[#8a918c]">
                     Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Contracts</span>
                   </p>
-                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Contracts</h1>
+                  <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Contracts</h1>
                   <p className="mt-1 text-sm text-[#5c635f]">Hired roles on Atelier — tracker hours and employer pay stay here.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -3558,7 +3909,7 @@ export function AdminPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <EmployerStat icon={FileSignature} color="#14a35a" label="Total contracts" value={contractStats.total} delta={contractStats.totalDelta} />
                 <EmployerStat icon={CirclePlay} color="#22c55e" label="Active contracts" value={contractStats.active} delta={contractStats.activeDelta} />
                 <EmployerStat icon={Check} color="#16a34a" label="Completed" value={contractStats.completed} delta={contractStats.completedDelta} />
@@ -3566,7 +3917,7 @@ export function AdminPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="relative min-w-[16rem] flex-1">
+                <label className="relative min-w-0 w-full flex-1 sm:min-w-[16rem]">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
                   <Input
                     className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
@@ -3579,7 +3930,7 @@ export function AdminPage() {
                   />
                 </label>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={contractPhase}
                   onChange={(e) => {
                     setContractPhase(e.target.value as typeof contractPhase)
@@ -3593,7 +3944,7 @@ export function AdminPage() {
                   <option value="cancelled">Cancelled</option>
                 </select>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={contractType}
                   onChange={(e) => {
                     setContractType(e.target.value)
@@ -3608,7 +3959,7 @@ export function AdminPage() {
                   ))}
                 </select>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={contractCompany}
                   onChange={(e) => {
                     setContractCompany(e.target.value)
@@ -3624,20 +3975,20 @@ export function AdminPage() {
                 </select>
               </div>
 
-              <div className={`grid gap-5 ${contractOpen && selectedContract ? 'xl:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
+              <div className={`grid gap-5 ${contractOpen && selectedContract ? 'lg:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
                 <Panel className="overflow-hidden p-0">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[58rem] text-left text-sm">
+                    <table className="w-full min-w-0 text-left text-sm md:min-w-[40rem]">
                       <thead className="text-xs text-[#8a918c]">
                         <tr className="border-b border-[#eef1ee]">
                           <th className="px-4 py-3 font-medium">Role</th>
                           <th className="px-3 py-3 font-medium">Candidate</th>
-                          <th className="px-3 py-3 font-medium">Employer</th>
-                          <th className="px-3 py-3 font-medium">Type</th>
-                          <th className="px-3 py-3 font-medium">Amount</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Employer</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Type</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Amount</th>
                           <th className="px-3 py-3 font-medium">Status</th>
-                          <th className="px-3 py-3 font-medium">Start</th>
-                          <th className="px-3 py-3 font-medium">End</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Start</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">End</th>
                           <th className="px-3 py-3 font-medium">Actions</th>
                         </tr>
                       </thead>
@@ -3666,14 +4017,14 @@ export function AdminPage() {
                                 </span>
                               </span>
                             </td>
-                            <td className="px-3 py-3">{row.company || '—'}</td>
-                            <td className="px-3 py-3 text-[#5c635f]">{prettyContractType(row.type)}</td>
-                            <td className="px-3 py-3 tabular-nums">{row.amount ? money(row.amount, data?.finance?.currency) : '—'}</td>
+                            <td className="hidden px-3 py-3 md:table-cell">{row.company || '—'}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{prettyContractType(row.type)}</td>
+                            <td className="hidden px-3 py-3 tabular-nums md:table-cell">{row.amount ? money(row.amount, data?.finance?.currency) : '—'}</td>
                             <td className="px-3 py-3">
                               <ContractDot phase={row.phase} />
                             </td>
-                            <td className="px-3 py-3 text-[#5c635f]">{day(row.startedAt)}</td>
-                            <td className="px-3 py-3 text-[#5c635f]">{row.endedAt ? day(row.endedAt) : '—'}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{day(row.startedAt)}</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">{row.endedAt ? day(row.endedAt) : '—'}</td>
                             <td className="px-3 py-3">
                               <MoreHorizontal className="size-4 text-[#8a918c]" />
                             </td>
@@ -3687,7 +4038,7 @@ export function AdminPage() {
                     <p>
                       Showing {contractRows.length ? contractPageSafe * 10 + 1 : 0}-{Math.min(contractRows.length, contractPageSafe * 10 + 10)} of {contractRows.length} contracts
                     </p>
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1 overflow-x-auto">
                       {Array.from({ length: contractPages }, (_, i) => (
                         <button
                           key={i}
@@ -3849,7 +4200,7 @@ export function AdminPage() {
                   <p className="text-sm text-[#8a918c]">
                     Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Payments</span>
                   </p>
-                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Payments</h1>
+                  <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Payments</h1>
                   <p className="mt-1 text-sm text-[#5c635f]">Employer pay and candidate withdrawals stay on Atelier. Outside boards are not involved.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -3864,14 +4215,14 @@ export function AdminPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <MoneyStat icon={DollarSign} color="#14a35a" label="Total volume" value={data?.finance?.received ?? 0} currency={data?.finance?.currency} delta={payStats.receivedDelta} />
                 <MoneyStat icon={Clock} color="#3b82f6" label="Pending" value={data?.finance?.pending ?? 0} currency={data?.finance?.currency} delta={payStats.pendingDelta} />
                 <MoneyStat icon={ArrowDownToLine} color="#8b5cf6" label="Candidate payouts" value={data?.finance?.withdrawn ?? 0} currency={data?.finance?.currency} delta={payStats.withdrawnDelta} />
                 <MoneyStat icon={Building2} color="#14a35a" label="Available" value={data?.finance?.available ?? 0} currency={data?.finance?.currency} delta={payStats.availableDelta} />
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.75fr)]">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.75fr)]">
                 <Panel>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 className="font-sans text-base font-semibold">Payment volume</h2>
@@ -3927,7 +4278,7 @@ export function AdminPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="relative min-w-[16rem] flex-1">
+                <label className="relative min-w-0 w-full flex-1 sm:min-w-[16rem]">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
                   <Input
                     className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
@@ -3940,7 +4291,7 @@ export function AdminPage() {
                   />
                 </label>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={payKind}
                   onChange={(e) => {
                     setPayKind(e.target.value as typeof payKind)
@@ -3952,7 +4303,7 @@ export function AdminPage() {
                   <option value="withdraw">Candidate payout</option>
                 </select>
                 <select
-                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  className="h-10 w-full min-w-0 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm sm:w-auto"
                   value={payStatus}
                   onChange={(e) => {
                     setPayStatus(e.target.value as typeof payStatus)
@@ -3967,18 +4318,18 @@ export function AdminPage() {
                 </select>
               </div>
 
-              <div className={`grid gap-5 ${payOpen && selectedPay ? 'xl:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
+              <div className={`grid gap-5 ${payOpen && selectedPay ? 'lg:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
                 <Panel className="overflow-hidden p-0">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[58rem] text-left text-sm">
+                    <table className="w-full min-w-0 text-left text-sm md:min-w-[40rem]">
                       <thead className="text-xs text-[#8a918c]">
                         <tr className="border-b border-[#eef1ee]">
                           <th className="px-4 py-3 font-medium">Date</th>
-                          <th className="px-3 py-3 font-medium">Transaction ID</th>
-                          <th className="px-3 py-3 font-medium">Type</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Transaction ID</th>
+                          <th className="hidden px-3 py-3 font-medium md:table-cell">Type</th>
                           <th className="px-3 py-3 font-medium">From / To</th>
                           <th className="px-3 py-3 font-medium">Amount</th>
-                          <th className="px-3 py-3 font-medium">Method</th>
+                          <th className="hidden px-3 py-3 font-medium lg:table-cell">Method</th>
                           <th className="px-3 py-3 font-medium">Status</th>
                           <th className="px-3 py-3 font-medium">Actions</th>
                         </tr>
@@ -3994,8 +4345,8 @@ export function AdminPage() {
                             }}
                           >
                             <td className="px-4 py-3 text-[#5c635f]">{when(row.createdAt)}</td>
-                            <td className="px-3 py-3 font-medium tabular-nums">{shortPayId(row.id)}</td>
-                            <td className="px-3 py-3">
+                            <td className="hidden px-3 py-3 font-medium tabular-nums lg:table-cell">{shortPayId(row.id)}</td>
+                            <td className="hidden px-3 py-3 md:table-cell">
                               <PayKindChip kind={row.kind} />
                             </td>
                             <td className="px-3 py-3">
@@ -4003,7 +4354,7 @@ export function AdminPage() {
                               <p className="text-xs text-[#8a918c]">{row.jobTitle || '—'}</p>
                             </td>
                             <td className="px-3 py-3 tabular-nums">{money(row.amount, data?.finance?.currency)}</td>
-                            <td className="px-3 py-3 text-[#5c635f]">Atelier ledger</td>
+                            <td className="hidden px-3 py-3 text-[#5c635f] lg:table-cell">Atelier ledger</td>
                             <td className="px-3 py-3">
                               <PayDot status={row.status} />
                             </td>
@@ -4020,7 +4371,7 @@ export function AdminPage() {
                     <p>
                       Showing {ledger.length ? payPageSafe * 10 + 1 : 0}-{Math.min(ledger.length, payPageSafe * 10 + 10)} of {ledger.length} transactions
                     </p>
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1 overflow-x-auto">
                       {Array.from({ length: payPages }, (_, i) => (
                         <button
                           key={i}
@@ -4125,7 +4476,7 @@ export function AdminPage() {
 
           {view === 'reports' ? (
             <div className="space-y-5">
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <MetricCard icon={Users} tone="green" label="People" value={counts?.people ?? 0} hint={`${counts?.candidates ?? 0} candidates`} />
                 <MetricCard icon={FileText} tone="teal" label="Packets" value={counts?.packets ?? 0} hint={`${counts?.hired ?? 0} hired`} />
                 <MetricCard icon={Timer} tone="gold" label="Tracker" value={formatHoursMinutes(counts?.trackerHours ?? 0)} hint={`${counts?.liveClocks ?? 0} live`} />
@@ -4202,17 +4553,16 @@ function EmployerStat({
 }) {
   const up = delta >= 0
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]">
-      <div className="flex items-start gap-3">
-        <span className="grid size-9 place-items-center rounded-full" style={{ background: `${color}1a`, color }}>
-          <Icon className="size-4" />
+    <div className="rounded-2xl bg-white px-5 py-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]">
+      <div className="flex items-start gap-3.5">
+        <span className="grid size-11 shrink-0 place-items-center rounded-full" style={{ background: `${color}1a`, color }}>
+          <Icon className="size-5" />
         </span>
-        <div>
+        <div className="min-w-0">
           <p className="text-sm text-[#5c635f]">{label}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{value.toLocaleString()}</p>
-          <p className={`mt-1 text-xs ${up ? 'text-[#14a35a]' : 'text-[#b85c38]'}`}>
-            {up ? '+' : ''}
-            {delta}% vs last 30 days
+          <p className="mt-1 text-[1.65rem] font-semibold tabular-nums leading-none tracking-tight">{value.toLocaleString()}</p>
+          <p className={`mt-2 text-xs ${up ? 'text-[#14a35a]' : 'text-[#b85c38]'}`}>
+            {up ? '↑' : '↓'} {Math.abs(delta)}% vs. last 30 days
           </p>
         </div>
       </div>
@@ -4407,9 +4757,9 @@ function MoneyStat({
         <span className="grid size-9 place-items-center rounded-full" style={{ background: `${color}1a`, color }}>
           <Icon className="size-4" />
         </span>
-        <div>
+        <div className="min-w-0">
           <p className="text-sm text-[#5c635f]">{label}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{money(value, currency)}</p>
+          <p className="mt-1 break-all text-2xl font-semibold tabular-nums">{money(value, currency)}</p>
           <p className={`mt-1 text-xs ${up ? 'text-[#14a35a]' : 'text-[#b85c38]'}`}>
             {up ? '+' : ''}
             {delta}% vs last 30 days
@@ -4480,8 +4830,8 @@ function PayMixChart({
   const c = 2 * Math.PI * r
   let offset = 0
   return (
-    <div className="mt-3 flex items-center gap-4">
-      <svg viewBox="0 0 160 160" className="size-40 shrink-0">
+    <div className="mt-3 flex flex-wrap items-center gap-4">
+      <svg viewBox="0 0 160 160" className="size-32 shrink-0 sm:size-40">
         <circle cx="80" cy="80" r={r} fill="none" stroke="#eef1ee" strokeWidth="18" />
         {segs.map((seg) => {
           const len = (seg.n / sum) * c
@@ -4593,9 +4943,9 @@ function MetricCard({
         <span className={`grid size-11 place-items-center rounded-full ${tones[tone]}`}>
           <Icon className="size-5" />
         </span>
-        <div>
+        <div className="min-w-0">
           <p className="text-sm text-[#5c635f]">{label}</p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">{typeof value === 'number' ? value.toLocaleString() : value}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight sm:text-3xl">{typeof value === 'number' ? value.toLocaleString() : value}</p>
           <p className="mt-1 text-xs text-[#14a35a]">{hint}</p>
         </div>
       </div>
@@ -4606,7 +4956,7 @@ function MetricCard({
 function DeskTable({ columns, rows, empty }: { columns: string[]; rows: (string | number)[][]; empty: string }) {
   return (
     <div className="mt-5 overflow-x-auto">
-      <table className="w-full min-w-[36rem] text-left text-sm">
+      <table className="w-full min-w-0 text-left text-sm md:min-w-[28rem]">
         <thead className="text-xs text-[#8a918c]">
           <tr>
             {columns.map((col) => (
@@ -4697,8 +5047,8 @@ function UserDonut({ candidates, employers, admins }: { candidates: number; empl
   ]
   let offset = 0
   return (
-    <div className="mt-3 flex items-center gap-4">
-      <svg viewBox="0 0 160 160" className="size-40 shrink-0">
+    <div className="mt-3 flex flex-wrap items-center gap-4">
+      <svg viewBox="0 0 160 160" className="size-32 shrink-0 sm:size-40">
         <circle cx="80" cy="80" r={r} fill="none" stroke="#eef1ee" strokeWidth="18" />
         {segs.map((seg) => {
           const len = (seg.n / total) * c

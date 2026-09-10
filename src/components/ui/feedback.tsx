@@ -16,8 +16,8 @@ export function PageHeader({
 }) {
   return (
     <section className="overflow-hidden rounded-3xl border border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)] shadow-[0_16px_40px_rgba(13,27,22,0.12)]">
-      <div className="flex flex-wrap items-end justify-between gap-4 p-6 sm:p-8">
-        <div className="max-w-2xl">
+      <div className="flex flex-wrap items-end justify-between gap-4 p-5 sm:p-8">
+        <div className="min-w-0 max-w-2xl">
           {kicker ? (
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">{kicker}</p>
           ) : null}
@@ -94,7 +94,7 @@ export function BrandMark({ light = false, compact = false }: { light?: boolean;
           Atelier
         </div>
         <div
-          className={`mt-1 font-semibold uppercase tracking-[0.12em] ${compact ? 'hidden text-[0.52rem] sm:block' : 'text-[0.58rem]'} ${
+          className={`mt-1 hidden font-semibold uppercase tracking-[0.12em] sm:block ${compact ? 'text-[0.52rem]' : 'text-[0.58rem]'} ${
             light ? 'text-[#e4c98a] [text-shadow:0_1px_10px_rgba(0,0,0,0.6)]' : 'text-muted-foreground'
           }`}
         >

@@ -389,7 +389,7 @@ export function ResumePage() {
 
           {view === 'file' && pdfOpen ? (
             <div className="overflow-hidden rounded-2xl border border-border bg-[#eef3f0]">
-              <iframe title={shownName} src={previewUrl} className="h-[36rem] w-full bg-white" />
+              <iframe title={shownName} src={previewUrl} className="h-[22rem] w-full bg-white sm:h-[36rem]" />
             </div>
           ) : shownText ? (
             <pre className="max-h-[36rem] overflow-auto whitespace-pre-wrap rounded-2xl border border-border bg-[var(--paper)] p-4 font-sans text-sm leading-relaxed text-[var(--forest)]">

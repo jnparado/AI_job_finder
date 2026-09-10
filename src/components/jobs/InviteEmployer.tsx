@@ -49,7 +49,7 @@ export function InviteEmployer({
       <div className="space-y-5">
         <div>
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Invite ready</p>
-          <h2 className="mt-2 font-serif text-3xl leading-tight text-[var(--paper)]">Ask {job.company} to hire here</h2>
+          <h2 className="mt-2 font-serif text-2xl leading-tight text-[var(--paper)] sm:text-3xl">Ask {job.company} to hire here</h2>
           <p className="mt-3 text-sm leading-relaxed text-[#d8d0c0]">
             Found on {platform}. They do not have an Atelier inbox yet. Send the join link — they create a hiring
             account, then approved packets land here.

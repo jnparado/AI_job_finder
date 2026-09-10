@@ -46,6 +46,11 @@ body,
   min-height: 100%;
 }
 
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   margin: 0;
   background: var(--background);
@@ -54,6 +59,7 @@ body {
 }
 
 .atelier-app {
+  overflow-x: clip;
   background:
     radial-gradient(ellipse 70% 36% at 100% -8%, rgba(198, 161, 91, 0.12), transparent 52%),
     radial-gradient(ellipse 46% 28% at 0% 100%, rgba(184, 92, 56, 0.05), transparent 48%),
@@ -111,6 +117,7 @@ button {
 .marketing-shell {
   position: relative;
   isolation: isolate;
+  overflow-x: clip;
   background:
     radial-gradient(ellipse 70% 45% at 88% -10%, rgba(198, 161, 91, 0.16), transparent 55%),
     radial-gradient(ellipse 50% 40% at 0% 80%, rgba(184, 92, 56, 0.08), transparent 50%),

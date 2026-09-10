@@ -161,7 +161,7 @@ export function JobsPage() {
       </section>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-1.5 rounded-full border border-border bg-card p-1">
+        <div className="flex flex-wrap gap-1.5 rounded-2xl border border-border bg-card p-1 sm:rounded-full">
           {FILTERS.map((f) => (
             <button
               key={f.id}
@@ -288,7 +288,7 @@ export function JobDetailsPage() {
   const postingUrl = listingUrl(m.job)
 
   return (
-    <div className="space-y-6 pb-28">
+    <div className="space-y-6 pb-[calc(7.5rem+env(safe-area-inset-bottom))] lg:pb-8">
       <Link to="/app/jobs" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> All matches
       </Link>
@@ -300,7 +300,7 @@ export function JobDetailsPage() {
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">
               {categoryLabel(m.category)} match
             </p>
-            <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">{m.job.title}</h1>
+            <h1 className="mt-1 font-serif text-3xl leading-tight break-words sm:text-4xl">{m.job.title}</h1>
             <p className="mt-2 text-lg text-[#e7e1d4]">{m.job.company}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-[#c9c0ae33] px-2.5 py-1 text-xs text-[#e7e1d4]">
@@ -375,8 +375,8 @@ export function JobDetailsPage() {
         <h2>Score breakdown</h2>
         <div className="mt-6 space-y-4">
           {Object.entries(m.breakdown).map(([k, v]) => (
-            <div key={k} className="grid grid-cols-[7.25rem_1fr_2.75rem] items-center gap-3 text-sm">
-              <span className="text-foreground/80">{BREAKDOWN_LABELS[k] ?? k}</span>
+            <div key={k} className="grid grid-cols-[minmax(4.75rem,6.5rem)_minmax(0,1fr)_2.5rem] items-center gap-2 text-sm sm:grid-cols-[7.25rem_1fr_2.75rem] sm:gap-3">
+              <span className="truncate text-foreground/80">{BREAKDOWN_LABELS[k] ?? k}</span>
               <div className="h-2.5 overflow-hidden rounded-full bg-[#eef1ee]">
                 <div
                   className={`h-full rounded-full ${v >= 80 ? 'bg-[#c6a15b]' : 'bg-[var(--forest)]'}`}
@@ -409,8 +409,8 @@ export function JobDetailsPage() {
         </div>
       </Card>
 
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[#d7ddd8] bg-[var(--paper)]/92 p-3 backdrop-blur-md lg:static lg:border-0 lg:bg-transparent lg:p-0">
-        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center gap-2 rounded-2xl border border-[#d7ddd8] bg-white px-4 py-3 shadow-[0_12px_32px_rgba(19,38,31,0.08)]">
+      <div className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-20 border-t border-[#d7ddd8] bg-[var(--paper)]/92 p-3 backdrop-blur-md md:bottom-0 lg:static lg:border-0 lg:bg-transparent lg:p-0">
+        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center gap-2 rounded-2xl border border-[#d7ddd8] bg-white px-3 py-3 shadow-[0_12px_32px_rgba(19,38,31,0.08)] sm:px-4">
           <Button variant="copper" onClick={() => apply.mutate()} disabled={apply.isPending}>
             {apply.isPending
               ? 'Preparing…'

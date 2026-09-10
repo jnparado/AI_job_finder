@@ -111,7 +111,7 @@ export function EmployerDashboardPage() {
               <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">
                 Employer home
               </p>
-              <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">
+              <h1 className="mt-1 font-serif text-3xl leading-tight break-words sm:text-4xl">
                 {greeting()}, {company}
               </h1>
               <p className="mt-2 max-w-xl text-sm text-[#d8d0c0]">
@@ -126,7 +126,7 @@ export function EmployerDashboardPage() {
             </Link>
           </Button>
         </div>
-        <div className="grid grid-cols-2 gap-px bg-[#c9c0ae22] sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-px bg-[#c9c0ae22] sm:grid-cols-3 lg:grid-cols-5">
           <DashStat n={roles.length} label="Open roles" />
           <DashStat n={list.length} label="Received" />
           <DashStat n={review} label="In review" />
@@ -490,7 +490,7 @@ export function EmployerApplicationPage() {
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">
             {prettyStatus(a.status)}
           </p>
-          <h1 className="mt-1 font-serif text-3xl leading-tight">{a.candidateName || a.candidateEmail}</h1>
+          <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">{a.candidateName || a.candidateEmail}</h1>
           <p className="mt-2 text-[#d8d0c0]">
             {a.job?.title} · {a.candidateEmail}
           </p>

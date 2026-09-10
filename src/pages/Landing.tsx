@@ -28,7 +28,7 @@ export function LandingPage() {
             Atelier · AI-Powered Job Matching
           </p>
           <span className="mt-5 block h-px w-12 bg-[#c6a15b]" />
-          <h1 className="mt-6 max-w-[12ch] text-5xl leading-[1.02] sm:text-7xl">
+          <h1 className="mt-6 max-w-[12ch] text-4xl leading-[1.08] sm:text-5xl lg:text-7xl">
             Jobs that fit. Hires that fit.
           </h1>
           <p className="mt-6 max-w-md text-base leading-relaxed text-[#c9c0ae] sm:text-lg">
@@ -125,7 +125,7 @@ export function CandidateLandingPage() {
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-[#c6a15b]">
             Your AI job search workshop
           </p>
-          <h1 className="mt-4 text-5xl leading-[1.02] sm:text-6xl lg:text-[4.15rem]">
+          <h1 className="mt-4 text-4xl leading-[1.08] sm:text-5xl lg:text-6xl xl:text-[4.15rem]">
             Match first.
             <br />
             Prepare the packet.
@@ -161,7 +161,7 @@ export function CandidateLandingPage() {
       </section>
 
       <div className="border-y border-[#c9c0ae18]">
-        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-px sm:grid-cols-3">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-px sm:grid-cols-3">
           {[
             ['Authorized', 'APIs and career pages'],
             ['0–100', 'Scored against your resume'],
@@ -296,7 +296,7 @@ export function EmployerLandingPage() {
       <section id="platform" className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14 lg:py-20">
         <div>
           <p className="text-sm text-[#c9c0ae]">Hiring software for modern teams</p>
-          <h1 className="mt-4 text-5xl leading-[1.02] sm:text-6xl lg:text-[4.25rem]">
+          <h1 className="mt-4 text-4xl leading-[1.08] sm:text-5xl lg:text-6xl xl:text-[4.25rem]">
             Hire smarter.
             <br />
             Match faster.

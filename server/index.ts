@@ -2870,6 +2870,174 @@ app.post('/api/admin/role', async (c) => {
   return c.json({ ok: true, account: data[0] })
 })
 
+app.post('/api/admin/users/invite', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (!isStaffRole(profile.role)) return c.json({ error: 'Admin account required' }, 403)
+  if (!supabaseAdmin) return c.json({ error: 'Supabase is not connected.' }, 400)
+
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string; role?: string; company?: string }
+  const email = String(body.email ?? '').trim().toLowerCase()
+  const role = body.role === 'employer' ? 'employer' : body.role === 'admin' ? 'admin' : 'candidate'
+  const company = String(body.company ?? '').trim()
+  if (!email || !email.includes('@')) return c.json({ error: 'Use a valid email.' }, 400)
+  if (role === 'employer' && !company) return c.json({ error: 'Company name is required for an employer invite.' }, 400)
+
+  const origin = appOrigin(c.req.header('Origin') ?? undefined)
+  const joinUrl =
+    role === 'admin'
+      ? `${origin}/register`
+      : role === 'employer'
+        ? `${origin}/register?role=employer&company=${encodeURIComponent(company)}`
+        : `${origin}/register?role=candidate`
+
+  const { data: existing, error: existingErr } = await supabaseAdmin
+    .from('profiles')
+    .select('id, email, role, first_name, last_name, company_name')
+    .eq('email', email)
+    .maybeSingle()
+  if (existingErr) return c.json({ error: existingErr.message }, 400)
+
+  if (role === 'admin') {
+    const now = new Date().toISOString()
+    const name = existing
+      ? `${existing.first_name ?? ''} ${existing.last_name ?? ''}`.trim() || email
+      : email.split('@')[0] || 'Admin'
+    if (existing && isStaffRole(parseAccountRole(existing.role))) {
+      return c.json({ ok: true, status: 'accepted', already: true, email, joinUrl, message: 'That email is already an admin.' })
+    }
+    if (existing) {
+      const { error } = await supabaseAdmin.from('profiles').update({ role: 'admin' }).eq('id', existing.id)
+      if (error) return c.json({ error: error.message }, 400)
+      await supabaseAdmin.from('staff_invites').upsert(
+        { email, role: 'admin', status: 'accepted', invited_by: user.id, invited_at: now, accepted_at: now },
+        { onConflict: 'email' },
+      )
+      memory.addStaffInvite({
+        id: String(existing.id),
+        email,
+        name,
+        role: 'admin',
+        status: 'accepted',
+        invitedAt: now,
+        invitedBy: user.id,
+      })
+      await notifyUser(String(existing.id), 'You are an Atelier admin', 'You can open the admin desk to invite employers, review packets, and manage the studio.', '/admin')
+      return c.json({ ok: true, status: 'accepted', email, joinUrl, message: 'They are an admin now.' })
+    }
+    const invite: StaffInvite = {
+      id: crypto.randomUUID(),
+      email,
+      name,
+      role: 'admin',
+      status: 'pending',
+      invitedAt: now,
+      invitedBy: user.id,
+    }
+    const { error: saveErr } = await supabaseAdmin.from('staff_invites').upsert(
+      { id: invite.id, email, role: 'admin', status: 'pending', invited_by: user.id, invited_at: now },
+      { onConflict: 'email' },
+    )
+    if (saveErr) console.warn('staff invite row', saveErr.message)
+    memory.addStaffInvite(invite)
+    let mailed = false
+    try {
+      const sent = await supabaseAdmin.auth.admin.inviteUserByEmail(email, { redirectTo: joinUrl })
+      mailed = !sent.error
+      if (sent.error) console.warn('staff invite email', sent.error.message)
+    } catch (err) {
+      console.warn('staff invite email', err)
+    }
+    return c.json({
+      ok: true,
+      status: 'pending',
+      email,
+      mailed,
+      joinUrl,
+      message: mailed
+        ? 'Invitation sent. They set up their account from the email.'
+        : 'Saved. Copy the join link if email did not send. They become admin when they create an Atelier account with this email.',
+    })
+  }
+
+  if (existing) {
+    const current = parseAccountRole(existing.role)
+    if (isStaffRole(current)) {
+      return c.json({ ok: true, already: true, email, joinUrl, message: 'That email is already on the admin desk.' })
+    }
+    if (role === 'employer' && current === 'employer') {
+      return c.json({ ok: true, already: true, email, joinUrl, message: 'That email already has an employer account.' })
+    }
+    if (role === 'candidate' && current === 'candidate') {
+      return c.json({ ok: true, already: true, email, joinUrl, message: 'That email already has a candidate account.' })
+    }
+    return c.json({
+      ok: true,
+      already: true,
+      email,
+      joinUrl,
+      message: `That email already has an Atelier ${current.replace('_', ' ')} account.`,
+    })
+  }
+
+  if (role === 'employer') {
+    const now = new Date().toISOString()
+    const row: EmployerInvite = {
+      id: crypto.randomUUID(),
+      company,
+      title: '',
+      source: 'atelier',
+      invitedAt: now,
+      invitedBy: user.id,
+    }
+    memory.addEmployerInvite(row)
+    const payload = {
+      company,
+      company_key: company.toLowerCase(),
+      title: null,
+      source: 'atelier',
+      status: 'sent',
+      invited_at: now,
+    }
+    let { error } = await supabaseAdmin.from('employer_invites').upsert(payload, { onConflict: 'company_key' })
+    if (error) {
+      const retry = await supabaseAdmin.from('employer_invites').upsert(
+        { company, title: null, source: 'atelier', status: 'sent', invited_at: now },
+        { onConflict: 'company' },
+      )
+      error = retry.error
+    }
+    if (error) console.warn('employer invite row', error.message)
+  }
+
+  let mailed = false
+  try {
+    const sent = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: joinUrl,
+      data: {
+        role,
+        company_name: role === 'employer' ? company : '',
+      },
+    })
+    mailed = !sent.error
+    if (sent.error) console.warn('user invite email', sent.error.message)
+  } catch (err) {
+    console.warn('user invite email', err)
+  }
+
+  return c.json({
+    ok: true,
+    status: 'pending',
+    email,
+    mailed,
+    joinUrl,
+    message: mailed
+      ? `Invitation sent. They join as ${role === 'employer' ? 'an employer' : 'a candidate'} from the email.`
+      : 'Email did not send. Copy the join link and share it with them.',
+  })
+})
+
 app.post('/api/admin/invite', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)

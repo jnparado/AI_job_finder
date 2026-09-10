@@ -37,7 +37,7 @@ export function JoinEmployerPage() {
         <p className="mt-10 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#c6a15b]">
           Employer invite
         </p>
-        <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">
+        <h1 className="mt-3 font-serif text-3xl leading-tight sm:text-5xl">
           {company} is invited to hire on Atelier
         </h1>
         <p className="mt-4 text-base leading-relaxed text-[#d8d0c0]">

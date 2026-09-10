@@ -71,7 +71,7 @@ function CandidateFinances({ overview }: { overview: FinanceOverview }) {
         description="Atelier employers send pay here after you work a role they posted. You withdraw from this desk. We never move money on LinkedIn, Upwork, or other boards."
       />
 
-      <div className="flex flex-wrap gap-1.5 rounded-full border border-border bg-card p-1">
+      <div className="flex flex-wrap gap-1.5 rounded-2xl border border-border bg-card p-1 sm:rounded-full">
         {(
           [
             ['overview', 'Overview'],

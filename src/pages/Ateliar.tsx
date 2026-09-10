@@ -296,13 +296,13 @@ function Timesheet({ sessions, now }: { sessions: TrackerSession[]; now: number 
         <p className="mt-1 text-sm text-muted-foreground">Completed tracked sessions</p>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[36rem] text-left text-sm">
+        <table className="w-full min-w-0 text-left text-sm md:min-w-[32rem]">
           <thead className="border-y border-border text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             <tr>
               <th className="px-5 py-3 font-semibold sm:px-6">Date</th>
               <th className="px-5 py-3 font-semibold sm:px-6">Shift</th>
-              <th className="px-5 py-3 font-semibold sm:px-6">Clock in</th>
-              <th className="px-5 py-3 font-semibold sm:px-6">Clock out</th>
+              <th className="hidden px-5 py-3 font-semibold sm:px-6 md:table-cell">Clock in</th>
+              <th className="hidden px-5 py-3 font-semibold sm:px-6 md:table-cell">Clock out</th>
               <th className="px-5 py-3 font-semibold sm:px-6">Duration</th>
             </tr>
           </thead>
@@ -315,8 +315,8 @@ function Timesheet({ sessions, now }: { sessions: TrackerSession[]; now: number 
                     <p className="font-medium">{s.company}</p>
                     <p className="text-muted-foreground">{s.jobTitle}</p>
                   </td>
-                  <td className="px-5 py-4 tabular-nums sm:px-6">{formatClock(s.startedAt)}</td>
-                  <td className="px-5 py-4 tabular-nums sm:px-6">{s.endedAt ? formatClock(s.endedAt) : 'Live'}</td>
+                  <td className="hidden px-5 py-4 tabular-nums sm:px-6 md:table-cell">{formatClock(s.startedAt)}</td>
+                  <td className="hidden px-5 py-4 tabular-nums sm:px-6 md:table-cell">{s.endedAt ? formatClock(s.endedAt) : 'Live'}</td>
                   <td className="px-5 py-4 tabular-nums sm:px-6">{formatHoursMinutes(sessionSeconds(s, now))}</td>
                 </tr>
               ))

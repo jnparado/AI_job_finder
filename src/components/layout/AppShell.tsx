@@ -68,14 +68,14 @@ export function AppShell() {
   }, [])
 
   return (
-    <div className="atelier-app min-h-svh">
+    <div className="atelier-app min-h-svh overflow-x-clip">
       <header className="sticky top-0 z-40 border-b border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)]">
         <div className="mx-auto flex max-w-[1400px] items-center gap-2 px-3 py-2 sm:gap-4 sm:px-5">
           <Link to="/app" className="shrink-0" aria-label="Atelier home">
             <BrandMark light compact />
           </Link>
 
-          <nav className="flex min-w-0 flex-1 items-stretch justify-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <nav className="hidden min-w-0 flex-1 items-stretch justify-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:flex [&::-webkit-scrollbar]:hidden">
             {PRIMARY.map((item) => (
               <NavLink
                 key={item.to}
@@ -210,9 +210,34 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="mx-auto min-w-0 w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto min-w-0 w-full max-w-[1280px] px-4 py-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-8 md:pb-8">
         <Outlet />
       </main>
+
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[#c9c0ae22] bg-[var(--forest)] pb-[env(safe-area-inset-bottom)] text-[var(--paper)] md:hidden">
+        <div className="flex items-stretch justify-around px-1 py-1.5">
+          {PRIMARY.slice(0, 5).map((item) => (
+            <NavLink
+              key={`m-${item.to}`}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) =>
+                `flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1 text-[0.65rem] ${
+                  isActive ? 'text-[var(--paper)]' : 'text-[#c9c0ae]'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <item.icon className="size-5 stroke-[1.5]" />
+                  <span className="truncate leading-none">{item.label}</span>
+                  <span className={`h-0.5 w-5 rounded-full ${isActive ? 'bg-[#c6a15b]' : 'bg-transparent'}`} />
+                </>
+              )}
+            </NavLink>
+          ))}
+        </div>
+      </nav>
     </div>
   )
 }

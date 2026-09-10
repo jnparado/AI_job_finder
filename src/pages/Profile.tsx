@@ -46,7 +46,7 @@ export function ProfilePage() {
               <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">
                 Candidate
               </p>
-              <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">{name}</h1>
+              <h1 className="mt-1 font-serif text-3xl leading-tight break-words sm:text-4xl">{name}</h1>
               {headline ? <p className="mt-2 text-[#d8d0c0]">{headline}</p> : null}
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#c9c0ae]">
                 {place ? (

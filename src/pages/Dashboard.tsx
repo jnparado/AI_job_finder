@@ -120,8 +120,8 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[16.5rem_minmax(0,1fr)_17.5rem] xl:items-start">
-      <aside className="space-y-4 xl:sticky xl:top-6">
+    <div className="grid gap-5 lg:grid-cols-[16.5rem_minmax(0,1fr)] xl:grid-cols-[16.5rem_minmax(0,1fr)_17.5rem] lg:items-start">
+      <aside className="space-y-4 lg:sticky lg:top-6">
         <Card className="overflow-hidden p-0 shadow-[0_10px_28px_rgba(19,38,31,0.06)]">
           <div className="bg-[var(--forest)] px-5 pb-10 pt-5 text-[var(--paper)]">
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Studio</p>
@@ -327,7 +327,7 @@ export function DashboardPage() {
         )}
       </div>
 
-      <aside className="space-y-4 xl:sticky xl:top-6">
+      <aside className="space-y-4 lg:sticky lg:top-6">
         <Card
           className={cn(
             'shadow-[0_10px_28px_rgba(19,38,31,0.06)]',
@@ -400,7 +400,7 @@ function MiniStat({ n, label }: { n: number; label: string }) {
   return (
     <div>
       <div className="font-serif text-lg tabular-nums text-[var(--forest)]">{n}</div>
-      <div className="text-[0.65rem] text-muted-foreground">{label}</div>
+      <div className="text-[0.65rem] leading-tight text-muted-foreground">{label}</div>
     </div>
   )
 }

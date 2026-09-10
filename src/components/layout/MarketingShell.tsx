@@ -20,7 +20,7 @@ export function MarketingShell({
     <div className="marketing-shell min-h-svh text-[var(--paper)]">
       <div className="h-0.5 bg-[#c6a15b]" />
       <header className="sticky top-0 z-30 border-b border-[#c9c0ae14] bg-[var(--forest)]/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-8">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3 sm:gap-3 sm:px-8 sm:py-4">
           <Link to={hiring ? '/employers' : '/'} className="shrink-0">
             <BrandMark light />
           </Link>
@@ -78,13 +78,13 @@ export function MarketingShell({
             </>
           ) : null}
 
-          <div className="flex shrink-0 gap-2">
-            <Button variant="outline" className="border-[#c9c0ae55] text-[var(--paper)] hover:bg-[#1f3d32]" asChild>
+          <div className="flex shrink-0 gap-1.5 sm:gap-2">
+            <Button variant="outline" className="h-9 px-3 text-xs border-[#c9c0ae55] text-[var(--paper)] hover:bg-[#1f3d32] sm:h-10 sm:px-4 sm:text-sm" asChild>
               <Link to={hiring ? '/login?role=employer' : '/login'} onMouseEnter={() => prefetchRoute('/login')}>
                 Log in
               </Link>
             </Button>
-            <Button variant={hiring ? 'paper' : 'copper'} asChild>
+            <Button variant={hiring ? 'paper' : 'copper'} className="h-9 px-3 text-xs sm:h-10 sm:px-4 sm:text-sm" asChild>
               <Link to={registerTo} onMouseEnter={() => prefetchRoute('/register')}>
                 Sign up
               </Link>
@@ -191,7 +191,7 @@ function MarketingFooter() {
             </div>
           </div>
 
-          <nav aria-label="Footer" className="grid flex-1 grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 lg:grid-cols-5">
+          <nav aria-label="Footer" className="grid flex-1 grid-cols-2 gap-x-5 gap-y-10 sm:grid-cols-3 sm:gap-x-8 lg:grid-cols-5">
             {FOOTER_COLS.map((col) => (
               <div key={col.title}>
                 <p className="text-sm font-semibold text-[var(--paper)]">{col.title}</p>

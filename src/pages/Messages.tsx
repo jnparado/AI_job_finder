@@ -100,7 +100,7 @@ function MessageThread({ role }: { role: 'candidate' | 'employer' }) {
       </Link>
       {meta.data ? (
         <div>
-          <h1 className="text-3xl">{meta.data.otherName}</h1>
+          <h1 className="text-2xl break-words sm:text-3xl">{meta.data.otherName}</h1>
           <p className="mt-1 text-muted-foreground">
             {meta.data.jobTitle} · {meta.data.company}
           </p>

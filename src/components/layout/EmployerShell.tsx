@@ -75,7 +75,7 @@ export function EmployerShell() {
   )
 
   return (
-    <div className="atelier-app min-h-svh lg:grid lg:grid-cols-[240px_1fr]">
+    <div className="atelier-app min-h-svh overflow-x-clip lg:grid lg:grid-cols-[240px_minmax(0,1fr)]">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/90 px-4 py-3 backdrop-blur lg:hidden">
         <BrandMark />
         <button type="button" aria-label="Open menu" onClick={() => setOpen(true)}>
@@ -96,7 +96,7 @@ export function EmployerShell() {
       <aside className="sticky top-0 hidden h-svh flex-col gap-8 bg-[var(--sidebar)] p-6 text-[var(--sidebar-foreground)] lg:flex">
         {sidebar}
       </aside>
-      <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8 sm:py-10">
+      <main className="mx-auto min-w-0 w-full max-w-5xl px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:py-10">
         <Outlet />
       </main>
     </div>

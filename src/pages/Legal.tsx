@@ -7,7 +7,7 @@ function Doc({ title, updated, children }: { title: string; updated?: string; ch
     <MarketingShell>
       <article className="mx-auto max-w-3xl px-5 py-16 sm:px-8 sm:py-20">
         <p className="eyebrow text-[#c6a15b]">Atelier</p>
-        <h1 className="mt-3 text-4xl sm:text-5xl">{title}</h1>
+        <h1 className="mt-3 text-3xl sm:text-5xl">{title}</h1>
         {updated ? <p className="mt-3 text-sm text-[#9a9386]">Last updated {updated}</p> : null}
         <div className="legal-copy mt-8 space-y-4 text-sm leading-relaxed text-[#c9c0ae] sm:text-base [&_h2]:mt-10 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:text-[var(--paper)] [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5">
           {children}

@@ -77,14 +77,14 @@ export function ThreadPanel({ applicationId }: { applicationId: string }) {
 
   return (
     <Card id="messages" className="flex flex-col gap-4 p-0 overflow-hidden">
-      <div className="border-b border-border px-5 py-4">
+      <div className="border-b border-border px-4 py-4 sm:px-5">
         <p className="eyebrow">Messages</p>
-        <h2 className="mt-1 text-2xl">Chat with {data.otherName}</h2>
+        <h2 className="mt-1 text-xl break-words sm:text-2xl">Chat with {data.otherName}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {data.jobTitle} · {data.company}
         </p>
       </div>
-      <div className="max-h-[min(28rem,50vh)] space-y-3 overflow-y-auto px-5">
+      <div className="max-h-[min(28rem,50vh)] space-y-3 overflow-y-auto px-4 sm:px-5">
         {messages.length ? (
           messages.map((m) => {
             const mine = m.senderId === me || m.senderRole === data.viewerRole
@@ -98,7 +98,7 @@ export function ThreadPanel({ applicationId }: { applicationId: string }) {
                 >
                   {initials(name)}
                 </span>
-                <div className={`max-w-[min(100%,28rem)] ${mine ? 'text-right' : ''}`}>
+                <div className={`max-w-[min(100%,28rem)] break-words ${mine ? 'text-right' : ''}`}>
                   <div
                     className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
                       mine ? 'bg-[var(--forest)] text-[var(--paper)]' : 'bg-muted'
@@ -120,7 +120,7 @@ export function ThreadPanel({ applicationId }: { applicationId: string }) {
         )}
         <div ref={endRef} />
       </div>
-      <form className="border-t border-border px-5 py-4" onSubmit={onSubmit}>
+      <form className="border-t border-border px-4 py-4 sm:px-5" onSubmit={onSubmit}>
         {data.canMessage ? (
           <>
             <Textarea

@@ -644,7 +644,7 @@ function AuthFrame({
           <Link to={hiring ? '/employers' : '/'} className="mb-6 inline-flex lg:hidden">
             <BrandMark />
           </Link>
-          <h1 className="text-3xl">{heading}</h1>
+          <h1 className="text-2xl sm:text-3xl">{heading}</h1>
           <p className="mt-2 mb-6 text-sm text-muted-foreground">{lead}</p>
           <div className="mx-auto w-full max-w-sm">{children}</div>
         </Card>
