@@ -525,7 +525,7 @@ export const CANDIDATE_FAQ = [
   },
   {
     q: 'Can I invite that employer to Atelier?',
-    a: 'Yes. Every listing from Himalayas, a career page, LinkedIn, or another board has an invite. Send them a join link so they can create a hiring account and receive approved packets here. Atelier jobs already have an inbox — no invite needed.',
+    a: 'No. Only an Atelier admin can send a company a join link. You apply on the official listing. If they later hire on Atelier, approved packets land in their inbox.',
   },
   {
     q: 'Where do the jobs come from?',

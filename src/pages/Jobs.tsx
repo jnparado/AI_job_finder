@@ -13,7 +13,6 @@ import { MatchCard } from '@/components/jobs/MatchCard'
 import { ScoreBadge } from '@/components/jobs/ScoreBadge'
 import { SocialShare } from '@/components/social/SocialLinks'
 import { ApplyOnPlatforms } from '@/components/jobs/ApplyOnPlatforms'
-import { InviteEmployer } from '@/components/jobs/InviteEmployer'
 import { JobCopy } from '@/components/jobs/JobCopy'
 import { listingUrl } from '@shared/applyBoards'
 
@@ -364,8 +363,6 @@ export function JobDetailsPage() {
           <SocialShare text={`${m.job.title} at ${m.job.company} — scored on Atelier`} />
         </div>
       </Card>
-
-      <InviteEmployer job={m.job} />
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[#d7ddd8] bg-[var(--paper)]/92 p-3 backdrop-blur-md lg:static lg:border-0 lg:bg-transparent lg:p-0">
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center gap-2 rounded-2xl border border-[#d7ddd8] bg-white px-4 py-3 shadow-[0_12px_32px_rgba(19,38,31,0.08)]">

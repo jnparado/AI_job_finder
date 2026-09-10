@@ -304,7 +304,7 @@ export function EmployerLandingPage() {
             Review real packets.
           </h1>
           <p className="mt-6 max-w-xl text-base leading-relaxed text-[#c9c0ae] sm:text-lg">
-            Post a role on Atelier. Candidates who match prepare a packet and send it only after they approve. You meet people who meant to apply — not a pile of unsolicited resumes. Already listed on Himalayas, LinkedIn, or a career page? A candidate can send you an invite to create a hiring account here.
+            Post a role on Atelier. Candidates who match prepare a packet and send it only after they approve. You meet people who meant to apply — not a pile of unsolicited resumes. Already listed on Himalayas, LinkedIn, or a career page? An Atelier admin can send you a join link to create a hiring account here.
           </p>
           <p className="mt-5 flex items-center gap-2.5 text-sm text-[var(--paper)]">
             <span className="size-2 shrink-0 rounded-full bg-[#c6a15b]" />
@@ -324,7 +324,7 @@ export function EmployerLandingPage() {
             </Button>
           </div>
           <ul className="mt-6 flex flex-wrap gap-2 text-xs text-[#d8d0c0]">
-            {['Approved packets only', 'Message candidates in-app', 'Join from an invite'].map((item) => (
+            {['Approved packets only', 'Message candidates in-app', 'Join from an admin invite'].map((item) => (
               <li key={item} className="rounded-full border border-[#c9c0ae33] px-3 py-1.5">
                 {item}
               </li>
@@ -464,7 +464,7 @@ export function EmployerLandingPage() {
           },
           {
             q: 'We already post on Himalayas, LinkedIn, or a career page. Why join?',
-            a: 'Candidates who match those listings can send you an invite. Create a free hiring account so approved packets land in your Atelier inbox. We do not scrape those sites or apply there for anyone.',
+            a: 'An Atelier admin can send you a join link. Create a free hiring account so approved packets land in your Atelier inbox. We do not scrape those sites or apply there for anyone.',
           },
           {
             q: 'Do candidates auto-apply to my role?',

@@ -21,7 +21,9 @@ import type {
   PreparedPacket,
   ThreadMessage,
 } from '../shared/types'
-import { displayName, emptyProfile, isStaffRole, parseAccountRole, type SocialIdentity } from '../shared/types'
+import { displayName, emptyProfile, isStaffRole, parseAccountRole, type AccountRole, type SocialIdentity } from '../shared/types'
+import { isAtelierJob } from '../shared/applyBoards'
+import { JOB_CATALOG } from '../shared/jobs'
 import { DEMO_EMPLOYER, DEMO_USER, memory, type StoredApplication } from './memory'
 import { extractFileText, parseResumeSmart } from './resume'
 import { confirmUserEmail, ensureProfileRow, registerUser } from './authUsers'
@@ -1956,6 +1958,118 @@ app.get('/api/setup', (c) =>
     router: routerStatus(),
   }),
 )
+
+async function loadInviteJobs(): Promise<Job[]> {
+  const byId = new Map<string, Job>()
+  for (const job of JOB_CATALOG) byId.set(job.id, job)
+  for (const job of memory.allJobs()) byId.set(job.id, job)
+  if (supabaseAdmin) {
+    const { data, error } = await supabaseAdmin.from('jobs').select('*').limit(400)
+    if (error) console.warn('loadInviteJobs', error.message)
+    for (const row of data ?? []) {
+      const job = jobFromRow(row as Record<string, unknown>)
+      byId.set(job.id, job)
+    }
+  }
+  return [...byId.values()]
+}
+
+function inviteCompanies(jobs: Job[]) {
+  const map = new Map<string, { company: string; title: string; source: string; listings: number; sources: string[] }>()
+  for (const job of jobs) {
+    if (isAtelierJob(job) || !job.company.trim()) continue
+    const key = job.company.trim().toLowerCase()
+    const cur = map.get(key)
+    if (cur) {
+      cur.listings += 1
+      if (!cur.sources.includes(job.source)) cur.sources.push(job.source)
+    } else {
+      map.set(key, {
+        company: job.company.trim(),
+        title: job.title,
+        source: job.source,
+        listings: 1,
+        sources: [job.source],
+      })
+    }
+  }
+  return [...map.values()].sort((a, b) => a.company.localeCompare(b.company))
+}
+
+app.get('/api/admin/dashboard', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (!isStaffRole(profile.role)) return c.json({ error: 'Admin account required' }, 403)
+
+  const jobs = await loadInviteJobs()
+  const invites = inviteCompanies(jobs)
+
+  let accounts: {
+    id: string
+    email: string
+    name: string
+    role: AccountRole
+    companyName: string
+  }[] = []
+
+  if (supabaseAdmin) {
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, role, first_name, last_name, company_name')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    if (error) console.warn('admin accounts', error.message)
+    accounts = (data ?? []).map((row) => {
+      const role = parseAccountRole(row.role)
+      const name = `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim()
+      return {
+        id: String(row.id),
+        email: String(row.email ?? ''),
+        name: name || String(row.email ?? 'Account'),
+        role,
+        companyName: String(row.company_name ?? ''),
+      }
+    })
+  }
+
+  const counts = {
+    candidates: accounts.filter((a) => a.role === 'candidate').length,
+    employers: accounts.filter((a) => a.role === 'employer').length,
+    admins: accounts.filter((a) => isStaffRole(a.role)).length,
+    jobs: jobs.length,
+    companiesToInvite: invites.length,
+  }
+
+  return c.json({
+    role: profile.role,
+    email: profile.email,
+    name: displayName(profile),
+    counts,
+    accounts,
+    invites,
+    promoteSql: "update public.profiles set role = 'admin' where email = 'you@example.com';",
+  })
+})
+
+app.post('/api/admin/role', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'super_admin') return c.json({ error: 'Super admin only' }, 403)
+  if (!supabaseAdmin) return c.json({ error: 'Supabase is not connected.' }, 400)
+
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string; role?: string }
+  const email = String(body.email ?? '').trim().toLowerCase()
+  const next = parseAccountRole(body.role)
+  if (!email || !email.includes('@')) return c.json({ error: 'Use a valid email.' }, 400)
+  if (next === 'super_admin') return c.json({ error: 'Promote super admins in SQL only.' }, 400)
+
+  const { data, error } = await supabaseAdmin.from('profiles').update({ role: next }).eq('email', email).select('id, email, role')
+  if (error) return c.json({ error: error.message }, 400)
+  if (!data?.length) return c.json({ error: 'No profile with that email.' }, 404)
+  return c.json({ ok: true, account: data[0] })
+})
 
 const seeded = emptyProfile()
 seeded.email = 'demo@atelier.local'

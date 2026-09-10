@@ -22,6 +22,7 @@ const loaders: Record<string, () => Promise<unknown>> = {
   '/employer/messages': () => import('@/pages/Messages'),
   '/employer/finances': () => import('@/pages/Finances'),
   '/employer/ateliar': () => import('@/pages/Ateliar'),
+  '/admin': () => import('@/pages/Admin'),
 }
 
 const warmed = new Set<string>()
