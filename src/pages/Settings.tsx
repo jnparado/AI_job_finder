@@ -1,15 +1,19 @@
 import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/feedback'
 import { useAuth } from '@/lib/auth'
 import { supabaseConfigured } from '@/lib/supabase'
 import { SocialAuth } from '@/components/social/SocialAuth'
 import { SocialConnectForm } from '@/components/social/SocialConnectForm'
 import { SocialShare } from '@/components/social/SocialLinks'
+import type { Currency } from '@shared/types'
+import { salaryCurrency } from '@/lib/utils'
 
 interface Settings {
   enabled: boolean
@@ -55,6 +59,7 @@ export function SettingsPage() {
           {q.error instanceof Error ? q.error.message : 'Could not load agent settings. You can still open finances and the tracker.'}
         </Card>
       ) : null}
+      <PayFloorCard />
       <Card className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2>Finances</h2>
@@ -154,6 +159,83 @@ export function SettingsPage() {
         </ul>
       </Card>
     </div>
+  )
+}
+
+const PAY_CURRENCIES: Currency[] = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'PHP', 'CHF']
+
+function PayFloorCard() {
+  const { profile, saveProfile } = useAuth()
+  const [floor, setFloor] = useState(String(profile.salaryMin || 80000))
+  const [desired, setDesired] = useState(String(profile.salaryDesired || 120000))
+  const [currency, setCurrency] = useState<Currency>(
+    salaryCurrency(profile.salaryMin, profile.currency) as Currency,
+  )
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    setFloor(String(profile.salaryMin || 80000))
+    setDesired(String(profile.salaryDesired || 120000))
+    setCurrency(salaryCurrency(profile.salaryMin, profile.currency) as Currency)
+  }, [profile.salaryMin, profile.salaryDesired, profile.currency])
+
+  async function onSave() {
+    setNote('')
+    setBusy(true)
+    try {
+      await saveProfile({
+        salaryMin: Number(floor) || 0,
+        salaryDesired: Number(desired) || 0,
+        currency,
+      })
+      setNote('Pay floor saved.')
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : 'Could not save pay floor.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card className="space-y-3">
+      <div>
+        <h2>Pay floor</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          The matcher respects this minimum. Workshop bands are in USD — use pesos only if the number is a PHP salary.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="space-y-1">
+          <Label>Currency</Label>
+          <select
+            className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value as Currency)}
+          >
+            {PAY_CURRENCIES.map((code) => (
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <Label>Floor</Label>
+          <Input type="number" min={0} step={1000} value={floor} onChange={(e) => setFloor(e.target.value)} />
+        </label>
+        <label className="space-y-1">
+          <Label>Target</Label>
+          <Input type="number" min={0} step={1000} value={desired} onChange={(e) => setDesired(e.target.value)} />
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" variant="copper" disabled={busy} onClick={() => void onSave()}>
+          {busy ? 'Saving…' : 'Save pay floor'}
+        </Button>
+        {note ? <p className="text-sm text-muted-foreground">{note}</p> : null}
+      </div>
+    </Card>
   )
 }
 

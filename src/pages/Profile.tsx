@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { displayName } from '@shared/types'
-import { initials, money, profileCompleteness } from '@/lib/utils'
+import { initials, profileCompleteness, salaryMoney } from '@/lib/utils'
 import { Badge, Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { SocialConnectForm } from '@/components/social/SocialConnectForm'
@@ -79,7 +79,7 @@ export function ProfilePage() {
         <div className="grid grid-cols-2 gap-px bg-[#c9c0ae22] sm:grid-cols-4">
           <HeroStat icon={Clock} label="Experience" value={`${profile.yearsExperience || 0} yrs`} />
           <HeroStat icon={Briefcase} label="Level" value={level} />
-          <HeroStat icon={Wallet} label="Floor" value={money(profile.salaryMin, profile.currency)} />
+          <HeroStat icon={Wallet} label="Floor" value={salaryMoney(profile.salaryMin, profile.currency)} />
           <HeroStat icon={Target} label="Target" value={profile.desiredTitle || '—'} />
         </div>
       </section>
@@ -97,7 +97,7 @@ export function ProfilePage() {
             <Fact icon={Building2} label="Industry" value={profile.industry} />
             <Fact icon={Briefcase} label="Current title" value={profile.currentTitle} />
             <Fact icon={Target} label="Desired title" value={profile.desiredTitle} />
-            <Fact icon={Wallet} label="Desired salary" value={money(profile.salaryDesired, profile.currency)} />
+            <Fact icon={Wallet} label="Desired salary" value={salaryMoney(profile.salaryDesired, profile.currency)} />
             <Fact icon={Globe} label="Work mode" value={profile.workModes.map(titleCase).join(', ')} />
             <Fact icon={Clock} label="Employment" value={profile.employmentTypes.map(titleCase).join(', ')} />
           </dl>
