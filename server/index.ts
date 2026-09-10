@@ -24,7 +24,7 @@ import type {
 import { displayName, emptyProfile, isStaffRole, parseAccountRole, type AccountRole, type SocialIdentity } from '../shared/types'
 import { isAtelierJob } from '../shared/applyBoards'
 import { JOB_CATALOG } from '../shared/jobs'
-import { DEMO_EMPLOYER, DEMO_USER, memory, type StaffInvite, type StoredApplication } from './memory'
+import { DEMO_EMPLOYER, DEMO_USER, memory, type EmployerInvite, type StaffInvite, type StoredApplication } from './memory'
 import { extractFileText, parseResumeSmart } from './resume'
 import { confirmUserEmail, ensureProfileRow, registerUser } from './authUsers'
 import { supabaseAdmin, supabaseAuth } from './supabase'
@@ -2111,6 +2111,83 @@ function inviteCompanies(jobs: Job[]) {
   return [...map.values()].sort((a, b) => a.company.localeCompare(b.company))
 }
 
+function inviteJobPool(live: Job[]) {
+  const byId = new Map<string, Job>()
+  for (const job of JOB_CATALOG) byId.set(job.id, job)
+  for (const job of memory.allJobs()) byId.set(job.id, job)
+  for (const job of live) byId.set(job.id, job)
+  return [...byId.values()]
+}
+
+function buildEmployerInviteDesk(
+  live: Job[],
+  accounts: { role: AccountRole; companyName: string; industry: string }[],
+  sent: EmployerInvite[],
+) {
+  const rows = new Map<
+    string,
+    {
+      company: string
+      title: string
+      source: string
+      listings: number
+      sources: string[]
+      industry: string
+      status: 'not_invited' | 'invited' | 'joined'
+      invitedAt: string
+    }
+  >()
+  for (const row of inviteCompanies(inviteJobPool(live))) {
+    rows.set(row.company.trim().toLowerCase(), {
+      ...row,
+      industry: '',
+      status: 'not_invited',
+      invitedAt: '',
+    })
+  }
+  for (const row of sent) {
+    const key = row.company.trim().toLowerCase()
+    const cur = rows.get(key)
+    if (cur) {
+      cur.status = 'invited'
+      cur.invitedAt = row.invitedAt
+      if (row.title) cur.title = row.title
+    } else {
+      rows.set(key, {
+        company: row.company.trim(),
+        title: row.title || 'Hiring role',
+        source: row.source || 'open',
+        listings: 0,
+        sources: row.source ? [row.source] : [],
+        industry: '',
+        status: 'invited',
+        invitedAt: row.invitedAt,
+      })
+    }
+  }
+  for (const row of accounts.filter((account) => account.role === 'employer')) {
+    const key = row.companyName.trim().toLowerCase()
+    if (!key) continue
+    const cur = rows.get(key)
+    if (cur) {
+      cur.status = 'joined'
+      cur.industry = cur.industry || row.industry
+    } else {
+      rows.set(key, {
+        company: row.companyName.trim(),
+        title: 'Hiring on Atelier',
+        source: 'atelier',
+        listings: 0,
+        sources: ['atelier'],
+        industry: row.industry,
+        status: 'joined',
+        invitedAt: '',
+      })
+    }
+  }
+  return [...rows.values()].sort((a, b) => a.company.localeCompare(b.company))
+}
+
 app.get('/api/admin/dashboard', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
@@ -2118,7 +2195,6 @@ app.get('/api/admin/dashboard', async (c) => {
   if (!isStaffRole(profile.role)) return c.json({ error: 'Admin account required' }, 403)
 
   const jobs = await loadLiveJobs()
-  const invites = inviteCompanies(jobs)
 
   let accounts: {
     id: string
@@ -2202,10 +2278,11 @@ app.get('/api/admin/dashboard', async (c) => {
         status: row.status,
         invitedAt: row.invitedAt,
       }))
+  let employerInviteRows: EmployerInvite[] = supabaseAdmin ? [] : memory.allEmployerInvites()
   let activity: { kind: 'person' | 'invite'; title: string; body: string; at: string }[] = []
 
   if (supabaseAdmin) {
-    const [packetRes, hiredRes, jobRes, appsRes, sessionsRes, ledRes, msgCountRes, msgsRes, invitedRes, notesRes] = await Promise.all([
+    const [packetRes, hiredRes, jobRes, appsRes, sessionsRes, ledRes, msgCountRes, msgsRes, invitedRes, notesRes, employerInviteRes] = await Promise.all([
       supabaseAdmin.from('applications').select('id', { count: 'exact', head: true }),
       supabaseAdmin.from('applications').select('id', { count: 'exact', head: true }).in('status', ['hired', 'offer']),
       supabaseAdmin.from('jobs').select('id', { count: 'exact', head: true }),
@@ -2216,6 +2293,7 @@ app.get('/api/admin/dashboard', async (c) => {
       supabaseAdmin.from('thread_messages').select('id, body, created_at, application_id, sender_role').order('created_at', { ascending: false }).limit(20),
       supabaseAdmin.from('staff_invites').select('*').order('invited_at', { ascending: false }).limit(100),
       supabaseAdmin.from('notifications').select('title, body, created_at').order('created_at', { ascending: false }).limit(8),
+      supabaseAdmin.from('employer_invites').select('*').order('invited_at', { ascending: false }).limit(200),
     ])
     if (packetRes.error) console.warn('admin packets', packetRes.error.message)
     else packets = packetRes.count ?? 0
@@ -2270,6 +2348,18 @@ app.get('/api/admin/dashboard', async (c) => {
         body: String(row.body ?? ''),
         at: row.created_at ? String(row.created_at) : '',
       }))
+    }
+    if (employerInviteRes.error) console.warn('admin employer invites', employerInviteRes.error.message)
+    else {
+      employerInviteRows = (employerInviteRes.data ?? []).map((row) => ({
+        id: String(row.id),
+        company: String(row.company ?? '').trim(),
+        title: String(row.title ?? ''),
+        source: String(row.source ?? ''),
+        invitedAt: row.invited_at ? String(row.invited_at) : new Date().toISOString(),
+        invitedBy: row.invited_by ? String(row.invited_by) : undefined,
+      }))
+      for (const row of employerInviteRows) memory.addEmployerInvite(row)
     }
   }
 
@@ -2370,6 +2460,8 @@ app.get('/api/admin/dashboard', async (c) => {
       atelier: Boolean(job.employerId || job.source === 'atelier'),
     }))
 
+  const invites = buildEmployerInviteDesk(jobs, accounts, employerInviteRows)
+
   if (!activity.length) {
     activity = [
       ...accounts.slice(0, 4).map((row) => ({
@@ -2392,7 +2484,7 @@ app.get('/api/admin/dashboard', async (c) => {
     employers: accounts.filter((a) => a.role === 'employer').length,
     admins: accounts.filter((a) => isStaffRole(a.role)).length,
     jobs: jobCount,
-    companiesToInvite: invites.length,
+    companiesToInvite: invites.filter((row) => row.status !== 'joined').length,
     packets,
     people: accounts.length,
     hired,
@@ -2640,6 +2732,41 @@ app.patch('/api/admin/packets/:id', async (c) => {
     hired ? '/app/ateliar' : `/app/applications/${row.id}`,
   )
   return c.json({ ok: true, id, status: next })
+})
+
+app.post('/api/admin/employers/invite', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (!isStaffRole(profile.role)) return c.json({ error: 'Admin account required' }, 403)
+  const body = (await c.req.json().catch(() => ({}))) as { company?: string; title?: string; source?: string }
+  const company = String(body.company ?? '').trim()
+  if (!company) return c.json({ error: 'Pick a company to invite.' }, 400)
+  const now = new Date().toISOString()
+  const row: EmployerInvite = {
+    id: crypto.randomUUID(),
+    company,
+    title: String(body.title ?? '').trim(),
+    source: String(body.source ?? '').trim(),
+    invitedAt: now,
+    invitedBy: user.id,
+  }
+  memory.addEmployerInvite(row)
+  if (supabaseAdmin) {
+    const { error } = await supabaseAdmin.from('employer_invites').upsert(
+      {
+        company,
+        title: row.title || null,
+        source: row.source || null,
+        status: 'sent',
+        invited_by: user.id,
+        invited_at: now,
+      },
+      { onConflict: 'company' },
+    )
+    if (error) console.warn('employer invite row', error.message)
+  }
+  return c.json({ ok: true, invite: row })
 })
 
 app.post('/api/admin/role', async (c) => {

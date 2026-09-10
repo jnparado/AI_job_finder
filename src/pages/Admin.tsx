@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowDownToLine,
@@ -13,6 +13,7 @@ import {
   CircleHelp,
   CirclePlay,
   Clock,
+  Copy,
   DollarSign,
   Download,
   FileSignature,
@@ -40,13 +41,16 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { InviteEmployer } from '@/components/jobs/InviteEmployer'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { cn, initials, money, prettyStatus } from '@/lib/utils'
 import { formatHoursMinutes, startOfLocalDay } from '@shared/tracker'
 import { sourceLabel, type AccountRole } from '@shared/types'
+import { employerInviteNote, employerJoinPath } from '@shared/employerInvite'
+import { officialApplyLinks } from '@shared/applyBoards'
 import type { LucideIcon } from 'lucide-react'
+
+type InviteDeskStatus = 'not_invited' | 'invited' | 'joined'
 
 interface AdminInvite {
   company: string
@@ -54,6 +58,9 @@ interface AdminInvite {
   source: string
   listings: number
   sources: string[]
+  industry: string
+  status: InviteDeskStatus
+  invitedAt: string
 }
 
 interface AdminAccount {
@@ -211,6 +218,7 @@ type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' 
 type PeopleFilter = 'all' | AccountRole
 type PacketBucket = 'pending' | 'accepted' | 'declined' | 'draft'
 type PayTab = 'all' | 'employer' | 'payout' | 'pending'
+type InviteDeskTab = 'all' | 'linkedin' | 'upwork' | InviteDeskStatus
 
 interface NavLinkItem {
   id: DeskView
@@ -311,6 +319,11 @@ export function AdminPage() {
   const [payPage, setPayPage] = useState(0)
   const [pickedPay, setPickedPay] = useState('')
   const [payOpen, setPayOpen] = useState(true)
+  const [inviteTab, setInviteTab] = useState<InviteDeskTab>('all')
+  const [inviteIndustry, setInviteIndustry] = useState('all')
+  const [invitePage, setInvitePage] = useState(0)
+  const [inviteCopied, setInviteCopied] = useState('')
+  const [inviteNote, setInviteNote] = useState('')
   const dash = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: () => api<AdminDashboard>('/api/admin/dashboard'),
@@ -338,6 +351,13 @@ export function AdminPage() {
       void qc.invalidateQueries({ queryKey: ['admin-dashboard'] })
     },
   })
+  const markEmployerInvite = useMutation({
+    mutationFn: (row: { company: string; title: string; source: string }) =>
+      api('/api/admin/employers/invite', { method: 'POST', body: JSON.stringify(row) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['admin-dashboard'] })
+    },
+  })
   const setPacket = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api(`/api/admin/packets/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
@@ -360,15 +380,51 @@ export function AdminPage() {
   }, [data?.invites])
 
   const invites = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = (view === 'invite' ? query : query).trim().toLowerCase()
     return (data?.invites ?? []).filter((row) => {
-      if (source !== 'all' && !row.sources.includes(source)) return false
+      if (source !== 'all' && !row.sources.includes(source) && row.source !== source) return false
+      if (inviteIndustry !== 'all' && row.industry !== inviteIndustry) return false
+      if (inviteTab === 'linkedin' && !row.sources.includes('linkedin') && row.source !== 'linkedin') return false
+      if (inviteTab === 'upwork' && !row.sources.includes('upwork') && row.source !== 'upwork') return false
+      if (inviteTab === 'not_invited' || inviteTab === 'invited' || inviteTab === 'joined') {
+        if (row.status !== inviteTab) return false
+      }
       if (!q) return true
-      return `${row.company} ${row.title} ${row.sources.map(sourceLabel).join(' ')}`.toLowerCase().includes(q)
+      return `${row.company} ${row.title} ${row.industry} ${row.sources.map(sourceLabel).join(' ')}`.toLowerCase().includes(q)
     })
-  }, [data?.invites, query, source])
+  }, [data?.invites, inviteIndustry, inviteTab, query, source, view])
 
-  const selected = invites.find((row) => row.company === picked) ?? invites[0]
+  const inviteIndustries = useMemo(() => {
+    return [...new Set((data?.invites ?? []).map((row) => row.industry).filter(Boolean))].sort()
+  }, [data?.invites])
+
+  const inviteCounts = useMemo(() => {
+    const rows = data?.invites ?? []
+    return {
+      all: rows.length,
+      linkedin: rows.filter((row) => row.sources.includes('linkedin') || row.source === 'linkedin').length,
+      upwork: rows.filter((row) => row.sources.includes('upwork') || row.source === 'upwork').length,
+      not_invited: rows.filter((row) => row.status === 'not_invited').length,
+      invited: rows.filter((row) => row.status === 'invited').length,
+      joined: rows.filter((row) => row.status === 'joined').length,
+    }
+  }, [data?.invites])
+
+  const invitePages = Math.max(1, Math.ceil(invites.length / 10))
+  const invitePageSafe = Math.min(invitePage, invitePages - 1)
+  const inviteSlice = invites.slice(invitePageSafe * 10, invitePageSafe * 10 + 10)
+  const selected = invites.find((row) => row.company === picked) ?? inviteSlice[0]
+  const inviteOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://ai-job-finder-ecru.vercel.app'
+  const linkedInSearch = officialApplyLinks({ title: 'hiring' }).find((row) => row.source === 'linkedin')?.url ?? 'https://www.linkedin.com/jobs/search/?keywords=hiring'
+  const upworkSearch = officialApplyLinks({ title: 'hiring' }).find((row) => row.source === 'upwork')?.url ?? 'https://www.upwork.com/nx/search/jobs/?q=hiring'
+
+  useEffect(() => {
+    if (!selected) {
+      setInviteNote('')
+      return
+    }
+    setInviteNote(employerInviteNote(selected, inviteOrigin))
+  }, [inviteOrigin, selected])
 
   const people = useMemo(() => {
     const q = (view === 'people' || view === 'roles' ? peopleQuery : query).trim().toLowerCase()
@@ -764,6 +820,21 @@ export function AdminPage() {
     URL.revokeObjectURL(href)
   }
 
+  function copyInvite(kind: 'link' | 'note', row = selected) {
+    if (!row) return
+    const text = kind === 'link' ? `${inviteOrigin}${employerJoinPath(row)}` : inviteNote || employerInviteNote(row, inviteOrigin)
+    void navigator.clipboard.writeText(text).then(() => {
+      setInviteCopied(kind)
+      window.setTimeout(() => setInviteCopied(''), 2000)
+    })
+  }
+
+  function sendEmployerInvite(row: AdminInvite) {
+    setPicked(row.company)
+    markEmployerInvite.mutate({ company: row.company, title: row.title, source: row.source })
+    copyInvite('link', row)
+  }
+
   function go(next: DeskView, role: PeopleFilter = 'all') {
     setView(next)
     if (next === 'people') setPeopleRole(role)
@@ -781,6 +852,10 @@ export function AdminPage() {
     if (next === 'contracts') {
       setContractPage(0)
       setContractOpen(true)
+    }
+    if (next === 'invite') {
+      setInvitePage(0)
+      setSource('all')
     }
     if (next === 'finances') {
       setPayPage(0)
@@ -815,7 +890,9 @@ export function AdminPage() {
   const searchHint =
     view === 'staff'
       ? 'Search invited admins...'
-      : view === 'tracker'
+      : view === 'invite'
+        ? 'Search employers, companies, or keywords...'
+        : view === 'tracker'
         ? 'Search tracker sessions'
         : view === 'finances'
           ? 'Search payments, employers, or candidates'
@@ -1357,44 +1434,260 @@ export function AdminPage() {
           ) : null}
 
           {view === 'invite' ? (
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
-              <Panel>
-                <h2 className="font-sans text-lg font-semibold">Invite employers</h2>
-                <p className="mt-1 text-sm text-[#5c635f]">
-                  {invites.length} of {data?.invites.length ?? 0} off-platform companies
-                </p>
-                {sources.length ? (
-                  <div className="mt-4 flex flex-wrap gap-1.5">
-                    <Chip active={source === 'all'} onClick={() => setSource('all')} label="All boards" />
-                    {sources.map((s) => (
-                      <Chip key={s} active={source === s} onClick={() => setSource(s)} label={sourceLabel(s)} />
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-[#8a918c]">
+                    Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Invite Employers</span>
+                  </p>
+                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Invite Employers to Atelier</h1>
+                  <p className="mt-1 text-sm text-[#5c635f]">
+                    Companies from scored listings. Open official LinkedIn or Upwork search — Atelier does not scrape those sites.
+                  </p>
+                </div>
+                <Button variant="outline" type="button" onClick={() => setInviteTab('invited')}>
+                  View invitations
+                </Button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <a
+                  href={linkedInSearch}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)] hover:border-[#13261f]"
+                >
+                  <span className="grid size-12 place-items-center rounded-xl bg-[#0a66c2] text-sm font-bold text-white">in</span>
+                  <span>
+                    <span className="block font-medium">Find employers on LinkedIn</span>
+                    <span className="mt-1 block text-sm text-[#5c635f]">Opens LinkedIn’s official hiring search. Copy an Atelier join link from the table.</span>
+                  </span>
+                  <ExternalLink className="ml-auto size-4 shrink-0 text-[#8a918c]" />
+                </a>
+                <a
+                  href={upworkSearch}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]"
+                >
+                  <span className="grid size-12 place-items-center rounded-xl bg-[#14a800] text-sm font-bold text-white">Up</span>
+                  <span>
+                    <span className="block font-medium">Find companies on Upwork</span>
+                    <span className="mt-1 block text-sm text-[#5c635f]">Opens Upwork’s official job search. Invite them to post the role on Atelier.</span>
+                  </span>
+                  <ExternalLink className="ml-auto size-4 shrink-0 text-[#8a918c]" />
+                </a>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ['all', `All (${inviteCounts.all})`],
+                    ['linkedin', `LinkedIn (${inviteCounts.linkedin})`],
+                    ['upwork', `Upwork (${inviteCounts.upwork})`],
+                    ['not_invited', `Not invited (${inviteCounts.not_invited})`],
+                    ['invited', `Invited (${inviteCounts.invited})`],
+                    ['joined', `Joined (${inviteCounts.joined})`],
+                  ] as const
+                ).map(([id, label]) => (
+                  <Chip
+                    key={id}
+                    active={inviteTab === id}
+                    label={label}
+                    onClick={() => {
+                      setInviteTab(id)
+                      setInvitePage(0)
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="relative min-w-[16rem] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
+                  <Input
+                    className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
+                    placeholder="Search companies..."
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value)
+                      setInvitePage(0)
+                    }}
+                  />
+                </label>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={source}
+                  onChange={(e) => {
+                    setSource(e.target.value)
+                    setInvitePage(0)
+                  }}
+                >
+                  <option value="all">All platforms</option>
+                  {sources.map((item) => (
+                    <option key={item} value={item}>
+                      {sourceLabel(item)}
+                    </option>
+                  ))}
+                </select>
+                {inviteIndustries.length ? (
+                  <select
+                    className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                    value={inviteIndustry}
+                    onChange={(e) => {
+                      setInviteIndustry(e.target.value)
+                      setInvitePage(0)
+                    }}
+                  >
+                    <option value="all">All industries</option>
+                    {inviteIndustries.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
                     ))}
+                  </select>
+                ) : null}
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={() => {
+                    setQuery('')
+                    setSource('all')
+                    setInviteIndustry('all')
+                    setInviteTab('all')
+                    setInvitePage(0)
+                  }}
+                >
+                  Reset
+                </Button>
+              </div>
+
+              <div className={`grid gap-5 ${selected ? 'xl:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
+                <Panel className="overflow-hidden p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[52rem] text-left text-sm">
+                      <thead className="text-xs text-[#8a918c]">
+                        <tr className="border-b border-[#eef1ee]">
+                          <th className="px-4 py-3 font-medium">Company</th>
+                          <th className="px-3 py-3 font-medium">Platform</th>
+                          <th className="px-3 py-3 font-medium">Industry</th>
+                          <th className="px-3 py-3 font-medium">Listings</th>
+                          <th className="px-3 py-3 font-medium">Status</th>
+                          <th className="px-3 py-3 font-medium">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {inviteSlice.map((row) => (
+                          <tr
+                            key={row.company}
+                            className={`cursor-pointer border-b border-[#eef1ee] ${selected?.company === row.company ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
+                            onClick={() => setPicked(row.company)}
+                          >
+                            <td className="px-4 py-3">
+                              <span className="flex items-center gap-3">
+                                <span className="grid size-9 place-items-center rounded-lg bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
+                                  {initials(row.company)}
+                                </span>
+                                <span>
+                                  <span className="block font-medium">{row.company}</span>
+                                  <span className="block text-xs text-[#8a918c]">{row.title}</span>
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">
+                              <PlatformChip source={row.source} />
+                            </td>
+                            <td className="px-3 py-3 text-[#5c635f]">{row.industry || '—'}</td>
+                            <td className="px-3 py-3 tabular-nums text-[#5c635f]">{row.listings ? `${row.listings}` : '—'}</td>
+                            <td className="px-3 py-3">
+                              <InviteStatusChip status={row.status} />
+                            </td>
+                            <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                              {row.status === 'joined' ? (
+                                <Button variant="outline" type="button" onClick={() => go('employers')}>
+                                  Open employer
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  disabled={markEmployerInvite.isPending}
+                                  onClick={() => sendEmployerInvite(row)}
+                                >
+                                  <Mail className="size-4" />
+                                  {row.status === 'invited' ? 'Resend invite' : 'Send invite'}
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!inviteSlice.length ? <p className="px-4 py-8 text-sm text-[#8a918c]">No companies match this search.</p> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
+                    <p>
+                      Showing {invites.length ? invitePageSafe * 10 + 1 : 0}-{Math.min(invites.length, invitePageSafe * 10 + 10)} of {invites.length}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: invitePages }, (_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setInvitePage(i)}
+                          className={`grid size-7 place-items-center rounded-md ${invitePageSafe === i ? 'bg-[#13261f] text-white' : 'hover:bg-[#f3f5f4]'}`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </Panel>
+
+                {selected ? (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl bg-[#13261f] p-5 text-white">
+                      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Atelier</p>
+                      <h2 className="mt-2 font-serif text-2xl leading-tight">Your next great hire starts here</h2>
+                      <p className="mt-3 text-sm leading-relaxed text-[#d8d0c0]">
+                        Ask {selected.company} to post on Atelier. Approved packets land in their inbox — nothing leaves until the candidate says so.
+                      </p>
+                      <ul className="mt-4 space-y-1.5 text-sm text-[#e7e1d4]">
+                        <li>AI-matched candidates</li>
+                        <li>Packets stay on Atelier until approve</li>
+                        <li>Tracker and pay stay in studio</li>
+                      </ul>
+                      <Button className="mt-5 w-full bg-[#c6a15b] text-[#13261f] hover:bg-[#d4b56f]" type="button" onClick={() => sendEmployerInvite(selected)}>
+                        <Mail className="size-4" />
+                        Send invite to {selected.company}
+                      </Button>
+                      <Button variant="outline" className="mt-2 w-full border-[#c9c0ae55] text-white hover:bg-[#1f3d32]" type="button" onClick={() => copyInvite('link')}>
+                        <Copy className="size-4" />
+                        {inviteCopied === 'link' ? 'Copied' : 'Copy invite link'}
+                      </Button>
+                    </div>
+                    <Panel>
+                      <div className="flex items-center justify-between gap-2">
+                        <h2 className="font-sans text-base font-semibold">Invitation message</h2>
+                        <button type="button" className="text-xs font-medium text-[#147a48]" onClick={() => selected && setInviteNote(employerInviteNote(selected, inviteOrigin))}>
+                          Reset
+                        </button>
+                      </div>
+                      <textarea
+                        className="mt-3 min-h-[10rem] w-full rounded-xl border border-[#e4e8e5] bg-[#f7f8f7] p-3 text-sm"
+                        value={inviteNote}
+                        onChange={(e) => setInviteNote(e.target.value)}
+                      />
+                      <p className="mt-2 truncate text-xs text-[#8a918c]">
+                        {inviteOrigin}
+                        {employerJoinPath(selected)}
+                      </p>
+                      <Button variant="outline" className="mt-3 w-full" type="button" onClick={() => copyInvite('note')}>
+                        <Copy className="size-4" />
+                        {inviteCopied === 'note' ? 'Copied' : 'Copy message'}
+                      </Button>
+                    </Panel>
                   </div>
                 ) : null}
-                <div className="mt-4 max-h-[32rem] space-y-2 overflow-y-auto">
-                  {invites.map((row) => (
-                    <button
-                      key={row.company}
-                      type="button"
-                      onClick={() => setPicked(row.company)}
-                      className={`w-full rounded-xl border px-4 py-3 text-left ${
-                        selected?.company === row.company ? 'border-[#13261f] bg-[#f3f8f5]' : 'border-[#eef1ee] hover:border-[#13261f]'
-                      }`}
-                    >
-                      <p className="font-medium">{row.company}</p>
-                      <p className="mt-0.5 text-sm text-[#5c635f]">
-                        {row.title} · {row.listings} listings
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              </Panel>
-              <div className="rounded-2xl bg-[#13261f] p-6 text-white">
-                {selected ? (
-                  <InviteEmployer tone="studio" job={{ title: selected.title, company: selected.company, source: selected.source }} />
-                ) : (
-                  <p className="text-sm text-white/70">Pick a company to write their invite.</p>
-                )}
               </div>
             </div>
           ) : null}
@@ -3150,4 +3443,24 @@ function Chip({ active, onClick, label }: { active: boolean; onClick: () => void
       {label}
     </button>
   )
+}
+
+function PlatformChip({ source }: { source: string }) {
+  if (source === 'linkedin') {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-[#e8f1fb] px-2 py-0.5 text-xs text-[#0a66c2]">{sourceLabel(source)}</span>
+  }
+  if (source === 'upwork') {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-[#e8f6ee] px-2 py-0.5 text-xs text-[#147a48]">{sourceLabel(source)}</span>
+  }
+  return <span className="inline-flex items-center gap-1 rounded-full bg-[#f3f5f4] px-2 py-0.5 text-xs text-[#5c635f]">{sourceLabel(source)}</span>
+}
+
+function InviteStatusChip({ status }: { status: InviteDeskStatus }) {
+  const map = {
+    not_invited: { label: 'Not invited', className: 'bg-[#eef1ee] text-[#5c635f]' },
+    invited: { label: 'Invited', className: 'bg-[#dbeafe] text-[#1d4ed8]' },
+    joined: { label: 'Joined', className: 'bg-[#d1fae5] text-[#047857]' },
+  }
+  const row = map[status]
+  return <span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${row.className}`}>{row.label}</span>
 }

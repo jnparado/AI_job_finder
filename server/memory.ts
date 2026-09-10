@@ -46,6 +46,15 @@ export interface StaffInvite {
   invitedBy?: string
 }
 
+export interface EmployerInvite {
+  id: string
+  company: string
+  title: string
+  source: string
+  invitedAt: string
+  invitedBy?: string
+}
+
 export interface AgentSettings {
   enabled: boolean
   runHour: number
@@ -65,6 +74,7 @@ const threadMessages = new Map<string, ThreadMessage[]>()
 const ledger: LedgerEntry[] = []
 const trackerSessions: TrackerSession[] = []
 const staffInvites: StaffInvite[] = []
+const employerInvites: EmployerInvite[] = []
 
 export const memory = {
   getProfile(userId: string) {
@@ -224,5 +234,15 @@ export const memory = {
   },
   allStaffInvites() {
     return [...staffInvites]
+  },
+  addEmployerInvite(row: EmployerInvite) {
+    const key = row.company.trim().toLowerCase()
+    const i = employerInvites.findIndex((s) => s.company.trim().toLowerCase() === key)
+    if (i >= 0) employerInvites[i] = row
+    else employerInvites.unshift(row)
+    return row
+  },
+  allEmployerInvites() {
+    return [...employerInvites]
   },
 }
