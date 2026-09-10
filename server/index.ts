@@ -2211,6 +2211,7 @@ app.get('/api/admin/dashboard', async (c) => {
     headline: string
     desiredTitle: string
     currentTitle: string
+    lastActive: string
   }[] = []
   let skillRows: { userId: string; name: string }[] = []
 
@@ -2247,6 +2248,7 @@ app.get('/api/admin/dashboard', async (c) => {
         headline: String(row.headline ?? ''),
         desiredTitle: String(row.desired_title ?? ''),
         currentTitle: String(row.current_title ?? ''),
+        lastActive: row.created_at ? String(row.created_at) : '',
       }
     })
   }
@@ -2735,6 +2737,18 @@ app.get('/api/admin/dashboard', async (c) => {
       }
     })
     .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))
+
+  const lastByUser = new Map<string, string>()
+  const stamp = (id: string, at?: string) => {
+    if (!id || !at) return
+    const cur = lastByUser.get(id)
+    if (!cur || at > cur) lastByUser.set(id, at)
+  }
+  for (const row of accounts) stamp(row.id, row.joinedAt)
+  for (const row of appRows) stamp(row.userId, row.submittedAt || row.createdAt)
+  for (const row of sessionRows) stamp(row.candidateId, row.endedAt || row.startedAt)
+  for (const row of ledgerRows) stamp(row.candidateId, row.createdAt)
+  accounts = accounts.map((row) => ({ ...row, lastActive: lastByUser.get(row.id) || row.joinedAt }))
 
   return c.json({
     live: Boolean(supabaseAdmin),

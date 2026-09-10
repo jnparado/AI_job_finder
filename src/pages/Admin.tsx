@@ -46,7 +46,7 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { cn, initials, money, prettyStatus } from '@/lib/utils'
 import { formatHoursMinutes, startOfLocalDay } from '@shared/tracker'
-import { sourceLabel, type AccountRole } from '@shared/types'
+import { isStaffRole, sourceLabel, type AccountRole } from '@shared/types'
 import { employerInviteNote, employerJoinPath } from '@shared/employerInvite'
 import { candidateInviteNote, candidateJoinPath } from '@shared/candidateInvite'
 import { officialApplyLinks } from '@shared/applyBoards'
@@ -72,6 +72,13 @@ interface AdminAccount {
   role: AccountRole
   companyName: string
   joinedAt?: string
+  city?: string
+  country?: string
+  website?: string
+  industry?: string
+  headline?: string
+  onboarded?: boolean
+  lastActive?: string
 }
 
 interface AdminDashboard {
@@ -236,6 +243,7 @@ interface AdminContract {
 
 type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'contracts' | 'tracker' | 'inbox' | 'finances' | 'reports' | 'staff' | 'roles' | 'employers' | 'candidates'
 type PeopleFilter = 'all' | AccountRole
+type UserTypeFilter = 'all' | 'candidate' | 'employer' | 'admin'
 type PacketBucket = 'pending' | 'accepted' | 'declined' | 'draft'
 type PayTab = 'all' | 'employer' | 'payout' | 'pending'
 type InviteDeskTab = 'all' | 'linkedin' | 'upwork' | InviteDeskStatus
@@ -257,7 +265,7 @@ const NAV: NavSection[] = [
   {
     label: 'User Management',
     items: [
-      { id: 'people', label: 'Users', icon: Users, people: 'all' },
+      { id: 'people', label: 'Users', icon: Users },
       { id: 'candidates', label: 'Candidates', icon: User },
       { id: 'employers', label: 'Employers', icon: Building2 },
     ],
@@ -304,6 +312,12 @@ export function AdminPage() {
   const [source, setSource] = useState('all')
   const [peopleQuery, setPeopleQuery] = useState('')
   const [peopleRole, setPeopleRole] = useState<PeopleFilter>('all')
+  const [peopleType, setPeopleType] = useState<UserTypeFilter>('all')
+  const [peopleStatus, setPeopleStatus] = useState<'all' | 'active' | 'pending'>('all')
+  const [peopleCountry, setPeopleCountry] = useState('all')
+  const [peoplePage, setPeoplePage] = useState(0)
+  const [pickedPerson, setPickedPerson] = useState('')
+  const [peopleInviteOpen, setPeopleInviteOpen] = useState(false)
   const [email, setEmail] = useState('')
   const [nextRole, setNextRole] = useState<'admin' | 'employer' | 'candidate'>('admin')
   const [copied, setCopied] = useState(false)
@@ -465,6 +479,23 @@ export function AdminPage() {
       return `${row.name} ${row.email} ${row.companyName}`.toLowerCase().includes(q)
     })
   }, [data?.accounts, peopleQuery, peopleRole, query, view])
+
+  const userRows = useMemo(() => {
+    const q = (view === 'people' ? peopleQuery : query).trim().toLowerCase()
+    return (data?.accounts ?? []).filter((row) => {
+      if (peopleType === 'candidate' && row.role !== 'candidate') return false
+      if (peopleType === 'employer' && row.role !== 'employer') return false
+      if (peopleType === 'admin' && !isStaffRole(row.role)) return false
+      if (peopleStatus !== 'all' && accountStatus(row) !== peopleStatus) return false
+      if (peopleCountry !== 'all' && (row.country || '') !== peopleCountry) return false
+      if (!q) return true
+      return `${row.name} ${row.email} ${row.companyName} ${row.role} ${row.id} ${row.city ?? ''} ${row.country ?? ''}`.toLowerCase().includes(q)
+    })
+  }, [data?.accounts, peopleCountry, peopleQuery, peopleStatus, peopleType, query, view])
+
+  const userCountries = useMemo(() => {
+    return [...new Set((data?.accounts ?? []).map((row) => row.country).filter(Boolean) as string[])].sort()
+  }, [data?.accounts])
 
   const nowMs = Date.now()
 
@@ -747,6 +778,54 @@ export function AdminPage() {
     }
   }, [data?.employers, nowMs])
 
+  const userPages = Math.max(1, Math.ceil(userRows.length / pageSize))
+  const userPageSafe = Math.min(peoplePage, userPages - 1)
+  const userSlice = userRows.slice(userPageSafe * pageSize, userPageSafe * pageSize + pageSize)
+  const selectedUser = userRows.find((row) => row.id === pickedPerson) ?? userSlice[0]
+  const selectedUserCandidate = (data?.candidates ?? []).find((row) => row.id === selectedUser?.id)
+  const selectedUserEmployer = (data?.employers ?? []).find((row) => row.id === selectedUser?.id)
+  const userStats = useMemo(() => {
+    const rows = data?.accounts ?? []
+    const month = 30 * 24 * 60 * 60 * 1000
+    const total = rows.length
+    const candidatesN = rows.filter((row) => row.role === 'candidate').length
+    const employersN = rows.filter((row) => row.role === 'employer').length
+    const adminsN = rows.filter((row) => isStaffRole(row.role)).length
+    const fresh = (role: UserTypeFilter) =>
+      rows.filter((row) => {
+        if (!row.joinedAt || nowMs - new Date(row.joinedAt).getTime() > month) return false
+        if (role === 'candidate') return row.role === 'candidate'
+        if (role === 'employer') return row.role === 'employer'
+        if (role === 'admin') return isStaffRole(row.role)
+        return true
+      }).length
+    const prior = (role: UserTypeFilter) =>
+      rows.filter((row) => {
+        if (!row.joinedAt) return false
+        const age = nowMs - new Date(row.joinedAt).getTime()
+        if (age <= month || age > month * 2) return false
+        if (role === 'candidate') return row.role === 'candidate'
+        if (role === 'employer') return row.role === 'employer'
+        if (role === 'admin') return isStaffRole(row.role)
+        return true
+      }).length
+    const delta = (cur: number, prev: number) => {
+      if (!prev && !cur) return 0
+      if (!prev) return 100
+      return Math.round(((cur - prev) / prev) * 100)
+    }
+    return {
+      total,
+      candidates: candidatesN,
+      employers: employersN,
+      admins: adminsN,
+      totalDelta: delta(fresh('all'), prior('all')),
+      candidatesDelta: delta(fresh('candidate'), prior('candidate')),
+      employersDelta: delta(fresh('employer'), prior('employer')),
+      adminsDelta: delta(fresh('admin'), prior('admin')),
+    }
+  }, [data?.accounts, nowMs])
+
   const candidateRows = useMemo(() => {
     const q = (view === 'candidates' ? candidateQuery : query).trim().toLowerCase()
     const rows = [...(data?.candidates ?? [])].filter((row) => {
@@ -826,6 +905,33 @@ export function AdminPage() {
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
     })
+  }
+
+  function exportUsers() {
+    const header = 'Name,Email,Role,Company,Country,City,Status,Onboarded,Joined,LastActive'
+    const lines = userRows.map((row) =>
+      [
+        row.name,
+        row.email,
+        prettyRole(row.role),
+        row.companyName,
+        row.country ?? '',
+        row.city ?? '',
+        accountStatus(row),
+        row.onboarded ? 'yes' : 'no',
+        row.joinedAt ?? '',
+        row.lastActive ?? '',
+      ]
+        .map((v) => `"${String(v).replaceAll('"', '""')}"`)
+        .join(','),
+    )
+    const blob = new Blob([`${header}\n${lines.join('\n')}`], { type: 'text/csv' })
+    const href = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = href
+    a.download = 'atelier-users.csv'
+    a.click()
+    URL.revokeObjectURL(href)
   }
 
   function exportEmployers() {
@@ -964,6 +1070,21 @@ export function AdminPage() {
     go('candidates')
   }
 
+  function openUserDesk(row: AdminAccount) {
+    if (row.role === 'candidate') {
+      setPickedCandidate(row.id)
+      go('candidates')
+      return
+    }
+    if (row.role === 'employer') {
+      setPickedEmployer(row.id)
+      go('employers')
+      return
+    }
+    setEmail(row.email)
+    go('roles')
+  }
+
   function sendEmployerInvite(row: AdminInvite) {
     setPicked(row.company)
     rememberLocalEmployerInvite(row.company, setLocalInvited)
@@ -973,7 +1094,14 @@ export function AdminPage() {
 
   function go(next: DeskView, role: PeopleFilter = 'all') {
     setView(next)
-    if (next === 'people') setPeopleRole(role)
+    if (next === 'people') {
+      setPeopleRole(role)
+      setPeopleType('all')
+      setPeopleStatus('all')
+      setPeopleCountry('all')
+      setPeoplePage(0)
+      setPeopleInviteOpen(false)
+    }
     if (next === 'roles') setPeopleRole('all')
     setNavOpen(false)
     setHelpOpen(false)
@@ -1001,13 +1129,15 @@ export function AdminPage() {
   }
 
   function linkActive(item: NavLinkItem) {
-    if (item.id === 'people') return view === 'people' && peopleRole === (item.people ?? 'all')
     return view === item.id
   }
 
   const searchValue = view === 'people' || view === 'roles' ? peopleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'candidates' ? candidateQuery : view === 'packets' ? packetQuery : view === 'contracts' ? contractQuery : view === 'finances' ? payQuery : query
   const onSearch = (value: string) => {
-    if (view === 'people' || view === 'roles') setPeopleQuery(value)
+    if (view === 'people' || view === 'roles') {
+      setPeopleQuery(value)
+      if (view === 'people') setPeoplePage(0)
+    }
     else if (view === 'staff') setStaffQuery(value)
     else if (view === 'employers') {
       setEmployerQuery(value)
@@ -1046,6 +1176,8 @@ export function AdminPage() {
                 ? 'Search employers by name, email, or company'
                 : view === 'candidates'
                   ? 'Search candidates by name, email, skills, or location'
+                : view === 'people'
+                  ? 'Search users by name, email, or role'
                 : 'Search users, jobs, packets, or companies'
 
   return (
@@ -2483,28 +2615,329 @@ export function AdminPage() {
           ) : null}
 
           {view === 'people' ? (
-            <Panel>
-              <h2 className="font-sans text-lg font-semibold">Users</h2>
-              <div className="mt-4 flex flex-wrap gap-1.5">
-                {(['all', 'admin', 'super_admin', 'employer', 'candidate'] as const).map((role) => (
-                  <Chip key={role} active={peopleRole === role} onClick={() => setPeopleRole(role)} label={role === 'all' ? 'All' : role.replace('_', ' ')} />
-                ))}
-              </div>
-              <div className="mt-4 divide-y divide-[#eef1ee]">
-                {people.map((row) => (
-                  <div key={row.id} className="flex items-center gap-3 py-3">
-                    <span className="grid size-10 place-items-center rounded-full bg-[#e8f6ee] text-sm font-medium text-[#147a48]">
-                      {initials(row.name || row.email)}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{row.name}</p>
-                      <p className="truncate text-sm text-[#8a918c]">{row.email}</p>
-                    </div>
-                    <span className="rounded-full bg-[#f3f5f4] px-2.5 py-0.5 text-xs capitalize">{row.role.replace('_', ' ')}</span>
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-[#8a918c]">
+                    Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Users</span>
+                  </p>
+                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Users</h1>
+                  <p className="mt-1 text-sm text-[#5c635f]">Invite people to Atelier, then review candidate, employer, and admin accounts.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <Button type="button" onClick={() => setPeopleInviteOpen((v) => !v)}>
+                      <Plus className="size-4" />
+                      Add User
+                    </Button>
+                    {peopleInviteOpen ? (
+                      <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-[#e4e8e5] bg-white py-1 text-sm shadow-[0_8px_24px_rgba(19,38,31,0.12)]">
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                          onClick={() => {
+                            copyCandidateInvite('link')
+                            setPeopleInviteOpen(false)
+                          }}
+                        >
+                          Invite candidate
+                        </button>
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                          onClick={() => go('invite')}
+                        >
+                          Invite employer
+                        </button>
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                          onClick={() => go('staff')}
+                        >
+                          Invite admin
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
-                ))}
+                  <Button variant="outline" type="button" onClick={exportUsers}>
+                    <Download className="size-4" />
+                    Export
+                  </Button>
+                </div>
               </div>
-            </Panel>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <EmployerStat icon={Users} color="#14a35a" label="Total Users" value={userStats.total} delta={userStats.totalDelta} />
+                <EmployerStat icon={User} color="#3b82f6" label="Candidates" value={userStats.candidates} delta={userStats.candidatesDelta} />
+                <EmployerStat icon={Building2} color="#22c55e" label="Employers" value={userStats.employers} delta={userStats.employersDelta} />
+                <EmployerStat icon={Shield} color="#8b5cf6" label="Admins" value={userStats.admins} delta={userStats.adminsDelta} />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="relative min-w-[16rem] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
+                  <Input
+                    className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
+                    placeholder="Search users by name, email, or ID"
+                    value={peopleQuery}
+                    onChange={(e) => {
+                      setPeopleQuery(e.target.value)
+                      setPeoplePage(0)
+                    }}
+                  />
+                </label>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={peopleType}
+                  onChange={(e) => {
+                    setPeopleType(e.target.value as UserTypeFilter)
+                    setPeoplePage(0)
+                  }}
+                >
+                  <option value="all">All types</option>
+                  <option value="candidate">Candidates</option>
+                  <option value="employer">Employers</option>
+                  <option value="admin">Admins</option>
+                </select>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={peopleStatus}
+                  onChange={(e) => {
+                    setPeopleStatus(e.target.value as typeof peopleStatus)
+                    setPeoplePage(0)
+                  }}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="pending">Pending</option>
+                </select>
+                <select
+                  className="h-10 rounded-xl border border-[#e4e8e5] bg-white px-3 text-sm"
+                  value={peopleCountry}
+                  onChange={(e) => {
+                    setPeopleCountry(e.target.value)
+                    setPeoplePage(0)
+                  }}
+                >
+                  <option value="all">All countries</option>
+                  {userCountries.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+                <Panel className="overflow-hidden p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[52rem] text-left text-sm">
+                      <thead className="text-xs text-[#8a918c]">
+                        <tr className="border-b border-[#eef1ee]">
+                          <th className="px-4 py-3 font-medium">User</th>
+                          <th className="px-3 py-3 font-medium">Type</th>
+                          <th className="px-3 py-3 font-medium">Email</th>
+                          <th className="px-3 py-3 font-medium">Country</th>
+                          <th className="px-3 py-3 font-medium">Joined</th>
+                          <th className="px-3 py-3 font-medium">Status</th>
+                          <th className="px-3 py-3 font-medium">Last active</th>
+                          <th className="px-3 py-3 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {userSlice.map((row) => (
+                          <tr
+                            key={row.id}
+                            className={`cursor-pointer border-b border-[#eef1ee] ${selectedUser?.id === row.id ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
+                            onClick={() => setPickedPerson(row.id)}
+                          >
+                            <td className="px-4 py-3">
+                              <span className="flex items-center gap-3">
+                                <span className="grid size-9 place-items-center rounded-full bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
+                                  {initials(row.name || row.email)}
+                                </span>
+                                <span>
+                                  <span className="block font-medium">{row.name}</span>
+                                  <span className="block text-xs text-[#8a918c]">{shortUserId(row.id)}</span>
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">
+                              <RoleChip role={row.role} />
+                            </td>
+                            <td className="px-3 py-3 text-[#5c635f]">{row.email}</td>
+                            <td className="px-3 py-3 text-[#5c635f]">{row.country || '—'}</td>
+                            <td className="px-3 py-3 text-[#5c635f]">{day(row.joinedAt)}</td>
+                            <td className="px-3 py-3">
+                              <StatusDot status={accountStatus(row)} />
+                            </td>
+                            <td className="px-3 py-3 text-[#5c635f]">{ago(row.lastActive || row.joinedAt)}</td>
+                            <td className="relative px-3 py-3">
+                              <button
+                                type="button"
+                                className="grid size-8 place-items-center rounded-full hover:bg-white"
+                                aria-label="Actions"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setPickedPerson(row.id)
+                                  setStaffMenu(staffMenu === row.id ? '' : row.id)
+                                }}
+                              >
+                                <MoreHorizontal className="size-4 text-[#8a918c]" />
+                              </button>
+                              {staffMenu === row.id ? (
+                                <div className="absolute right-3 z-20 w-40 overflow-hidden rounded-xl border border-[#e4e8e5] bg-white py-1 text-sm shadow-[0_8px_24px_rgba(19,38,31,0.12)]">
+                                  <button
+                                    type="button"
+                                    className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      void navigator.clipboard.writeText(row.email)
+                                      setStaffMenu('')
+                                    }}
+                                  >
+                                    Copy email
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setStaffMenu('')
+                                      openUserDesk(row)
+                                    }}
+                                  >
+                                    View profile
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setStaffMenu('')
+                                      go('inbox')
+                                    }}
+                                  >
+                                    Message
+                                  </button>
+                                </div>
+                              ) : null}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!userSlice.length ? <p className="px-4 py-8 text-sm text-[#8a918c]">No users match this search.</p> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
+                    <p>
+                      Showing {userRows.length ? userPageSafe * pageSize + 1 : 0}-{Math.min(userRows.length, userPageSafe * pageSize + pageSize)} of {userRows.length} users
+                    </p>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: userPages }, (_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setPeoplePage(i)}
+                          className={`grid size-7 place-items-center rounded-md ${userPageSafe === i ? 'bg-[#13261f] text-white' : 'hover:bg-[#f3f5f4]'}`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </Panel>
+
+                <div className="space-y-4">
+                  {selectedUser ? (
+                    <Panel>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium">User details</p>
+                        <button type="button" className="grid size-8 place-items-center rounded-full hover:bg-[#f3f5f4]" aria-label="Close" onClick={() => setPickedPerson('')}>
+                          <X className="size-4" />
+                        </button>
+                      </div>
+                      <div className="mt-3 flex items-start gap-3">
+                        <span className="grid size-14 place-items-center rounded-full bg-[#e8f6ee] text-base font-semibold text-[#147a48]">
+                          {initials(selectedUser.name || selectedUser.email)}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-medium">{selectedUser.name}</p>
+                          <p className="text-xs text-[#8a918c]">{shortUserId(selectedUser.id)}</p>
+                          <div className="mt-1">
+                            <StatusDot status={accountStatus(selectedUser)} />
+                          </div>
+                        </div>
+                      </div>
+                      <Button className="mt-4 w-full" type="button" onClick={() => openUserDesk(selectedUser)}>
+                        View profile
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="mt-2 w-full"
+                        type="button"
+                        onClick={() => {
+                          setEmail(selectedUser.email)
+                          go('roles')
+                        }}
+                      >
+                        Change role
+                      </Button>
+                      <div className="mt-5">
+                        <p className="text-sm font-medium">Account</p>
+                        <dl className="mt-3 space-y-3 text-sm">
+                          <OverviewRow label="Email" value={selectedUser.email} />
+                          <OverviewRow label="Type" value={prettyRole(selectedUser.role)} />
+                          <OverviewRow label="Location" value={placeLabel(selectedUser.city, selectedUser.country) || '—'} />
+                          <OverviewRow label="Company" value={selectedUser.companyName || '—'} />
+                          <OverviewRow label="Joined" value={day(selectedUser.joinedAt)} />
+                          <OverviewRow label="Last active" value={ago(selectedUser.lastActive || selectedUser.joinedAt)} />
+                          <OverviewRow label="Onboarded" value={selectedUser.onboarded ? 'Yes' : 'Not yet'} />
+                        </dl>
+                      </div>
+                      {selectedUserCandidate ? (
+                        <div className="mt-5">
+                          <p className="text-sm font-medium">Candidate</p>
+                          <dl className="mt-3 space-y-3 text-sm">
+                            <OverviewRow label="Packets" value={String(selectedUserCandidate.packets)} />
+                            <OverviewRow label="Hired" value={String(selectedUserCandidate.hired)} />
+                            <OverviewRow label="Tracker" value={formatHoursMinutes(selectedUserCandidate.hours)} />
+                          </dl>
+                        </div>
+                      ) : null}
+                      {selectedUserEmployer ? (
+                        <div className="mt-5">
+                          <p className="text-sm font-medium">Employer</p>
+                          <dl className="mt-3 space-y-3 text-sm">
+                            <OverviewRow label="Jobs" value={String(selectedUserEmployer.jobs)} />
+                            <OverviewRow label="Packets" value={String(selectedUserEmployer.packets)} />
+                            <OverviewRow label="Hired" value={String(selectedUserEmployer.hired)} />
+                            <OverviewRow label="Paid out" value={money(selectedUserEmployer.spent)} />
+                          </dl>
+                        </div>
+                      ) : null}
+                      <div className="mt-5 divide-y divide-[#eef1ee]">
+                        <QuickRow icon={Mail} label="Copy email" onClick={() => void navigator.clipboard.writeText(selectedUser.email)} />
+                        <QuickRow icon={MessagesSquare} label="Open inbox" onClick={() => go('inbox')} />
+                        {selectedUser.role === 'candidate' ? (
+                          <QuickRow icon={Copy} label="Copy candidate join link" onClick={() => copyCandidateInvite('link')} />
+                        ) : null}
+                        {selectedUser.role === 'employer' ? (
+                          <QuickRow icon={UserPlus} label="Invite employers" onClick={() => go('invite')} />
+                        ) : null}
+                        {isStaffRole(selectedUser.role) ? (
+                          <QuickRow icon={UserPlus} label="Invite admin" onClick={() => go('staff')} />
+                        ) : null}
+                      </div>
+                    </Panel>
+                  ) : (
+                    <Panel>
+                      <p className="text-sm text-[#8a918c]">Select a user to see their account.</p>
+                    </Panel>
+                  )}
+                </div>
+              </div>
+            </div>
           ) : null}
 
           {view === 'listings' ? (
@@ -3435,6 +3868,32 @@ function StatusDot({ status }: { status: 'active' | 'pending' | 'suspended' }) {
       {row.label}
     </span>
   )
+}
+
+function prettyRole(role: AccountRole) {
+  if (role === 'super_admin') return 'Super admin'
+  if (role === 'admin') return 'Admin'
+  if (role === 'employer') return 'Employer'
+  return 'Candidate'
+}
+
+function accountStatus(row: { role: AccountRole; onboarded?: boolean }): 'active' | 'pending' {
+  if (isStaffRole(row.role) || row.onboarded) return 'active'
+  return 'pending'
+}
+
+function shortUserId(id: string) {
+  return `#${id.replaceAll('-', '').slice(0, 8).toUpperCase()}`
+}
+
+function RoleChip({ role }: { role: AccountRole }) {
+  const label = prettyRole(role)
+  const className = isStaffRole(role)
+    ? 'bg-[#ede9fe] text-[#6d28d9]'
+    : role === 'employer'
+      ? 'bg-[#d1fae5] text-[#047857]'
+      : 'bg-[#dbeafe] text-[#1d4ed8]'
+  return <span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${className}`}>{label}</span>
 }
 
 function packetBucket(status: string): PacketBucket {
