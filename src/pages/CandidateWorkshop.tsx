@@ -87,7 +87,7 @@ const emptyDraft = (): Draft => ({
   employmentTypes: ['full-time'],
   salaryMin: 80000,
   salaryDesired: 120000,
-  currency: 'USD',
+  currency: 'PHP',
   locations: [],
   skills: [],
   firstName: '',

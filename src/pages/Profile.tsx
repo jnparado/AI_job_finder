@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Briefcase,
@@ -19,12 +20,16 @@ import { SocialConnectForm } from '@/components/social/SocialConnectForm'
 import { SOCIAL_LINK_FIELDS } from '@/lib/social'
 
 export function ProfilePage() {
-  const { profile } = useAuth()
+  const { profile, saveProfile } = useAuth()
   const name = displayName(profile)
   const place = [profile.city, profile.country].filter(Boolean).join(', ')
   const headline = profile.headline || profile.desiredTitle || profile.currentTitle
   const completeness = profileCompleteness(profile)
   const level = profile.careerLevel === 'mid' ? 'Mid-level' : titleCase(profile.careerLevel)
+
+  useEffect(() => {
+    if (profile.currency !== 'PHP') void saveProfile({ currency: 'PHP' })
+  }, [profile.currency, saveProfile])
 
   return (
     <div className="space-y-6">
@@ -79,7 +84,7 @@ export function ProfilePage() {
         <div className="grid grid-cols-2 gap-px bg-[#c9c0ae22] sm:grid-cols-4">
           <HeroStat icon={Clock} label="Experience" value={`${profile.yearsExperience || 0} yrs`} />
           <HeroStat icon={Briefcase} label="Level" value={level} />
-          <HeroStat icon={Wallet} label="Floor" value={salaryMoney(profile.salaryMin, profile.currency)} />
+          <HeroStat icon={Wallet} label="Floor" value={salaryMoney(profile.salaryMin, 'PHP')} />
           <HeroStat icon={Target} label="Target" value={profile.desiredTitle || '—'} />
         </div>
       </section>
@@ -97,7 +102,7 @@ export function ProfilePage() {
             <Fact icon={Building2} label="Industry" value={profile.industry} />
             <Fact icon={Briefcase} label="Current title" value={profile.currentTitle} />
             <Fact icon={Target} label="Desired title" value={profile.desiredTitle} />
-            <Fact icon={Wallet} label="Desired salary" value={salaryMoney(profile.salaryDesired, profile.currency)} />
+            <Fact icon={Wallet} label="Desired salary" value={salaryMoney(profile.salaryDesired, 'PHP')} />
             <Fact icon={Globe} label="Work mode" value={profile.workModes.map(titleCase).join(', ')} />
             <Fact icon={Clock} label="Employment" value={profile.employmentTypes.map(titleCase).join(', ')} />
           </dl>

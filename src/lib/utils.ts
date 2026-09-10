@@ -5,29 +5,28 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function salaryCurrency(amount?: number, currency = 'USD'): string {
-  const code = (currency || 'USD').toUpperCase()
-  if (code === 'PHP' && amount != null && amount > 0 && amount < 250_000) return 'USD'
+export function salaryCurrency(currency = 'PHP'): string {
+  const code = (currency || 'PHP').toUpperCase()
   try {
-    Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(0)
+    Intl.NumberFormat('en-PH', { style: 'currency', currency: code }).format(0)
     return code
   } catch {
-    return 'USD'
+    return 'PHP'
   }
 }
 
-export function money(n?: number, currency = 'USD'): string {
+export function money(n?: number, currency = 'PHP'): string {
   if (n == null) return '—'
-  const code = salaryCurrency(undefined, currency)
-  return new Intl.NumberFormat('en-US', {
+  const code = salaryCurrency(currency)
+  return new Intl.NumberFormat(code === 'PHP' ? 'en-PH' : 'en-US', {
     style: 'currency',
     currency: code,
     maximumFractionDigits: 0,
   }).format(n)
 }
 
-export function salaryMoney(n?: number, currency = 'USD'): string {
-  return money(n, salaryCurrency(n, currency))
+export function salaryMoney(n?: number, currency = 'PHP'): string {
+  return money(n, salaryCurrency(currency || 'PHP'))
 }
 
 export function moneyBand(min?: number, max?: number, currency = 'USD'): string {

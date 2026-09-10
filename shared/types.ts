@@ -256,7 +256,7 @@ export function emptyProfile(): CandidateProfile {
     employmentTypes: ['full-time'],
     salaryMin: 80000,
     salaryDesired: 120000,
-    currency: 'USD',
+    currency: 'PHP',
     locations: [],
     remoteWorldwide: true,
     careerGoals: '',

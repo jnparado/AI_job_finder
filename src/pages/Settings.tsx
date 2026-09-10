@@ -13,7 +13,6 @@ import { SocialAuth } from '@/components/social/SocialAuth'
 import { SocialConnectForm } from '@/components/social/SocialConnectForm'
 import { SocialShare } from '@/components/social/SocialLinks'
 import type { Currency } from '@shared/types'
-import { salaryCurrency } from '@/lib/utils'
 
 interface Settings {
   enabled: boolean
@@ -162,23 +161,21 @@ export function SettingsPage() {
   )
 }
 
-const PAY_CURRENCIES: Currency[] = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'PHP', 'CHF']
+const PAY_CURRENCIES: Currency[] = ['PHP', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'CHF']
 
 function PayFloorCard() {
   const { profile, saveProfile } = useAuth()
   const [floor, setFloor] = useState(String(profile.salaryMin || 80000))
   const [desired, setDesired] = useState(String(profile.salaryDesired || 120000))
-  const [currency, setCurrency] = useState<Currency>(
-    salaryCurrency(profile.salaryMin, profile.currency) as Currency,
-  )
+  const [currency, setCurrency] = useState<Currency>('PHP')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     setFloor(String(profile.salaryMin || 80000))
     setDesired(String(profile.salaryDesired || 120000))
-    setCurrency(salaryCurrency(profile.salaryMin, profile.currency) as Currency)
-  }, [profile.salaryMin, profile.salaryDesired, profile.currency])
+    setCurrency('PHP')
+  }, [profile.salaryMin, profile.salaryDesired])
 
   async function onSave() {
     setNote('')
@@ -202,7 +199,7 @@ function PayFloorCard() {
       <div>
         <h2>Pay floor</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          The matcher respects this minimum. Workshop bands are in USD — use pesos only if the number is a PHP salary.
+          The matcher respects this peso floor. Change the amount if ₱80,000 is not your real minimum.
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
