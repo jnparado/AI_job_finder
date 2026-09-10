@@ -6,7 +6,9 @@ import {
   Briefcase,
   Building2,
   Calendar,
+  ChevronDown,
   ChevronRight,
+  CircleHelp,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -14,10 +16,12 @@ import {
   MessagesSquare,
   Search,
   Settings,
+  Shield,
   Timer,
   User,
   Users,
   Wallet,
+  Zap,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -194,6 +198,8 @@ export function AdminPage() {
   const [picked, setPicked] = useState('')
   const [range, setRange] = useState<'7D' | '30D' | '3M' | '1Y'>('30D')
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ users: true, work: true })
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const dash = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: () => api<AdminDashboard>('/api/admin/dashboard'),
@@ -298,6 +304,8 @@ export function AdminPage() {
     if (next === 'people') setOpenGroups((g) => ({ ...g, users: true }))
     if (next === 'listings' || next === 'packets' || next === 'invite') setOpenGroups((g) => ({ ...g, work: true }))
     setNavOpen(false)
+    setHelpOpen(false)
+    setAccountOpen(false)
     setQuery('')
   }
 
@@ -313,6 +321,7 @@ export function AdminPage() {
 
   const searchValue = view === 'people' ? peopleQuery : query
   const onSearch = (value: string) => (view === 'people' ? setPeopleQuery(value) : setQuery(value))
+  const alertCount = (counts?.companiesToInvite ?? 0) + (counts?.messages ?? 0)
   const searchHint =
     view === 'tracker'
       ? 'Search tracker sessions'
@@ -399,19 +408,96 @@ export function AdminPage() {
               onChange={(e) => onSearch(e.target.value)}
             />
           </label>
-          <button type="button" className="relative grid size-10 place-items-center rounded-full text-[#5c635f]" aria-label="Alerts" onClick={() => go('inbox')}>
-            <Bell className="size-5" />
-            {counts?.messages || counts?.companiesToInvite ? (
-              <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-[#b85c38]" />
-            ) : null}
-          </button>
-          <div className="flex items-center gap-2 rounded-full border border-[#e4e8e5] bg-white py-1 pl-1 pr-3">
-            <img src="/brand/atelier-logo.jpg" alt="" className="size-8 rounded-full object-cover" />
-            <span className="hidden text-sm sm:block">{name.split(' ')[0] || 'Admin'}</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="relative grid size-10 place-items-center rounded-full text-[#5c635f] hover:bg-[#f3f5f4]"
+              aria-label="Alerts"
+              onClick={() => {
+                setHelpOpen(false)
+                setAccountOpen(false)
+                go(counts?.companiesToInvite ? 'invite' : 'inbox')
+              }}
+            >
+              <Bell className="size-5" />
+              {alertCount > 0 ? (
+                <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#ef4444] px-1 text-[0.65rem] font-semibold leading-none text-white">
+                  {alertCount > 99 ? '99+' : alertCount}
+                </span>
+              ) : null}
+            </button>
+            <div className="relative">
+              <button
+                type="button"
+                className="grid size-10 place-items-center rounded-full text-[#5c635f] hover:bg-[#f3f5f4]"
+                aria-label="Help"
+                onClick={() => {
+                  setAccountOpen(false)
+                  setHelpOpen((v) => !v)
+                }}
+              >
+                <CircleHelp className="size-5" />
+              </button>
+              {helpOpen ? (
+                <div className="absolute right-0 top-12 z-40 w-72 rounded-2xl border border-[#e4e8e5] bg-white p-4 text-sm shadow-[0_12px_32px_rgba(19,38,31,0.12)]">
+                  <p className="font-medium text-[#161c19]">Admin help</p>
+                  <p className="mt-2 leading-relaxed text-[#5c635f]">
+                    Packets leave only after a candidate approves. Invite is staff-only. Tracker and pay stay on Atelier.
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-3 text-sm font-medium text-[#147a48]"
+                    onClick={() => {
+                      setHelpOpen(false)
+                      go('keys')
+                    }}
+                  >
+                    Open settings
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <div className="relative">
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 hover:bg-[#f3f5f4]"
+                onClick={() => {
+                  setHelpOpen(false)
+                  setAccountOpen((v) => !v)
+                }}
+              >
+                <span className="grid size-8 place-items-center overflow-hidden rounded-full bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
+                  {initials(name)}
+                </span>
+                <span className="hidden text-sm font-medium text-[#161c19] sm:block">Admin</span>
+                <ChevronDown className="hidden size-4 text-[#8a918c] sm:block" />
+              </button>
+              {accountOpen ? (
+                <div className="absolute right-0 top-12 z-40 w-56 overflow-hidden rounded-2xl border border-[#e4e8e5] bg-white py-2 shadow-[0_12px_32px_rgba(19,38,31,0.12)]">
+                  <p className="px-4 py-2 text-xs text-[#8a918c]">{name}</p>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[#f3f5f4]"
+                    onClick={() => {
+                      setAccountOpen(false)
+                      go('keys')
+                    }}
+                  >
+                    <Settings className="size-4 text-[#5c635f]" />
+                    Settings
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[#f3f5f4]"
+                    onClick={() => void signOut()}
+                  >
+                    <LogOut className="size-4 text-[#5c635f]" />
+                    Sign out
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
-          <button type="button" className="grid size-10 place-items-center text-[#5c635f]" aria-label="Sign out" onClick={() => void signOut()}>
-            <LogOut className="size-4" />
-          </button>
         </header>
 
         {navOpen ? (
@@ -576,16 +662,18 @@ export function AdminPage() {
                 </div>
 
                 <div className="space-y-4">
-                  <Panel className="bg-[#eef8f1]">
-                    <h2 className="font-sans text-base font-semibold">Quick Actions</h2>
-                    <div className="mt-3 divide-y divide-[#d7eadc]">
-                      <QuickRow label="Open tracker" onClick={() => go('tracker')} />
-                      <QuickRow label="Review inbox" onClick={() => go('inbox')} />
-                      <QuickRow label="Finances" onClick={() => go('finances')} />
-                      <QuickRow label="Invite an employer" onClick={() => go('invite')} />
-                      <QuickRow label="Manage jobs" onClick={() => go('listings')} />
+                  <section className="rounded-2xl bg-[#e8f6ee] p-5">
+                    <h2 className="flex items-center gap-2 font-sans text-base font-semibold text-[#161c19]">
+                      <Zap className="size-4 fill-[#14a35a] text-[#14a35a]" />
+                      Quick Actions
+                    </h2>
+                    <div className="mt-2 divide-y divide-[#cfe8d7]">
+                      <QuickRow icon={User} label="Review pending packets" onClick={() => go('packets')} />
+                      <QuickRow icon={Shield} label="Review inbox" onClick={() => go('inbox')} />
+                      <QuickRow icon={Briefcase} label="Manage jobs" onClick={() => go('listings')} />
+                      <QuickRow icon={BarChart3} label="View reports" onClick={() => go('reports')} />
                     </div>
-                  </Panel>
+                  </section>
                   <Panel>
                     <h2 className="font-sans text-base font-semibold">Recent Activity</h2>
                     <ul className="mt-4 space-y-4">
@@ -1026,11 +1114,12 @@ function UserDonut({ candidates, employers, admins }: { candidates: number; empl
   )
 }
 
-function QuickRow({ label, onClick }: { label: string; onClick: () => void }) {
+function QuickRow({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="flex w-full items-center justify-between py-3 text-sm hover:text-[#147a48]">
-      {label}
-      <span className="text-[#8a918c]">›</span>
+    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 py-3.5 text-sm text-[#161c19] hover:text-[#147a48]">
+      <Icon className="size-4 shrink-0 text-[#5c635f]" />
+      <span className="min-w-0 flex-1 text-left">{label}</span>
+      <ChevronRight className="size-4 shrink-0 text-[#b7c0bb]" />
     </button>
   )
 }
