@@ -14,6 +14,7 @@ import {
   CirclePlay,
   Clock,
   Copy,
+  Crown,
   DollarSign,
   Download,
   FileSignature,
@@ -303,6 +304,72 @@ const MOBILE_NAV: { id: DeskView; label: string; people?: PeopleFilter }[] = NAV
   section.items.map((item) => ({ id: item.id, label: item.label, people: item.people })),
 )
 
+const STUDIO_ROLES: {
+  id: AccountRole
+  name: string
+  blurb: string
+  icon: LucideIcon
+  color: string
+  invite: 'candidate' | 'employer' | 'admin' | 'sql'
+  groups: { title: string; items: string[] }[]
+}[] = [
+  {
+    id: 'super_admin',
+    name: 'Super admin',
+    blurb: 'Full studio access, including changing roles. Granted in SQL only — signup cannot create this.',
+    icon: Crown,
+    color: '#b85c38',
+    invite: 'sql',
+    groups: [
+      { title: 'User management', items: ['View every account', 'Change candidate, employer, and admin roles', 'Invite admins'] },
+      { title: 'Jobs & projects', items: ['Jobs, packets, and contracts', 'Invite employers', 'Invite candidates'] },
+      { title: 'Operations', items: ['Inbox, tracker, payments, and reports'] },
+      { title: 'Settings', items: ['Studio settings and staff SQL'] },
+    ],
+  },
+  {
+    id: 'admin',
+    name: 'Admin',
+    blurb: 'Run the Atelier desk: users, jobs, packets, invites, tracker, and pay. Cannot grant super admin.',
+    icon: Shield,
+    color: '#2563eb',
+    invite: 'admin',
+    groups: [
+      { title: 'User management', items: ['View candidates and employers', 'Invite admins'] },
+      { title: 'Jobs & projects', items: ['Jobs, packets, and contracts', 'Invite employers', 'Invite candidates'] },
+      { title: 'Operations', items: ['Inbox, tracker, payments, and reports'] },
+      { title: 'Settings', items: ['Open studio settings'] },
+    ],
+  },
+  {
+    id: 'employer',
+    name: 'Employer',
+    blurb: 'Post roles on Atelier and receive packets only after a candidate approves.',
+    icon: Building2,
+    color: '#147a48',
+    invite: 'employer',
+    groups: [
+      { title: 'Hiring', items: ['Post Atelier roles', 'Review approved packets in inbox'] },
+      { title: 'Work', items: ['Message candidates', 'See hired tracker hours'] },
+      { title: 'Pay', items: ['Fund work on the Atelier ledger'] },
+    ],
+  },
+  {
+    id: 'candidate',
+    name: 'Candidate',
+    blurb: 'Match roles, prepare packets, and send only after you approve. Nothing leaves without that send.',
+    icon: User,
+    color: '#7c3aed',
+    invite: 'candidate',
+    groups: [
+      { title: 'Matching', items: ['Score roles against your profile'] },
+      { title: 'Packets', items: ['Prepare a packet', 'Send only after you approve'] },
+      { title: 'Work', items: ['Clock hired Atelier work', 'Message Atelier employers'] },
+      { title: 'Pay', items: ['View the ledger and withdraw'] },
+    ],
+  },
+]
+
 export function AdminPage() {
   const { profile, signOut } = useAuth()
   const qc = useQueryClient()
@@ -311,13 +378,15 @@ export function AdminPage() {
   const [query, setQuery] = useState('')
   const [source, setSource] = useState('all')
   const [peopleQuery, setPeopleQuery] = useState('')
-  const [peopleRole, setPeopleRole] = useState<PeopleFilter>('all')
   const [peopleType, setPeopleType] = useState<UserTypeFilter>('all')
   const [peopleStatus, setPeopleStatus] = useState<'all' | 'active' | 'pending'>('all')
   const [peopleCountry, setPeopleCountry] = useState('all')
   const [peoplePage, setPeoplePage] = useState(0)
   const [pickedPerson, setPickedPerson] = useState('')
   const [peopleInviteOpen, setPeopleInviteOpen] = useState(false)
+  const [roleQuery, setRoleQuery] = useState('')
+  const [pickedRole, setPickedRole] = useState<AccountRole>('admin')
+  const [roleTab, setRoleTab] = useState<'access' | 'users' | 'assign'>('access')
   const [email, setEmail] = useState('')
   const [nextRole, setNextRole] = useState<'admin' | 'employer' | 'candidate'>('admin')
   const [copied, setCopied] = useState(false)
@@ -471,14 +540,18 @@ export function AdminPage() {
     setInviteNote(employerInviteNote(selected, inviteOrigin))
   }, [inviteOrigin, selected?.company])
 
-  const people = useMemo(() => {
-    const q = (view === 'people' || view === 'roles' ? peopleQuery : query).trim().toLowerCase()
-    return (data?.accounts ?? []).filter((row) => {
-      if (peopleRole !== 'all' && row.role !== peopleRole) return false
+  const roleRows = useMemo(() => {
+    const q = (view === 'roles' ? roleQuery : query).trim().toLowerCase()
+    return STUDIO_ROLES.filter((row) => {
       if (!q) return true
-      return `${row.name} ${row.email} ${row.companyName}`.toLowerCase().includes(q)
+      return `${row.name} ${row.blurb} ${row.id} ${row.groups.map((g) => g.title).join(' ')}`.toLowerCase().includes(q)
     })
-  }, [data?.accounts, peopleQuery, peopleRole, query, view])
+  }, [query, roleQuery, view])
+
+  const selectedStudioRole = STUDIO_ROLES.find((row) => row.id === pickedRole) ?? roleRows[0] ?? STUDIO_ROLES[1]
+  const SelectedRoleIcon = selectedStudioRole.icon
+  const roleUsers = (data?.accounts ?? []).filter((row) => row.role === selectedStudioRole.id)
+  const rolePermissionCount = STUDIO_ROLES.reduce((n, row) => n + row.groups.reduce((m, group) => m + group.items.length, 0), 0)
 
   const userRows = useMemo(() => {
     const q = (view === 'people' ? peopleQuery : query).trim().toLowerCase()
@@ -1085,6 +1158,25 @@ export function AdminPage() {
     go('roles')
   }
 
+  function inviteStudioRole(role: (typeof STUDIO_ROLES)[number] = selectedStudioRole) {
+    if (role.invite === 'candidate') {
+      copyCandidateInvite('link')
+      return
+    }
+    if (role.invite === 'employer') {
+      go('invite')
+      return
+    }
+    if (role.invite === 'admin') {
+      go('staff')
+      return
+    }
+    void navigator.clipboard.writeText(sql).then(() => {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   function sendEmployerInvite(row: AdminInvite) {
     setPicked(row.company)
     rememberLocalEmployerInvite(row.company, setLocalInvited)
@@ -1095,14 +1187,15 @@ export function AdminPage() {
   function go(next: DeskView, role: PeopleFilter = 'all') {
     setView(next)
     if (next === 'people') {
-      setPeopleRole(role)
-      setPeopleType('all')
+      setPeopleType(role === 'candidate' || role === 'employer' || role === 'admin' ? role : 'all')
       setPeopleStatus('all')
       setPeopleCountry('all')
       setPeoplePage(0)
       setPeopleInviteOpen(false)
     }
-    if (next === 'roles') setPeopleRole('all')
+    if (next === 'roles') {
+      setRoleTab('access')
+    }
     setNavOpen(false)
     setHelpOpen(false)
     setAccountOpen(false)
@@ -1132,12 +1225,12 @@ export function AdminPage() {
     return view === item.id
   }
 
-  const searchValue = view === 'people' || view === 'roles' ? peopleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'candidates' ? candidateQuery : view === 'packets' ? packetQuery : view === 'contracts' ? contractQuery : view === 'finances' ? payQuery : query
+  const searchValue = view === 'people' ? peopleQuery : view === 'roles' ? roleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'candidates' ? candidateQuery : view === 'packets' ? packetQuery : view === 'contracts' ? contractQuery : view === 'finances' ? payQuery : query
   const onSearch = (value: string) => {
-    if (view === 'people' || view === 'roles') {
+    if (view === 'people') {
       setPeopleQuery(value)
-      if (view === 'people') setPeoplePage(0)
-    }
+      setPeoplePage(0)
+    } else if (view === 'roles') setRoleQuery(value)
     else if (view === 'staff') setStaffQuery(value)
     else if (view === 'employers') {
       setEmployerQuery(value)
@@ -1178,6 +1271,8 @@ export function AdminPage() {
                   ? 'Search candidates by name, email, skills, or location'
                 : view === 'people'
                   ? 'Search users by name, email, or role'
+                : view === 'roles'
+                  ? 'Search roles by name or access'
                 : 'Search users, jobs, packets, or companies'
 
   return (
@@ -1973,63 +2068,251 @@ export function AdminPage() {
 
           {view === 'roles' ? (
             <div className="space-y-5">
-              <div>
-                <p className="text-sm text-[#8a918c]">
-                  Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Manage Roles</span>
-                </p>
-                <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Manage Roles</h1>
-                <p className="mt-1 text-sm text-[#5c635f]">Change candidate, employer, and admin access. Super admin stays in SQL.</p>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-[#8a918c]">
+                    Admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Manage Roles</span>
+                  </p>
+                  <h1 className="mt-2 font-sans text-[1.75rem] font-semibold tracking-tight text-[#161c19]">Manage Roles</h1>
+                  <p className="mt-1 max-w-2xl text-sm text-[#5c635f]">
+                    Atelier has four system roles. Invite people into them — signup cannot grant admin, and super admin stays in SQL.
+                  </p>
+                </div>
+                <Button type="button" onClick={() => go('staff')}>
+                  <Plus className="size-4" />
+                  Invite Admin
+                </Button>
               </div>
-              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
-                <Panel>
-                  <h2 className="font-sans text-lg font-semibold">People</h2>
-                  <div className="mt-4 flex flex-wrap gap-1.5">
-                    {(['all', 'admin', 'super_admin', 'employer', 'candidate'] as const).map((role) => (
-                      <Chip key={role} active={peopleRole === role} onClick={() => setPeopleRole(role)} label={role === 'all' ? 'All' : role.replace('_', ' ')} />
-                    ))}
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <HintStat icon={Shield} color="#14a35a" label="System roles" value={STUDIO_ROLES.length} hint="Candidate, employer, admin, super admin" />
+                <HintStat icon={Check} color="#22c55e" label="In use" value={STUDIO_ROLES.filter((row) => (data?.accounts ?? []).some((account) => account.role === row.id)).length} hint="Roles with at least one account" />
+                <HintStat icon={Users} color="#8b5cf6" label="Users assigned" value={data?.accounts.length ?? 0} hint="Live accounts on Atelier" />
+                <HintStat icon={Lock} color="#2563eb" label="Access items" value={rolePermissionCount} hint="Real desk capabilities, not a custom matrix" />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="relative min-w-[16rem] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a918c]" />
+                  <Input
+                    className="h-10 rounded-xl border-[#e4e8e5] bg-white pl-10"
+                    placeholder="Search roles by name or access"
+                    value={roleQuery}
+                    onChange={(e) => setRoleQuery(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+                <Panel className="overflow-hidden p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[40rem] text-left text-sm">
+                      <thead className="text-xs text-[#8a918c]">
+                        <tr className="border-b border-[#eef1ee]">
+                          <th className="px-4 py-3 font-medium">Role</th>
+                          <th className="px-3 py-3 font-medium">Description</th>
+                          <th className="px-3 py-3 font-medium">Users</th>
+                          <th className="px-3 py-3 font-medium">Status</th>
+                          <th className="px-3 py-3 font-medium">Kind</th>
+                          <th className="px-3 py-3 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {roleRows.map((row) => {
+                          const users = (data?.accounts ?? []).filter((account) => account.role === row.id).length
+                          const Icon = row.icon
+                          return (
+                            <tr
+                              key={row.id}
+                              className={`cursor-pointer border-b border-[#eef1ee] ${selectedStudioRole.id === row.id ? 'bg-[#f3f8f5]' : 'hover:bg-[#f7f8f7]'}`}
+                              onClick={() => {
+                                setPickedRole(row.id)
+                                setRoleTab('access')
+                                if (row.id === 'admin' || row.id === 'employer' || row.id === 'candidate') setNextRole(row.id)
+                              }}
+                            >
+                              <td className="px-4 py-3">
+                                <span className="flex items-center gap-3">
+                                  <span className="grid size-9 place-items-center rounded-full" style={{ background: `${row.color}1a`, color: row.color }}>
+                                    <Icon className="size-4" />
+                                  </span>
+                                  <span>
+                                    <span className="block font-medium">{row.name}</span>
+                                    <span className="block text-xs text-[#8a918c]">{row.id.replace('_', ' ')}</span>
+                                  </span>
+                                </span>
+                              </td>
+                              <td className="max-w-[18rem] px-3 py-3 text-[#5c635f]">{row.blurb}</td>
+                              <td className="px-3 py-3">{users}</td>
+                              <td className="px-3 py-3">
+                                <StatusDot status="active" />
+                              </td>
+                              <td className="px-3 py-3">
+                                <span className="rounded-full bg-[#eef1ee] px-2 py-0.5 text-xs text-[#5c635f]">System</span>
+                              </td>
+                              <td className="relative px-3 py-3">
+                                <button
+                                  type="button"
+                                  className="grid size-8 place-items-center rounded-full hover:bg-white"
+                                  aria-label="Actions"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setPickedRole(row.id)
+                                    setStaffMenu(staffMenu === row.id ? '' : row.id)
+                                  }}
+                                >
+                                  <MoreHorizontal className="size-4 text-[#8a918c]" />
+                                </button>
+                                {staffMenu === row.id ? (
+                                  <div className="absolute right-3 z-20 w-44 overflow-hidden rounded-xl border border-[#e4e8e5] bg-white py-1 text-sm shadow-[0_8px_24px_rgba(19,38,31,0.12)]">
+                                    <button
+                                      type="button"
+                                      className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setStaffMenu('')
+                                        inviteStudioRole(row)
+                                      }}
+                                    >
+                                      {row.invite === 'sql' ? 'Copy SQL' : row.invite === 'admin' ? 'Invite admin' : row.invite === 'employer' ? 'Invite employer' : 'Copy join link'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="block w-full px-3 py-2 text-left hover:bg-[#f3f5f4]"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setStaffMenu('')
+                                        setRoleTab('users')
+                                      }}
+                                    >
+                                      View users
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                    {!roleRows.length ? <p className="px-4 py-8 text-sm text-[#8a918c]">No roles match this search.</p> : null}
                   </div>
-                  <div className="mt-4 divide-y divide-[#eef1ee]">
-                    {people.map((row) => (
-                      <div key={row.id} className="flex items-center gap-3 py-3">
-                        <span className="grid size-10 place-items-center rounded-full bg-[#e8f6ee] text-sm font-medium text-[#147a48]">
-                          {initials(row.name || row.email)}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium">{row.name}</p>
-                          <p className="truncate text-sm text-[#8a918c]">{row.email}</p>
-                        </div>
-                        <span className="rounded-full bg-[#f3f5f4] px-2.5 py-0.5 text-xs capitalize">{row.role.replace('_', ' ')}</span>
-                      </div>
-                    ))}
+                  <div className="border-t border-[#eef1ee] px-4 py-3 text-xs text-[#8a918c]">
+                    Showing {roleRows.length} of {STUDIO_ROLES.length} system roles
                   </div>
                 </Panel>
-                {superAdmin ? (
+
+                <div className="space-y-4">
                   <Panel>
-                    <h2 className="font-sans text-base font-semibold">Change a role</h2>
-                    <form className="mt-4 space-y-3" onSubmit={onPromote}>
-                      <Input type="email" required placeholder="email@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-                      <select className="h-10 w-full rounded-lg border border-[#e4e8e5] px-3 text-sm" value={nextRole} onChange={(e) => setNextRole(e.target.value as typeof nextRole)}>
-                        <option value="admin">admin</option>
-                        <option value="employer">employer</option>
-                        <option value="candidate">candidate</option>
-                      </select>
-                      <Button variant="copper" type="submit" disabled={promote.isPending}>
-                        {promote.isPending ? 'Saving…' : 'Update role'}
-                      </Button>
-                      {promote.isError ? (
-                        <p className="text-sm text-[#b85c38]">{promote.error instanceof Error ? promote.error.message : 'Could not update the role.'}</p>
-                      ) : null}
-                    </form>
-                  </Panel>
-                ) : (
-                  <Panel>
-                    <h2 className="font-sans text-base font-semibold">Change a role</h2>
-                    <p className="mt-2 text-sm text-[#5c635f]">Only a super admin can change roles here. Use Invite Admin to grant the admin desk.</p>
-                    <Button className="mt-4" type="button" onClick={() => go('staff')}>
-                      Invite Admin
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-medium">Role details</p>
+                    </div>
+                    <div className="mt-3 flex items-start gap-3">
+                      <span className="grid size-12 place-items-center rounded-full" style={{ background: `${selectedStudioRole.color}1a`, color: selectedStudioRole.color }}>
+                        <SelectedRoleIcon className="size-5" />
+                      </span>
+                      <div>
+                        <p className="font-medium">{selectedStudioRole.name}</p>
+                        <span className="mt-1 inline-flex rounded-full bg-[#eef1ee] px-2 py-0.5 text-xs text-[#5c635f]">System role</span>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm leading-relaxed text-[#5c635f]">{selectedStudioRole.blurb}</p>
+                    <Button className="mt-4 w-full" type="button" onClick={() => inviteStudioRole()}>
+                      {selectedStudioRole.invite === 'sql' ? (copied ? 'Copied SQL' : 'Copy super admin SQL') : selectedStudioRole.invite === 'admin' ? 'Invite admin' : selectedStudioRole.invite === 'employer' ? 'Invite employer' : candidateCopied === 'link' ? 'Copied join link' : 'Copy candidate join link'}
                     </Button>
+                    <div className="mt-4 flex gap-3 border-b border-[#eef1ee] text-sm">
+                      {([
+                        ['access', 'Access'],
+                        ['users', `Users (${roleUsers.length})`],
+                        ['assign', 'Assign'],
+                      ] as const).map(([id, label]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => setRoleTab(id)}
+                          className={`-mb-px border-b-2 pb-2 ${roleTab === id ? 'border-[#14a35a] font-medium text-[#161c19]' : 'border-transparent text-[#8a918c]'}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {roleTab === 'access' ? (
+                      <ul className="mt-4 space-y-4">
+                        {selectedStudioRole.groups.map((group) => (
+                          <li key={group.title}>
+                            <p className="text-sm font-medium">{group.title}</p>
+                            <p className="mt-0.5 text-xs text-[#8a918c]">
+                              {group.items.length}/{group.items.length} on this desk
+                            </p>
+                            <ul className="mt-2 space-y-1.5 text-sm text-[#5c635f]">
+                              {group.items.map((item) => (
+                                <li key={item} className="flex gap-2">
+                                  <Check className="mt-0.5 size-3.5 shrink-0 text-[#14a35a]" />
+                                  <span>{item}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {roleTab === 'users' ? (
+                      <ul className="mt-4 space-y-2">
+                        {roleUsers.slice(0, 8).map((row) => (
+                          <li key={row.id}>
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-[#f7f8f7]"
+                              onClick={() => {
+                                setPickedPerson(row.id)
+                                go('people')
+                              }}
+                            >
+                              <span className="grid size-9 place-items-center rounded-full bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
+                                {initials(row.name || row.email)}
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-medium">{row.name}</span>
+                                <span className="block truncate text-xs text-[#8a918c]">{row.email}</span>
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                        {!roleUsers.length ? <li className="text-sm text-[#8a918c]">No accounts with this role yet.</li> : null}
+                      </ul>
+                    ) : null}
+                    {roleTab === 'assign' ? (
+                      superAdmin ? (
+                        <form className="mt-4 space-y-3" onSubmit={onPromote}>
+                          <Input type="email" required placeholder="email@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                          <select className="h-10 w-full rounded-lg border border-[#e4e8e5] px-3 text-sm" value={nextRole} onChange={(e) => setNextRole(e.target.value as typeof nextRole)}>
+                            <option value="admin">Admin</option>
+                            <option value="employer">Employer</option>
+                            <option value="candidate">Candidate</option>
+                          </select>
+                          <p className="text-xs text-[#8a918c]">Super admin cannot be assigned here. Use SQL in Settings.</p>
+                          <Button type="submit" disabled={promote.isPending}>
+                            {promote.isPending ? 'Saving…' : 'Update role'}
+                          </Button>
+                          {promote.isError ? (
+                            <p className="text-sm text-[#b85c38]">{promote.error instanceof Error ? promote.error.message : 'Could not update the role.'}</p>
+                          ) : null}
+                          {promote.isSuccess ? <p className="text-sm text-[#147a48]">Role updated.</p> : null}
+                        </form>
+                      ) : (
+                        <div className="mt-4">
+                          <p className="text-sm text-[#5c635f]">Only a super admin can change roles here. Invite an admin, or use SQL for super admin.</p>
+                          <Button className="mt-3 w-full" type="button" onClick={() => go('staff')}>
+                            Invite Admin
+                          </Button>
+                        </div>
+                      )
+                    ) : null}
                   </Panel>
-                )}
+                  <div className="rounded-2xl bg-[#e8f6ee] p-4 text-sm text-[#147a48]">
+                    This is a system role. Atelier does not create custom roles such as moderator or support.
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}
@@ -3849,6 +4132,35 @@ function EmployerStat({
             {up ? '+' : ''}
             {delta}% vs last 30 days
           </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HintStat({
+  icon: Icon,
+  label,
+  value,
+  hint,
+  color,
+}: {
+  icon: LucideIcon
+  label: string
+  value: number
+  hint: string
+  color: string
+}) {
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(19,38,31,0.06)]">
+      <div className="flex items-start gap-3">
+        <span className="grid size-9 place-items-center rounded-full" style={{ background: `${color}1a`, color }}>
+          <Icon className="size-4" />
+        </span>
+        <div>
+          <p className="text-sm text-[#5c635f]">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{value.toLocaleString()}</p>
+          <p className="mt-1 text-xs text-[#8a918c]">{hint}</p>
         </div>
       </div>
     </div>
