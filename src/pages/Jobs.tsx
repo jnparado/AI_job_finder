@@ -289,7 +289,7 @@ export function JobDetailsPage() {
 
   return (
     <div className="space-y-6 pb-[calc(7.5rem+env(safe-area-inset-bottom))] lg:pb-8">
-      <Link to="/app/jobs" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      <Link to="/app/jobs" replace className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> All matches
       </Link>
 

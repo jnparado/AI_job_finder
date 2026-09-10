@@ -316,7 +316,7 @@ export function EmployerPostJobPage() {
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['employer-jobs'] })
-      navigate('/employer/jobs')
+      navigate('/employer/jobs', { replace: true })
     },
     onError: (err) => setError(err instanceof Error ? err.message : 'Could not post the job.'),
   })

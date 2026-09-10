@@ -20,9 +20,10 @@ import {
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { prefetchRoute } from '@/lib/prefetch'
+import { isDrillPath } from '@/lib/nav'
 import { BrandMark } from '@/components/ui/feedback'
 import { displayName } from '@shared/types'
-import { initials } from '@/lib/utils'
+import { cn, initials } from '@/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 
 const PRIMARY: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
@@ -52,6 +53,7 @@ export function AppShell() {
   const [accountOpen, setAccountOpen] = useState(false)
   const toolsRef = useRef<HTMLDivElement>(null)
   const settingsOn = location.pathname.startsWith('/app/settings')
+  const messenger = location.pathname.startsWith('/app/messages')
   const notes = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api<Note[]>('/api/notifications'),
@@ -67,7 +69,7 @@ export function AppShell() {
 
   function openSettings() {
     closeMenus()
-    navigate('/app/settings')
+    navigate('/app/settings', { replace: true })
   }
 
   useEffect(() => {
@@ -79,10 +81,10 @@ export function AppShell() {
   }, [])
 
   return (
-    <div className="atelier-app min-h-svh overflow-x-clip">
-      <header className="sticky top-0 z-40 border-b border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)]">
+    <div className={cn('atelier-app overflow-x-clip', messenger ? 'flex h-svh flex-col overflow-hidden' : 'min-h-svh')}>
+      <header className="sticky top-0 z-40 shrink-0 border-b border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)]">
         <div className="mx-auto flex max-w-[1400px] items-center gap-2 px-3 py-2 sm:gap-4 sm:px-5">
-          <Link to="/app" className="shrink-0" aria-label="Atelier home">
+          <Link to="/app" replace className="shrink-0" aria-label="Atelier home">
             <BrandMark light compact />
           </Link>
 
@@ -92,6 +94,7 @@ export function AppShell() {
                 key={item.to}
                 to={item.to}
                 end={item.end}
+                replace
                 onMouseEnter={() => prefetchRoute(item.to)}
                 onFocus={() => prefetchRoute(item.to)}
                 className={({ isActive }) =>
@@ -194,6 +197,7 @@ export function AppShell() {
                       <li key={`${n.title}-${i}`}>
                         <Link
                           to={n.href || '/app'}
+                          replace={!isDrillPath(n.href || '/app')}
                           className="block px-4 py-2.5 hover:bg-muted"
                           onClick={closeMenus}
                         >
@@ -225,6 +229,7 @@ export function AppShell() {
                   </button>
                   <Link
                     to="/app/interview"
+                    replace
                     className="rounded-lg px-2 py-2 text-sm hover:bg-muted"
                     onClick={closeMenus}
                     onMouseEnter={() => prefetchRoute('/app/interview')}
@@ -233,6 +238,7 @@ export function AppShell() {
                   </Link>
                   <Link
                     to="/app/ateliar"
+                    replace
                     className="rounded-lg px-2 py-2 text-sm hover:bg-muted"
                     onClick={closeMenus}
                     onMouseEnter={() => prefetchRoute('/app/ateliar')}
@@ -241,6 +247,7 @@ export function AppShell() {
                   </Link>
                   <Link
                     to="/app/finances"
+                    replace
                     className="rounded-lg px-2 py-2 text-sm hover:bg-muted"
                     onClick={closeMenus}
                     onMouseEnter={() => prefetchRoute('/app/finances')}
@@ -271,7 +278,7 @@ export function AppShell() {
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 border-t border-border px-4 py-3 text-sm hover:bg-muted"
-                  onClick={() => void signOut().then(() => navigate('/'))}
+                  onClick={() => void signOut().then(() => navigate('/', { replace: true }))}
                 >
                   <LogOut className="size-4" />
                   Sign out
@@ -282,7 +289,14 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="mx-auto min-w-0 w-full max-w-[1280px] px-4 py-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-8 md:pb-8">
+      <main
+        className={cn(
+          'mx-auto min-w-0 w-full',
+          messenger
+            ? 'flex min-h-0 flex-1 flex-col pb-[calc(4.35rem+env(safe-area-inset-bottom))] md:max-w-none md:pb-0 [&>*]:h-full [&>*]:min-h-0'
+            : 'max-w-[1280px] px-4 py-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-8 md:pb-8',
+        )}
+      >
         <Outlet />
       </main>
 
@@ -293,6 +307,7 @@ export function AppShell() {
               key={`m-${item.to}`}
               to={item.to}
               end={item.end}
+              replace
               className={({ isActive }) =>
                 `flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1 text-[0.65rem] ${
                   isActive ? 'text-[var(--paper)]' : 'text-[#c9c0ae]'
@@ -328,6 +343,7 @@ function MenuLink({
   return (
     <NavLink
       to={to}
+      replace
       onClick={onClick}
       onMouseEnter={() => prefetchRoute(to)}
       onFocus={() => prefetchRoute(to)}

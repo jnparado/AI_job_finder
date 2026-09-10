@@ -75,7 +75,7 @@ export function ProfilePage() {
             </div>
           </div>
           <Button variant="copper" asChild>
-            <Link to="/app/settings">
+            <Link to="/app/settings" replace>
               <Pencil className="size-4" />
               Account settings
             </Link>
@@ -138,7 +138,7 @@ export function ProfilePage() {
             <CheckLine ok={Boolean(profile.resumeText || profile.parsedProfile)} label="Resume on file" />
           </ul>
           <Button variant="outline" className="w-full" asChild>
-            <Link to="/app/resume">Open resume</Link>
+            <Link to="/app/resume" replace>Open resume</Link>
           </Button>
         </Card>
       </div>

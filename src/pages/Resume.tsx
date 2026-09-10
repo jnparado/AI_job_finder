@@ -531,7 +531,7 @@ export function ResumePage() {
               </p>
             </div>
             <Button variant="copper" className="rounded-full" asChild>
-              <Link to="/app/jobs">See all matches</Link>
+              <Link to="/app/jobs" replace>See all matches</Link>
             </Button>
           </div>
           <p className="text-sm text-muted-foreground">

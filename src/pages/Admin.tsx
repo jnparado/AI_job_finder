@@ -1508,7 +1508,7 @@ export function AdminPage() {
   }
 
   function go(next: DeskView, role: PeopleFilter = 'all') {
-    navigate(VIEW_PATH[next])
+    navigate(VIEW_PATH[next], { replace: true })
     if (next === 'people') {
       setPeopleType(role === 'candidate' || role === 'employer' || role === 'admin' ? role : 'all')
       setPeopleStatus('all')
@@ -1874,7 +1874,7 @@ export function AdminPage() {
                   <button
                     type="button"
                     className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[#f3f5f4]"
-                    onClick={() => void signOut()}
+                    onClick={() => void signOut().then(() => navigate('/', { replace: true }))}
                   >
                     <LogOut className="size-4 text-[#5c635f]" />
                     Sign out

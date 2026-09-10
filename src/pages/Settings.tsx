@@ -64,7 +64,7 @@ export function SettingsPage() {
           <h2>Finances</h2>
           <p className="mt-1 text-sm text-muted-foreground">Pay from Atelier employers, ledger, and withdraw.</p>
         </div>
-        <Link to="/app/finances" className="text-sm font-medium text-[var(--copper)]">
+        <Link to="/app/finances" replace className="text-sm font-medium text-[var(--copper)]">
           Open finances
         </Link>
       </Card>
@@ -75,7 +75,7 @@ export function SettingsPage() {
             Official work clock for hired Atelier roles. Download it for your desk.
           </p>
         </div>
-        <Link to="/app/ateliar" className="text-sm font-medium text-[var(--copper)]">
+        <Link to="/app/ateliar" replace className="text-sm font-medium text-[var(--copper)]">
           Open tracker
         </Link>
       </Card>

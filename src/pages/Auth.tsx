@@ -56,7 +56,7 @@ export function LoginPage() {
       const profile = await signInEmail(email, password)
       const dest = destinationFor(profile)
       if (dest === '/app') warmCandidateDesk(qc)
-      navigate(dest)
+      navigate(dest, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign in.')
     } finally {
@@ -133,7 +133,7 @@ export function LoginPage() {
             void signInDemo()
               .then((profile) => {
                 warmCandidateDesk(qc)
-                navigate(destinationFor(profile))
+                navigate(destinationFor(profile), { replace: true })
               })
               .catch((err) => setError(err instanceof Error ? err.message : 'Could not open the studio.'))
               .finally(() => setBusy(false))
@@ -191,10 +191,10 @@ function EmployerRegisterPage() {
         role,
         companyName: role === 'employer' ? companyName : undefined,
       })
-      navigate(role === 'employer' ? '/employer/jobs/new' : destinationFor(profile))
+      navigate(role === 'employer' ? '/employer/jobs/new' : destinationFor(profile), { replace: true })
     } catch (err) {
       if (err instanceof Error && (err as Error & { code?: string }).code === 'confirm') {
-        navigate('/verify')
+        navigate('/verify', { replace: true })
         return
       }
       setError(err instanceof Error ? err.message : 'Could not create the account.')

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Bell, Briefcase, Inbox, LayoutDashboard, Menu, MessagesSquare, Plus, Timer, Wallet, X } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
@@ -7,7 +7,7 @@ import { api } from '@/lib/api'
 import { prefetchRoute } from '@/lib/prefetch'
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/ui/feedback'
-import { initials } from '@/lib/utils'
+import { cn, initials } from '@/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 
 const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
@@ -23,7 +23,9 @@ const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = 
 export function EmployerShell() {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [open, setOpen] = useState(false)
+  const messenger = location.pathname.startsWith('/employer/messages')
   const notes = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api<{ title: string }[]>('/api/notifications'),
@@ -32,7 +34,7 @@ export function EmployerShell() {
 
   const sidebar = (
     <>
-      <button type="button" className="text-left" onClick={() => navigate('/employer')}>
+      <button type="button" className="text-left" onClick={() => navigate('/employer', { replace: true })}>
         <BrandMark light />
       </button>
       <p className="px-3 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Hiring</p>
@@ -42,6 +44,7 @@ export function EmployerShell() {
             key={l.to}
             to={l.to}
             end={l.end}
+            replace
             onMouseEnter={() => prefetchRoute(l.to)}
             onFocus={() => prefetchRoute(l.to)}
             onClick={() => setOpen(false)}
@@ -67,7 +70,7 @@ export function EmployerShell() {
           </span>
           <span className="truncate">{name}</span>
         </div>
-        <Button variant="outline" className="w-full border-[#c9c0ae44] text-[#e7e1d4]" onClick={() => void signOut().then(() => navigate('/'))}>
+        <Button variant="outline" className="w-full border-[#c9c0ae44] text-[#e7e1d4]" onClick={() => void signOut().then(() => navigate('/', { replace: true }))}>
           Sign out
         </Button>
       </div>
@@ -75,8 +78,13 @@ export function EmployerShell() {
   )
 
   return (
-    <div className="atelier-app min-h-svh overflow-x-clip lg:grid lg:grid-cols-[240px_minmax(0,1fr)]">
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/90 px-4 py-3 backdrop-blur lg:hidden">
+    <div
+      className={cn(
+        'atelier-app overflow-x-clip lg:grid lg:grid-cols-[240px_minmax(0,1fr)]',
+        messenger ? 'flex h-svh flex-col overflow-hidden' : 'min-h-svh',
+      )}
+    >
+      <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between border-b border-border bg-background/90 px-4 py-3 backdrop-blur lg:hidden">
         <BrandMark />
         <button type="button" aria-label="Open menu" onClick={() => setOpen(true)}>
           <Menu className="size-6" />
@@ -96,7 +104,14 @@ export function EmployerShell() {
       <aside className="sticky top-0 hidden h-svh flex-col gap-8 bg-[var(--sidebar)] p-6 text-[var(--sidebar-foreground)] lg:flex">
         {sidebar}
       </aside>
-      <main className="mx-auto min-w-0 w-full max-w-5xl px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:py-10">
+      <main
+        className={cn(
+          'min-w-0 w-full',
+          messenger
+            ? 'flex min-h-0 flex-1 flex-col p-0 lg:h-svh [&>*]:h-full [&>*]:min-h-0'
+            : 'mx-auto max-w-5xl px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:py-10',
+        )}
+      >
         <Outlet />
       </main>
     </div>

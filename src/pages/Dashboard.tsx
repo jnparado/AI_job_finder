@@ -80,7 +80,7 @@ export function DashboardPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['candidate-home'] })
       void qc.invalidateQueries({ queryKey: ['jobs'] })
-      navigate('/app/jobs')
+      navigate('/app/jobs', { replace: true })
     },
   })
 
@@ -198,7 +198,7 @@ export function DashboardPage() {
               </p>
               <h2 className="mt-1 text-xl">Packet tracker</h2>
             </div>
-            <Link to="/app/applications" className="text-sm font-medium text-[var(--copper)]">
+            <Link to="/app/applications" replace className="text-sm font-medium text-[var(--copper)]">
               Open
             </Link>
           </div>
@@ -319,7 +319,7 @@ export function DashboardPage() {
               />
             ))}
             <div className="text-center">
-              <Link to="/app/jobs" className="text-sm font-medium text-[var(--copper)]">
+              <Link to="/app/jobs" replace className="text-sm font-medium text-[var(--copper)]">
                 See all scored roles
               </Link>
             </div>
@@ -356,7 +356,7 @@ export function DashboardPage() {
             <li>Open Career coach for gaps taken from your real matches.</li>
             <li>Atelier employers get the packet in-inbox. Other boards you submit yourself.</li>
           </ul>
-          <Link to="/app/career" className="text-sm font-medium text-[var(--copper)]">
+          <Link to="/app/career" replace className="text-sm font-medium text-[var(--copper)]">
             Open career coach
           </Link>
         </Card>
@@ -373,7 +373,7 @@ export function DashboardPage() {
         <Card className="space-y-3 shadow-[0_10px_28px_rgba(19,38,31,0.06)]">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-[var(--forest)]">My packets</p>
-            <Link to="/app/applications" className="text-xs font-medium text-[var(--copper)]">
+            <Link to="/app/applications" replace className="text-xs font-medium text-[var(--copper)]">
               All
             </Link>
           </div>
@@ -424,6 +424,7 @@ function SideLink({ to, icon: Icon, label }: { to: string; icon: typeof Briefcas
   return (
     <Link
       to={to}
+      replace
       onMouseEnter={() => prefetchRoute(to)}
       className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-sm hover:bg-[#eef3f0]"
     >
@@ -437,6 +438,7 @@ function Chip({ to, icon: Icon, label }: { to: string; icon: typeof Briefcase; l
   return (
     <Link
       to={to}
+      replace
       onMouseEnter={() => prefetchRoute(to)}
       className="inline-flex items-center gap-1.5 rounded-full border border-border bg-[var(--paper)] px-3 py-1.5 text-xs hover:border-[var(--forest)]"
     >
