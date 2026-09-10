@@ -275,6 +275,7 @@ const NAV: NavSection[] = [
     label: 'Team & Access',
     items: [
       { id: 'staff', label: 'Invite Admin', icon: UserPlus },
+      { id: 'invite', label: 'Invite employers', icon: Mail },
       { id: 'roles', label: 'Manage Roles', icon: Shield },
     ],
   },
@@ -284,7 +285,6 @@ const NAV: NavSection[] = [
       { id: 'listings', label: 'Jobs', icon: Briefcase },
       { id: 'packets', label: 'Packets', icon: FileText },
       { id: 'contracts', label: 'Contracts', icon: FileSignature },
-      { id: 'invite', label: 'Invite employers', icon: Mail },
     ],
   },
   {
@@ -1354,42 +1354,36 @@ export function AdminPage() {
                     <p className="text-sm font-medium">Notifications</p>
                     <span className="text-xs text-[#8a918c]">{alertCount} waiting</span>
                   </div>
-                  <div className="max-h-[24rem] overflow-y-auto py-1">
+                  <div className="border-b border-[#eef1ee] px-4 py-3">
+                    <p className="text-sm font-medium">Invite candidates</p>
+                    <p className="mt-1 text-xs leading-relaxed text-[#8a918c]">
+                      Copy a join link and share it. Atelier does not email them. Packets leave only after they approve.
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        className="flex-1"
+                        type="button"
+                        onClick={() => copyCandidateInvite('link')}
+                      >
+                        <Copy className="size-4" />
+                        {candidateCopied === 'link' ? 'Copied' : 'Copy link'}
+                      </Button>
+                      <Button variant="outline" type="button" onClick={() => copyCandidateInvite('note')}>
+                        {candidateCopied === 'note' ? 'Copied' : 'Copy note'}
+                      </Button>
+                    </div>
                     <button
                       type="button"
-                      className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-[#f7f8f7]"
-                      onClick={() => {
-                        copyCandidateInvite('link')
-                      }}
-                    >
-                      <span className="mt-0.5 grid size-8 place-items-center rounded-full bg-[#ede9fe] text-[#7c3aed]">
-                        <UserPlus className="size-4" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium">Invite candidates</span>
-                        <span className="mt-0.5 block text-xs leading-relaxed text-[#8a918c]">
-                          {candidateCopied === 'link' ? 'Join link copied. Share it — Atelier does not email them.' : 'Copy a join link. Packets leave only after they approve.'}
-                        </span>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-[#f7f8f7]"
+                      className="mt-2 text-sm font-medium text-[#147a48]"
                       onClick={() => {
                         setAlertsOpen(false)
                         go('candidates')
                       }}
                     >
-                      <span className="mt-0.5 grid size-8 place-items-center rounded-full bg-[#e8f6ee] text-[#147a48]">
-                        <User className="size-4" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium">Open candidates</span>
-                        <span className="mt-0.5 block text-xs text-[#8a918c]">
-                          {(data?.candidates ?? []).length} signed up · {(data?.candidates ?? []).filter((row) => row.status === 'pending').length} pending
-                        </span>
-                      </span>
+                      Open candidates desk
                     </button>
+                  </div>
+                  <div className="py-1">
                     <button
                       type="button"
                       className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-[#f7f8f7]"
@@ -1424,27 +1418,22 @@ export function AdminPage() {
                         <span className="mt-0.5 block text-xs text-[#8a918c]">{counts?.messages ?? 0} studio messages</span>
                       </span>
                     </button>
-                  </div>
-                  <div className="flex gap-2 border-t border-[#eef1ee] px-4 py-3">
-                    <Button
-                      className="flex-1"
+                    <button
                       type="button"
+                      className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-[#f7f8f7]"
                       onClick={() => {
-                        copyCandidateInvite('link')
+                        setAlertsOpen(false)
+                        go('packets')
                       }}
                     >
-                      <Copy className="size-4" />
-                      {candidateCopied === 'link' ? 'Copied' : 'Copy candidate link'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      type="button"
-                      onClick={() => {
-                        copyCandidateInvite('note')
-                      }}
-                    >
-                      {candidateCopied === 'note' ? 'Copied' : 'Copy note'}
-                    </Button>
+                      <span className="mt-0.5 grid size-8 place-items-center rounded-full bg-[#e8f6ee] text-[#147a48]">
+                        <FileText className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">Packets</span>
+                        <span className="mt-0.5 block text-xs text-[#8a918c]">{counts?.packets ?? 0} in studio</span>
+                      </span>
+                    </button>
                   </div>
                 </div>
               ) : null}
@@ -1569,53 +1558,50 @@ export function AdminPage() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard icon={Users} tone="green" label="Total Users" value={counts?.people ?? 0} hint="From Supabase" />
-                <MetricCard icon={Briefcase} tone="blue" label="Active Jobs" value={counts?.jobs ?? 0} hint="Live listings" />
-                <MetricCard icon={FileText} tone="teal" label="Total Packets" value={counts?.packets ?? 0} hint="Applications in studio" />
-                <MetricCard icon={Mail} tone="gold" label="Invite Queue" value={counts?.companiesToInvite ?? 0} hint="Companies to invite" />
-                <MetricCard icon={Timer} tone="green" label="Tracker" value={formatHoursMinutes(counts?.trackerHours ?? 0)} hint={`${counts?.liveClocks ?? 0} live clocks`} />
-                <MetricCard icon={MessagesSquare} tone="blue" label="Inbox" value={counts?.messages ?? 0} hint="Studio messages" />
-                <MetricCard icon={Wallet} tone="gold" label="Finances" value={money(counts?.financeReceived ?? 0)} hint="Received from employers" />
-                <MetricCard icon={Briefcase} tone="teal" label="Hired" value={counts?.hired ?? 0} hint="Offers and hires" />
+                <button type="button" className="text-left" onClick={() => go('people')}>
+                  <MetricCard icon={Users} tone="green" label="Total Users" value={counts?.people ?? 0} hint="From Supabase" />
+                </button>
+                <button type="button" className="text-left" onClick={() => go('listings')}>
+                  <MetricCard icon={Briefcase} tone="blue" label="Active Jobs" value={counts?.jobs ?? 0} hint="Live listings" />
+                </button>
+                <button type="button" className="text-left" onClick={() => go('packets')}>
+                  <MetricCard icon={FileText} tone="teal" label="Total Packets" value={counts?.packets ?? 0} hint="Applications in studio" />
+                </button>
+                <button type="button" className="text-left" onClick={() => go('invite')}>
+                  <MetricCard icon={Mail} tone="gold" label="Invite Queue" value={counts?.companiesToInvite ?? 0} hint="Companies to invite" />
+                </button>
+                <button type="button" className="text-left" onClick={() => go('tracker')}>
+                  <MetricCard icon={Timer} tone="green" label="Tracker" value={formatHoursMinutes(counts?.trackerHours ?? 0)} hint={`${counts?.liveClocks ?? 0} live clocks`} />
+                </button>
+                <button type="button" className="text-left" onClick={() => go('inbox')}>
+                  <MetricCard icon={MessagesSquare} tone="blue" label="Inbox" value={counts?.messages ?? 0} hint="Studio messages" />
+                </button>
+                <button type="button" className="text-left" onClick={() => go('finances')}>
+                  <MetricCard icon={Wallet} tone="gold" label="Finances" value={money(counts?.financeReceived ?? 0)} hint="Received from employers" />
+                </button>
+                <button type="button" className="text-left" onClick={() => go('contracts')}>
+                  <MetricCard icon={FileSignature} tone="teal" label="Hired" value={counts?.hired ?? 0} hint="Offers and hires" />
+                </button>
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.7fr)_17.5rem]">
-                <div className="space-y-4 xl:col-span-2">
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(16rem,0.75fr)]">
-                    <Panel>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h2 className="font-sans text-base font-semibold">Listing growth</h2>
-                        <div className="flex rounded-full bg-[#f3f5f4] p-1 text-xs">
-                          {(['7D', '30D', '3M', '1Y'] as const).map((id) => (
-                            <button
-                              key={id}
-                              type="button"
-                              onClick={() => setRange(id)}
-                              className={`rounded-full px-2.5 py-1 ${range === id ? 'bg-[#14a35a] text-white' : 'text-[#5c635f]'}`}
-                            >
-                              {id}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <GrowthChart boards={data?.boards ?? []} />
-                    </Panel>
-                    <Panel>
-                      <h2 className="font-sans text-base font-semibold">User breakdown</h2>
-                      <UserDonut
-                        candidates={counts?.candidates ?? 0}
-                        employers={counts?.employers ?? 0}
-                        admins={counts?.admins ?? 0}
-                      />
-                    </Panel>
-                  </div>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+                <div className="space-y-4">
+                  <Panel>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="font-sans text-base font-semibold">Listings by board</h2>
+                      <button type="button" className="text-sm text-[#14a35a]" onClick={() => go('listings')}>
+                        View jobs
+                      </button>
+                    </div>
+                    <GrowthChart boards={data?.boards ?? []} />
+                  </Panel>
 
                   <div className="grid gap-4 xl:grid-cols-2">
                     <Panel>
                       <div className="flex items-center justify-between">
                         <h2 className="font-sans text-base font-semibold">Recent Jobs</h2>
                         <button type="button" className="text-sm text-[#14a35a]" onClick={() => go('listings')}>
-                          View all jobs
+                          View all
                         </button>
                       </div>
                       <div className="mt-4 overflow-x-auto">
@@ -1668,43 +1654,34 @@ export function AdminPage() {
                       </ul>
                     </Panel>
                   </div>
-
-                  <div className="grid gap-4 xl:grid-cols-2">
-                    <Panel>
-                      <div className="flex items-center justify-between">
-                        <h2 className="font-sans text-base font-semibold">Notifications</h2>
-                      </div>
-                      <ul className="mt-4 space-y-3 text-sm">
-                        <NoteDot color="#ef4444" text={`${counts?.companiesToInvite ?? 0} companies waiting on an invite.`} />
-                        <NoteDot color="#22c55e" text={`${counts?.liveClocks ?? 0} live tracker clocks · ${formatHoursMinutes(counts?.trackerHours ?? 0)} logged.`} />
-                        <NoteDot color="#3b82f6" text={`${counts?.messages ?? 0} studio messages · ${counts?.packets ?? 0} packets.`} />
-                        <NoteDot color="#14a35a" text="Packets leave only after a candidate approves." />
-                      </ul>
-                    </Panel>
-                    <div className="overflow-hidden rounded-2xl bg-[#13261f] p-5 text-white">
-                      <img src="/brand/atelier-logo.jpg" alt="" className="size-12 rounded-xl object-cover" />
-                      <h2 className="mt-4 font-serif text-2xl">Grow the Atelier desk</h2>
-                      <p className="mt-2 text-sm leading-relaxed text-white/70">
-                        Invite employers from other boards so approved packets can land in an Atelier inbox.
-                      </p>
-                      <Button variant="paper" className="mt-4" onClick={() => go('invite')}>
-                        Invite a company
-                      </Button>
-                    </div>
-                  </div>
                 </div>
 
                 <div className="space-y-4">
+                  <Panel>
+                    <h2 className="font-sans text-base font-semibold">User breakdown</h2>
+                    <UserDonut
+                      candidates={counts?.candidates ?? 0}
+                      employers={counts?.employers ?? 0}
+                      admins={counts?.admins ?? 0}
+                    />
+                  </Panel>
                   <section className="rounded-2xl bg-[#e8f6ee] p-5">
                     <h2 className="flex items-center gap-2 font-sans text-base font-semibold text-[#161c19]">
                       <Zap className="size-4 fill-[#14a35a] text-[#14a35a]" />
                       Quick Actions
                     </h2>
                     <div className="mt-2 divide-y divide-[#cfe8d7]">
-                      <QuickRow icon={User} label="Review pending packets" onClick={() => go('packets')} />
-                      <QuickRow icon={Shield} label="Review inbox" onClick={() => go('inbox')} />
-                      <QuickRow icon={Briefcase} label="Manage jobs" onClick={() => go('listings')} />
-                      <QuickRow icon={BarChart3} label="View reports" onClick={() => go('reports')} />
+                      <QuickRow
+                        icon={UserPlus}
+                        label="Invite candidates"
+                        onClick={() => {
+                          copyCandidateInvite('link')
+                          setAlertsOpen(true)
+                        }}
+                      />
+                      <QuickRow icon={Mail} label="Invite employers" onClick={() => go('invite')} />
+                      <QuickRow icon={FileText} label="Review packets" onClick={() => go('packets')} />
+                      <QuickRow icon={MessagesSquare} label="Open inbox" onClick={() => go('inbox')} />
                     </div>
                   </section>
                   <Panel>
@@ -4691,38 +4668,21 @@ function day(iso?: string) {
 function GrowthChart({ boards }: { boards: { source: string; count: number }[] }) {
   const top = boards.slice(0, 8)
   const max = Math.max(1, ...top.map((b) => b.count))
-  const w = 640
-  const h = 200
-  const pad = 24
-  const pts = top.map((b, i) => {
-    const x = pad + (i * (w - pad * 2)) / Math.max(1, top.length - 1)
-    const y = h - pad - (b.count / max) * (h - pad * 2)
-    return { x, y }
-  })
-  const line = pts.map((p) => `${p.x},${p.y}`).join(' ')
-  const line2 = pts.map((p, i) => `${p.x},${Math.min(h - pad, p.y + 18 + (i % 3) * 4)}`).join(' ')
-  const area = pts.length ? `${pad},${h - pad} ${line} ${w - pad},${h - pad}` : ''
+  if (!top.length) return <p className="mt-6 text-sm text-[#8a918c]">No listings yet.</p>
   return (
-    <div className="mt-3">
-      <svg viewBox={`0 0 ${w} ${h}`} className="h-48 w-full" role="img" aria-label="Listings by board">
-        <defs>
-          <linearGradient id="adminGrowth" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#14a35a" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="#14a35a" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {area ? <polygon points={area} fill="url(#adminGrowth)" /> : null}
-        {line ? <polyline points={line} fill="none" stroke="#14a35a" strokeWidth="3" strokeLinecap="round" /> : null}
-        {line2 ? <polyline points={line2} fill="none" stroke="#60a5fa" strokeWidth="3" strokeLinecap="round" /> : null}
-      </svg>
-      <div className="mt-1 flex flex-wrap gap-3 text-[0.7rem] text-[#8a918c]">
-        {top.map((b) => (
-          <span key={b.source}>
-            {sourceLabel(b.source)} · {b.count}
-          </span>
-        ))}
-      </div>
-    </div>
+    <ul className="mt-4 space-y-3">
+      {top.map((b) => (
+        <li key={b.source}>
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="truncate font-medium">{sourceLabel(b.source)}</span>
+            <span className="tabular-nums text-[#8a918c]">{b.count}</span>
+          </div>
+          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-[#eef1ee]">
+            <div className="h-2 rounded-full bg-[#14a35a]" style={{ width: `${Math.max(6, (b.count / max) * 100)}%` }} />
+          </div>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -4792,15 +4752,6 @@ function QuickRow({ icon: Icon, label, onClick }: { icon: LucideIcon; label: str
       <span className="min-w-0 flex-1 text-left">{label}</span>
       <ChevronRight className="size-4 shrink-0 text-[#b7c0bb]" />
     </button>
-  )
-}
-
-function NoteDot({ color, text }: { color: string; text: string }) {
-  return (
-    <li className="flex gap-2">
-      <span className="mt-1.5 size-2 shrink-0 rounded-full" style={{ background: color }} />
-      <span>{text}</span>
-    </li>
   )
 }
 
