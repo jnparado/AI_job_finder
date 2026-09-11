@@ -265,7 +265,7 @@ interface AdminContract {
   createdAt: string
 }
 
-type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'contracts' | 'tracker' | 'inbox' | 'finances' | 'reports' | 'staff' | 'roles' | 'employers' | 'candidates'
+type DeskView = 'pulse' | 'invite' | 'people' | 'listings' | 'keys' | 'packets' | 'contracts' | 'tracker' | 'inbox' | 'finances' | 'reports' | 'staff' | 'roles' | 'employers' | 'candidates' | 'super'
 type PeopleFilter = 'all' | AccountRole
 type UserTypeFilter = 'all' | 'candidate' | 'employer' | 'admin'
 type PacketBucket = 'pending' | 'accepted' | 'declined' | 'draft'
@@ -295,6 +295,7 @@ const NAV: NavSection[] = [
       { id: 'people', label: 'Users', icon: Users },
       { id: 'candidates', label: 'Candidates', icon: User },
       { id: 'employers', label: 'Employers', icon: Building2 },
+      { id: 'super', label: 'Super admin', icon: Crown },
     ],
   },
   {
@@ -329,6 +330,7 @@ const VIEW_PATH: Record<DeskView, string> = {
   people: '/admin/users',
   candidates: '/admin/candidates',
   employers: '/admin/employers',
+  super: '/admin/super',
   staff: '/admin/invite-admin',
   invite: '/admin/invite-employers',
   roles: '/admin/roles',
@@ -352,6 +354,11 @@ function pathToView(pathname: string): DeskView | null {
 function staffPromoteSql(email: string) {
   const safe = email.trim().toLowerCase().replaceAll("'", "''")
   return `update public.profiles set role = 'admin' where email = '${safe || 'person@company.com'}';`
+}
+
+function superAdminSql(email: string) {
+  const safe = email.trim().toLowerCase().replaceAll("'", "''")
+  return `update public.profiles set role = 'super_admin' where email = '${safe || 'person@company.com'}';`
 }
 
 const STUDIO_ROLES: {
@@ -452,6 +459,7 @@ export function AdminPage() {
   const [nextRole, setNextRole] = useState<'admin' | 'employer' | 'candidate'>('admin')
   const [copied, setCopied] = useState(false)
   const [sqlEmail, setSqlEmail] = useState('')
+  const [superQuery, setSuperQuery] = useState('')
   const [picked, setPicked] = useState('')
   const [range, setRange] = useState<'7D' | '30D' | '3M' | '1Y'>('30D')
   const [helpOpen, setHelpOpen] = useState(false)
@@ -643,6 +651,10 @@ export function AdminPage() {
   const data = dash.data
   const superAdmin = (data?.role ?? profile.role) === 'super_admin'
   const sql = staffPromoteSql(sqlEmail)
+  const superSql = superAdminSql(sqlEmail)
+  useEffect(() => {
+    if (view === 'super' && !superAdmin) navigate('/admin', { replace: true })
+  }, [navigate, superAdmin, view])
   const name = data?.name || profile.email || 'Admin'
   const counts = data?.counts
   const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date())
@@ -1138,6 +1150,24 @@ export function AdminPage() {
     }
   }, [data?.accounts, nowMs])
 
+  const superRows = useMemo(() => {
+    const q = (view === 'super' ? superQuery : query).trim().toLowerCase()
+    return (data?.accounts ?? []).filter((row) => {
+      if (!isStaffRole(row.role)) return false
+      if (!q) return true
+      return `${row.name} ${row.email} ${row.role} ${row.companyName}`.toLowerCase().includes(q)
+    })
+  }, [data?.accounts, query, superQuery, view])
+
+  const superEmployerRows = useMemo(() => {
+    const q = (view === 'super' ? superQuery : query).trim().toLowerCase()
+    return (data?.accounts ?? []).filter((row) => {
+      if (row.role !== 'employer') return false
+      if (!q) return true
+      return `${row.name} ${row.email} ${row.companyName}`.toLowerCase().includes(q)
+    })
+  }, [data?.accounts, query, superQuery, view])
+
   const candidateRows = useMemo(() => {
     const q = (view === 'candidates' ? candidateQuery : query).trim().toLowerCase()
     const rows = [...(data?.candidates ?? [])].filter((row) => {
@@ -1487,7 +1517,7 @@ export function AdminPage() {
       return
     }
     if (role.invite === 'employer') {
-      go('invite')
+      openAddUser('employer')
       return
     }
     if (role.invite === 'admin') {
@@ -1559,7 +1589,7 @@ export function AdminPage() {
     return view === item.id
   }
 
-  const searchValue = view === 'people' ? peopleQuery : view === 'roles' ? roleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'candidates' ? candidateQuery : view === 'listings' ? jobQuery : view === 'packets' ? packetQuery : view === 'contracts' ? contractQuery : view === 'finances' ? payQuery : query
+  const searchValue = view === 'people' ? peopleQuery : view === 'roles' ? roleQuery : view === 'staff' ? staffQuery : view === 'employers' ? employerQuery : view === 'candidates' ? candidateQuery : view === 'super' ? superQuery : view === 'listings' ? jobQuery : view === 'packets' ? packetQuery : view === 'contracts' ? contractQuery : view === 'finances' ? payQuery : query
   const onSearch = (value: string) => {
     if (view === 'people') {
       setPeopleQuery(value)
@@ -1572,6 +1602,8 @@ export function AdminPage() {
     } else if (view === 'candidates') {
       setCandidateQuery(value)
       setCandidatePage(0)
+    } else if (view === 'super') {
+      setSuperQuery(value)
     } else if (view === 'listings') {
       setJobQuery(value)
       setJobPage(0)
@@ -1606,6 +1638,8 @@ export function AdminPage() {
                 ? 'Search employers by name, email, or company'
                 : view === 'candidates'
                   ? 'Search candidates by name, email, skills, or location'
+                : view === 'super'
+                  ? 'Search admins by name or email'
                 : view === 'listings'
                   ? 'Search jobs by title, company, or keyword...'
                 : view === 'people'
@@ -1639,7 +1673,7 @@ export function AdminPage() {
             <img src="/brand/atelier-logo.jpg" alt="Atelier" className="size-9 rounded-lg object-cover" />
             <div>
               <p className="font-serif text-lg leading-none">Atelier</p>
-              <p className="mt-1 text-[0.65rem] text-white/55">Admin Panel</p>
+              <p className="mt-1 text-[0.65rem] text-white/55">{superAdmin ? 'Super Admin' : 'Admin Panel'}</p>
             </div>
           </div>
           <button type="button" className="grid size-9 place-items-center rounded-lg text-white/70 lg:hidden" aria-label="Close menu" onClick={() => setNavOpen(false)}>
@@ -1652,7 +1686,9 @@ export function AdminPage() {
               {section.label ? (
                 <p className="px-3 pb-1.5 text-[0.68rem] font-medium text-white/40">{section.label}</p>
               ) : null}
-              {section.items.map((item) => (
+              {section.items
+                .filter((item) => item.id !== 'super' || superAdmin)
+                .map((item) => (
                 <SideRow
                   key={`${item.label}-${item.people ?? ''}`}
                   icon={item.icon}
@@ -1886,6 +1922,80 @@ export function AdminPage() {
         </header>
 
         <main className="min-w-0 space-y-5 overflow-x-clip px-3 py-5 sm:px-6 sm:py-6">
+          {peopleInviteKind ? (
+            <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+              <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close invite" onClick={closeAddUser} />
+              <Panel className="relative z-10 w-full max-w-md p-6">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-sans text-lg font-semibold">
+                      {peopleInviteKind === 'admin'
+                        ? 'Invite admin'
+                        : peopleInviteKind === 'employer'
+                          ? 'Add employer account'
+                          : 'Invite candidate'}
+                    </h2>
+                    <p className="mt-1 text-sm text-[#5c635f]">
+                      {peopleInviteKind === 'admin'
+                        ? 'They get the admin desk. Signup still cannot grant admin on its own.'
+                        : peopleInviteKind === 'employer'
+                          ? 'They create a hiring account. Approved packets land in their inbox.'
+                          : 'They create a candidate account. Packets leave only after they approve.'}
+                    </p>
+                  </div>
+                  <button type="button" className="grid size-8 place-items-center rounded-full hover:bg-[#f3f5f4]" aria-label="Close" onClick={closeAddUser}>
+                    <X className="size-4" />
+                  </button>
+                </div>
+                <form className="mt-5 space-y-4" onSubmit={onAddUserSubmit}>
+                  <label className="block space-y-1.5">
+                    <span className="text-sm font-medium">
+                      Email <span className="text-[#b85c38]">*</span>
+                    </span>
+                    <Input
+                      type="email"
+                      required
+                      placeholder="name@company.com"
+                      value={peopleInviteEmail}
+                      onChange={(e) => setPeopleInviteEmail(e.target.value)}
+                    />
+                  </label>
+                  {peopleInviteKind === 'employer' ? (
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-medium">
+                        Company <span className="text-[#b85c38]">*</span>
+                      </span>
+                      <Input
+                        required
+                        placeholder="Company name"
+                        value={peopleInviteCompany}
+                        onChange={(e) => setPeopleInviteCompany(e.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                  {peopleInviteNotice ? (
+                    <p className={`text-sm ${inviteUser.isError ? 'text-[#b85c38]' : 'text-[#147a48]'}`}>{peopleInviteNotice}</p>
+                  ) : null}
+                  <div className="flex flex-wrap justify-end gap-2 pt-1">
+                    <Button variant="outline" type="button" onClick={copyAddUserLink}>
+                      <Copy className="size-4" />
+                      Copy join link
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={
+                        inviteUser.isPending ||
+                        !peopleInviteEmail.trim() ||
+                        (peopleInviteKind === 'employer' && !peopleInviteCompany.trim())
+                      }
+                    >
+                      {inviteUser.isPending ? 'Sending…' : peopleInviteKind === 'employer' ? 'Add employer' : 'Send invite'}
+                    </Button>
+                  </div>
+                </form>
+              </Panel>
+            </div>
+          ) : null}
           {dash.isError ? (
             <div className="rounded-2xl bg-white p-4 text-sm text-[#b85c38]">
               {dash.error instanceof Error ? dash.error.message : 'Could not load the admin panel.'}
@@ -2059,6 +2169,253 @@ export function AdminPage() {
                 </div>
               </div>
             </>
+          ) : null}
+
+          {view === 'super' && superAdmin ? (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-[#8a918c]">
+                    Super admin <span className="text-[#c5cbc7]">›</span> <span className="text-[#161c19]">Dashboard</span>
+                  </p>
+                  <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">
+                    Super Admin Dashboard
+                  </h1>
+                  <p className="mt-1 max-w-2xl text-sm text-[#5c635f]">
+                    Oversee admins, candidates, and employers. You can change those roles here. Super admin itself stays in SQL.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" type="button" onClick={() => openAddUser('employer')}>
+                    <Building2 className="size-4" />
+                    Add employer
+                  </Button>
+                  <Button type="button" onClick={() => go('staff')}>
+                    <UserPlus className="size-4" />
+                    Invite admin
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <button type="button" className="text-left" onClick={() => go('staff')}>
+                  <MetricCard icon={Shield} tone="blue" label="Admins" value={userStats.admins} hint="Staff on the desk" />
+                </button>
+                <button type="button" className="text-left" onClick={() => go('candidates')}>
+                  <MetricCard icon={User} tone="teal" label="Candidates" value={userStats.candidates} hint="Open the candidate desk" />
+                </button>
+                <button type="button" className="text-left" onClick={() => go('employers')}>
+                  <MetricCard icon={Building2} tone="green" label="Employers" value={userStats.employers} hint="Open the employer desk" />
+                </button>
+                <MetricCard
+                  icon={Crown}
+                  tone="gold"
+                  label="Super admins"
+                  value={(data?.accounts ?? []).filter((row) => row.role === 'super_admin').length}
+                  hint="Granted in SQL only"
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <button type="button" className="text-left" onClick={() => go('staff')}>
+                  <Panel className="h-full hover:bg-[#f7f8f7]">
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[#8a918c]">Admin</p>
+                    <h2 className="mt-2 font-sans text-lg font-semibold">Staff desk</h2>
+                    <p className="mt-1 text-sm text-[#5c635f]">Invite admins and review who can run the studio.</p>
+                  </Panel>
+                </button>
+                <button type="button" className="text-left" onClick={() => go('candidates')}>
+                  <Panel className="h-full hover:bg-[#f7f8f7]">
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[#8a918c]">Candidates</p>
+                    <h2 className="mt-2 font-sans text-lg font-semibold">Candidate desk</h2>
+                    <p className="mt-1 text-sm text-[#5c635f]">Accounts, packets, and hired people.</p>
+                  </Panel>
+                </button>
+                <button type="button" className="text-left" onClick={() => go('employers')}>
+                  <Panel className="h-full hover:bg-[#f7f8f7]">
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[#8a918c]">Employers</p>
+                    <h2 className="mt-2 font-sans text-lg font-semibold">Employer desk</h2>
+                    <p className="mt-1 text-sm text-[#5c635f]">Hiring accounts, jobs, and packets in inbox.</p>
+                  </Panel>
+                </button>
+              </div>
+
+              <Panel className="overflow-hidden p-0">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eef1ee] px-5 py-4">
+                  <div>
+                    <h2 className="font-sans text-lg font-semibold">Admins</h2>
+                    <p className="mt-0.5 text-sm text-[#5c635f]">Change an admin to candidate or employer. Super admin cannot be granted here.</p>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-0 text-left text-sm md:min-w-[36rem]">
+                    <thead className="text-xs text-[#8a918c]">
+                      <tr>
+                        <th className="px-5 pb-2 pt-3 font-medium">Name</th>
+                        <th className="hidden px-3 pb-2 pt-3 font-medium md:table-cell">Email</th>
+                        <th className="px-3 pb-2 pt-3 font-medium">Role</th>
+                        <th className="px-5 pb-2 pt-3 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {superRows.map((row) => (
+                        <tr key={row.id} className="border-t border-[#eef1ee]">
+                          <td className="px-5 py-3">
+                            <span className="flex items-center gap-3">
+                              <span className="grid size-9 place-items-center rounded-full bg-[#f7f1e4] text-xs font-medium text-[#b85c38]">
+                                {initials(row.name || row.email)}
+                              </span>
+                              <span className="font-medium">{row.name || row.email.split('@')[0]}</span>
+                            </span>
+                          </td>
+                          <td className="hidden px-3 py-3 text-[#5c635f] md:table-cell">{row.email}</td>
+                          <td className="px-3 py-3">
+                            <RoleChip role={row.role} />
+                          </td>
+                          <td className="px-5 py-3">
+                            {row.role === 'super_admin' ? (
+                              <span className="text-xs text-[#8a918c]">SQL only</span>
+                            ) : (
+                              <form
+                                className="flex flex-wrap items-center gap-2"
+                                onSubmit={(e) => {
+                                  e.preventDefault()
+                                  const next = new FormData(e.currentTarget).get('role')
+                                  if (next === 'admin' || next === 'employer' || next === 'candidate') {
+                                    changeUserRole.mutate({ email: row.email, role: next })
+                                  }
+                                }}
+                              >
+                                <select name="role" defaultValue="admin" className="h-9 rounded-lg border border-[#e4e8e5] px-2 text-sm">
+                                  <option value="admin">Admin</option>
+                                  <option value="employer">Employer</option>
+                                  <option value="candidate">Candidate</option>
+                                </select>
+                                <Button variant="outline" className="h-9" type="submit" disabled={changeUserRole.isPending}>
+                                  Save
+                                </Button>
+                              </form>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {!superRows.length ? (
+                        <tr>
+                          <td className="px-5 py-8 text-sm text-[#8a918c]" colSpan={4}>
+                            No admins match that search.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
+
+              <Panel className="overflow-hidden p-0">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eef1ee] px-5 py-4">
+                  <div>
+                    <h2 className="font-sans text-lg font-semibold">Employer accounts</h2>
+                    <p className="mt-0.5 text-sm text-[#5c635f]">Invite a hiring account, or change an existing employer to candidate or admin.</p>
+                  </div>
+                  <Button type="button" onClick={() => openAddUser('employer')}>
+                    <Plus className="size-4" />
+                    Add employer
+                  </Button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-0 text-left text-sm md:min-w-[36rem]">
+                    <thead className="text-xs text-[#8a918c]">
+                      <tr>
+                        <th className="px-5 pb-2 pt-3 font-medium">Company</th>
+                        <th className="hidden px-3 pb-2 pt-3 font-medium md:table-cell">Email</th>
+                        <th className="px-3 pb-2 pt-3 font-medium">Role</th>
+                        <th className="px-5 pb-2 pt-3 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {superEmployerRows.map((row) => (
+                        <tr key={row.id} className="border-t border-[#eef1ee]">
+                          <td className="px-5 py-3">
+                            <span className="flex items-center gap-3">
+                              <span className="grid size-9 place-items-center rounded-full bg-[#e8f6ee] text-xs font-medium text-[#147a48]">
+                                {initials(row.companyName || row.name || row.email)}
+                              </span>
+                              <span>
+                                <span className="block font-medium">{row.companyName || row.name || row.email.split('@')[0]}</span>
+                                {row.name && row.companyName ? <span className="text-xs text-[#8a918c]">{row.name}</span> : null}
+                              </span>
+                            </span>
+                          </td>
+                          <td className="hidden px-3 py-3 text-[#5c635f] md:table-cell">{row.email}</td>
+                          <td className="px-3 py-3">
+                            <RoleChip role={row.role} />
+                          </td>
+                          <td className="px-5 py-3">
+                            <form
+                              className="flex flex-wrap items-center gap-2"
+                              onSubmit={(e) => {
+                                e.preventDefault()
+                                const next = new FormData(e.currentTarget).get('role')
+                                if (next === 'admin' || next === 'employer' || next === 'candidate') {
+                                  changeUserRole.mutate({ email: row.email, role: next })
+                                }
+                              }}
+                            >
+                              <select name="role" defaultValue="employer" className="h-9 rounded-lg border border-[#e4e8e5] px-2 text-sm">
+                                <option value="employer">Employer</option>
+                                <option value="candidate">Candidate</option>
+                                <option value="admin">Admin</option>
+                              </select>
+                              <Button variant="outline" className="h-9" type="submit" disabled={changeUserRole.isPending}>
+                                Save
+                              </Button>
+                            </form>
+                          </td>
+                        </tr>
+                      ))}
+                      {!superEmployerRows.length ? (
+                        <tr>
+                          <td className="px-5 py-8 text-sm text-[#8a918c]" colSpan={4}>
+                            No employer accounts yet. Add one with email and company name.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
+
+              <Panel>
+                <h2 className="font-sans text-lg font-semibold">Grant super admin in SQL</h2>
+                <p className="mt-1 text-sm text-[#5c635f]">
+                  Signup and this desk cannot create a super admin. Run this in the Supabase SQL editor.
+                </p>
+                <label className="mt-4 block space-y-1.5">
+                  <span className="text-sm font-medium">Email</span>
+                  <Input
+                    type="email"
+                    placeholder="person@company.com"
+                    value={sqlEmail}
+                    onChange={(e) => setSqlEmail(e.target.value)}
+                  />
+                </label>
+                <pre className="mt-3 overflow-x-auto rounded-xl bg-[#0d1b16] px-4 py-3 text-xs text-[#e7e1d4]">{superSql}</pre>
+                <Button
+                  variant="outline"
+                  className="mt-3"
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(superSql).then(() => {
+                      setCopied(true)
+                      window.setTimeout(() => setCopied(false), 2000)
+                    })
+                  }}
+                >
+                  <Copy className="size-4" />
+                  {copied ? 'Copied' : 'Copy SQL'}
+                </Button>
+              </Panel>
+            </div>
           ) : null}
 
           {view === 'staff' ? (
@@ -3253,10 +3610,15 @@ export function AdminPage() {
                   <h1 className="mt-2 font-sans text-2xl font-semibold tracking-tight text-[#161c19] sm:text-[1.75rem]">Employers</h1>
                   <p className="mt-1 text-sm text-[#5c635f]">Manage hiring accounts, posted jobs, and pay on Atelier.</p>
                 </div>
-                <Button type="button" onClick={() => go('invite')}>
-                  <Plus className="size-4" />
-                  Add Employer
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" onClick={() => openAddUser('employer')}>
+                    <Plus className="size-4" />
+                    Add Employer
+                  </Button>
+                  <Button variant="outline" type="button" onClick={() => go('invite')}>
+                    Board invite
+                  </Button>
+                </div>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
@@ -3488,69 +3850,6 @@ export function AdminPage() {
 
           {view === 'people' ? (
             <div className="space-y-5">
-              {peopleInviteKind ? (
-                <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
-                  <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close invite" onClick={closeAddUser} />
-                  <Panel className="relative z-10 w-full max-w-md p-6">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h2 className="font-sans text-lg font-semibold">
-                          {peopleInviteKind === 'admin' ? 'Invite admin' : peopleInviteKind === 'employer' ? 'Invite employer' : 'Invite candidate'}
-                        </h2>
-                        <p className="mt-1 text-sm text-[#5c635f]">
-                          {peopleInviteKind === 'admin'
-                            ? 'They get the admin desk. Signup still cannot grant admin on its own.'
-                            : peopleInviteKind === 'employer'
-                              ? 'They create a hiring account. Approved packets land in their inbox.'
-                              : 'They create a candidate account. Packets leave only after they approve.'}
-                        </p>
-                      </div>
-                      <button type="button" className="grid size-8 place-items-center rounded-full hover:bg-[#f3f5f4]" aria-label="Close" onClick={closeAddUser}>
-                        <X className="size-4" />
-                      </button>
-                    </div>
-                    <form className="mt-5 space-y-4" onSubmit={onAddUserSubmit}>
-                      <label className="block space-y-1.5">
-                        <span className="text-sm font-medium">
-                          Email <span className="text-[#b85c38]">*</span>
-                        </span>
-                        <Input
-                          type="email"
-                          required
-                          placeholder="name@company.com"
-                          value={peopleInviteEmail}
-                          onChange={(e) => setPeopleInviteEmail(e.target.value)}
-                        />
-                      </label>
-                      {peopleInviteKind === 'employer' ? (
-                        <label className="block space-y-1.5">
-                          <span className="text-sm font-medium">
-                            Company <span className="text-[#b85c38]">*</span>
-                          </span>
-                          <Input
-                            required
-                            placeholder="Company name"
-                            value={peopleInviteCompany}
-                            onChange={(e) => setPeopleInviteCompany(e.target.value)}
-                          />
-                        </label>
-                      ) : null}
-                      {peopleInviteNotice ? (
-                        <p className={`text-sm ${inviteUser.isError ? 'text-[#b85c38]' : 'text-[#147a48]'}`}>{peopleInviteNotice}</p>
-                      ) : null}
-                      <div className="flex flex-wrap justify-end gap-2 pt-1">
-                        <Button variant="outline" type="button" onClick={copyAddUserLink}>
-                          <Copy className="size-4" />
-                          Copy join link
-                        </Button>
-                        <Button type="submit" disabled={inviteUser.isPending || !peopleInviteEmail.trim()}>
-                          {inviteUser.isPending ? 'Sending…' : 'Send invite'}
-                        </Button>
-                      </div>
-                    </form>
-                  </Panel>
-                </div>
-              ) : null}
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm text-[#8a918c]">

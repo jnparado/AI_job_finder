@@ -49,7 +49,9 @@ import {
 import {
   clearAuthCookies,
   cookieOriginAllowed,
+  csrfAllowed,
   demoUserFromKind,
+  ensureCsrfCookie,
   readAccessCookie,
   readDemoCookie,
   rotateAccessCookie,
@@ -75,7 +77,7 @@ app.use(
   '*',
   cors({
     origin: corsOrigins,
-    allowHeaders: ['Authorization', 'Content-Type'],
+    allowHeaders: ['Authorization', 'Content-Type', 'X-CSRF-Token'],
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   }),
@@ -134,6 +136,7 @@ async function auth(c: Context): Promise<AuthUser | null> {
   const demo = readDemoCookie(c)
   const usingCookie = !bearer && Boolean(cookieToken || demo)
   if (usingCookie && !cookieOriginAllowed(c, corsOrigins)) return null
+  if (usingCookie && !csrfAllowed(c)) return null
 
   if (bearer) {
     const fromHeader = await userFromToken(bearer)
@@ -1076,6 +1079,7 @@ app.get('/api/session', async (c) => {
   const user = await auth(c)
   c.header('Cache-Control', 'no-store')
   if (!user) return c.json({ ok: false }, 401)
+  ensureCsrfCookie(c)
   return c.json({ ok: true, user })
 })
 
@@ -3420,8 +3424,22 @@ app.post('/api/admin/users/invite', async (c) => {
     if (isStaffRole(current)) {
       return c.json({ ok: true, already: true, email, joinUrl, message: 'That email is already on the admin desk.' })
     }
-    if (role === 'employer' && current === 'employer') {
-      return c.json({ ok: true, already: true, email, joinUrl, message: 'That email already has an employer account.' })
+    if (role === 'employer') {
+      if (current === 'employer') {
+        return c.json({ ok: true, already: true, email, joinUrl, message: 'That email already has an employer account.' })
+      }
+      const { error } = await supabaseAdmin
+        .from('profiles')
+        .update({ role: 'employer', company_name: company })
+        .eq('id', existing.id)
+      if (error) return c.json({ error: error.message }, 400)
+      await notifyUser(
+        String(existing.id),
+        'You have an employer account',
+        'Open hiring to post roles and review packets candidates approved.',
+        '/employer',
+      )
+      return c.json({ ok: true, status: 'accepted', email, joinUrl, message: 'They have an employer account now.' })
     }
     if (role === 'candidate' && current === 'candidate') {
       return c.json({ ok: true, already: true, email, joinUrl, message: 'That email already has a candidate account.' })

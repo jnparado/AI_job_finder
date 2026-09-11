@@ -25,6 +25,8 @@ const loaders: Record<string, () => Promise<unknown>> = {
   '/employer/messages': () => import('@/pages/Messages'),
   '/employer/finances': () => import('@/pages/Finances'),
   '/employer/ateliar': () => import('@/pages/Ateliar'),
+  '/employer/company': () => import('@/pages/Employer'),
+  '/employer/settings': () => import('@/pages/Employer'),
   '/admin': () => import('@/pages/Admin'),
 }
 

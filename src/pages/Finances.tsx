@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Card, Badge } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/feedback'
+import { HiringHero } from '@/components/employer/HiringChrome'
 
 type Desk = 'overview' | 'ledger' | 'withdraw' | 'year'
 
@@ -170,22 +171,25 @@ function EmployerFinances({ rows, loading }: { rows: LedgerEntry[]; loading: boo
   const total = sent.reduce((n, e) => n + e.amount, 0)
   return (
     <div className="space-y-6">
-      <PageHeader
+      <HiringHero
         kicker="Finances"
         title="Pay candidates"
         description="Send pay to people who applied on Atelier. They withdraw it from their own desk."
+        image="employer-office.jpg"
+        imageAlt="Studio office"
+        compact
+        actions={
+          <Button variant="paper" asChild>
+            <Link to="/employer/inbox">Open inbox</Link>
+          </Button>
+        }
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <Stat label="Sent" value={money(total)} />
         <Stat label="Payments" value={String(sent.length)} />
       </div>
       <Card className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2>Sent from your desk</h2>
-          <Button variant="outline" asChild>
-            <Link to="/employer/inbox">Open inbox</Link>
-          </Button>
-        </div>
+        <h2>Sent from your desk</h2>
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : sent.length ? (

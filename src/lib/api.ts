@@ -16,8 +16,20 @@ export function setDemoToken(on: boolean | 'demo' | 'employer') {
   else localStorage.setItem(DEMO_KEY, on === true ? 'demo' : on)
 }
 
+const CSRF_COOKIE = 'atelier_csrf'
+
+function csrfHeader(): Record<string, string> {
+  if (typeof document === 'undefined') return {}
+  const raw = document.cookie.split('; ').find((row) => row.startsWith(`${CSRF_COOKIE}=`))
+  if (!raw) return {}
+  const token = decodeURIComponent(raw.slice(CSRF_COOKIE.length + 1))
+  return token ? { 'X-CSRF-Token': token } : {}
+}
+
 async function sessionFetch(path: string, init: RequestInit = {}) {
-  return fetch(path, { ...init, credentials: 'include' })
+  const headers = new Headers(init.headers)
+  for (const [k, v] of Object.entries(csrfHeader())) headers.set(k, v)
+  return fetch(path, { ...init, headers, credentials: 'include' })
 }
 
 export async function writeServerSession(input: {
@@ -85,6 +97,7 @@ export async function apiUpload<T>(
     xhr.open('POST', path)
     xhr.withCredentials = true
     for (const [k, v] of Object.entries(auth)) xhr.setRequestHeader(k, v)
+    for (const [k, v] of Object.entries(csrfHeader())) xhr.setRequestHeader(k, v)
     xhr.timeout = 120_000
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && onProgress) {

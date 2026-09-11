@@ -66,6 +66,11 @@ body {
     var(--paper);
 }
 
+.hiring-portal {
+  overflow-x: clip;
+  background: #f3f6f4;
+}
+
 .atelier-card > h2:first-child {
   position: relative;
   padding-bottom: 0.8rem;
