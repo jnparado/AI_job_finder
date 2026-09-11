@@ -32,7 +32,7 @@ import type { LucideIcon } from 'lucide-react'
 const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean; badge?: 'inbox' | 'messages' }[] = [
   { to: '/employer', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/employer/jobs/new', label: 'Post a Job', icon: Plus },
-  { to: '/employer/inbox', label: 'Find Freelancers', icon: Search },
+  { to: '/employer/inbox', label: 'Find Candidates', icon: Search },
   { to: '/employer/jobs', label: 'My Jobs', icon: Briefcase, end: true },
   { to: '/employer/inbox', label: 'Applicants', icon: Users, badge: 'inbox' },
   { to: '/employer/messages', label: 'Messages', icon: MessagesSquare, badge: 'messages' },
@@ -139,7 +139,7 @@ export function EmployerShell() {
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
         {LINKS.map((l, i) => {
-          if (l.label === 'Find Freelancers') {
+          if (l.label === 'Find Candidates') {
             return (
               <Link
                 key={`${l.label}-${i}`}
@@ -238,7 +238,7 @@ export function EmployerShell() {
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search freelancers, skills, or job titles…"
+              placeholder="Search candidates, skills, or job titles…"
               className="h-11 w-full rounded-full border border-[#e4ebe6] bg-[#f4f7f5] pl-10 pr-12 text-sm outline-none placeholder:text-muted-foreground/80 focus:border-[#147a48] focus:bg-white"
             />
             <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#d7ddd8] bg-white px-1.5 text-[0.65rem] font-medium text-muted-foreground sm:inline">

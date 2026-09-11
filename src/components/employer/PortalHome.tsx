@@ -75,7 +75,7 @@ export function PortalHome() {
                 className="inline-flex h-11 items-center gap-2 rounded-full border border-[var(--forest)] bg-white px-5 text-sm font-medium text-[var(--forest)] hover:bg-[#eef3f0]"
               >
                 <Search className="size-4" />
-                Find Freelancers
+                Find Candidates
               </Link>
             </div>
           </div>
@@ -103,7 +103,7 @@ export function PortalHome() {
       </section>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard icon={Users} label="Total Freelancers" value={list.length} hint={applicantDelta} />
+        <StatCard icon={Users} label="Total Candidates" value={list.length} hint={applicantDelta} />
         <StatCard icon={Briefcase} label="Active Jobs" value={roles.length} hint={jobDelta} />
         <StatCard icon={Inbox} label="Total Applicants" value={list.length} hint={applicantDelta} />
         <StatCard icon={Handshake} label="Hired" value={hired.length} hint={hiredDelta} />
@@ -234,7 +234,7 @@ export function PortalHome() {
         <Panel title="Quick Actions">
           <div className="grid grid-cols-2 gap-2.5">
             <Action to="/employer/jobs/new" icon={Plus} label="Post a Job" hint="Reach top talent" tone="forest" />
-            <Action to="/employer/inbox" icon={Search} label="Find Freelancers" hint="Browse & connect" tone="sage" />
+            <Action to="/employer/inbox" icon={Search} label="Find Candidates" hint="Browse & connect" tone="sage" />
             <Action to="/employer/messages" icon={Send} label="Messages" hint="Talk after they apply" tone="copper" />
             <Action to="/employer/finances" icon={BarChart3} label="View Reports" hint="Track hiring pay" tone="gold" />
           </div>
