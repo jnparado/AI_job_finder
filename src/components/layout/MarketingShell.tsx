@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/ui/feedback'
 import { SocialFollow } from '@/components/social/SocialLinks'
 import { filmLocal, filmSrc } from '@/lib/films'
-import { prefetchRoute } from '@/lib/prefetch'
+import { MarketingSessionButtons, useAccountSession } from '@/components/layout/AccountSession'
 
 export function MarketingShell({
   audience,
@@ -13,7 +12,6 @@ export function MarketingShell({
   audience?: 'candidate' | 'employer'
   children: ReactNode
 }) {
-  const registerTo = audience === 'employer' ? '/register?role=employer' : '/register'
   const hiring = audience === 'employer'
 
   return (
@@ -78,18 +76,7 @@ export function MarketingShell({
             </>
           ) : null}
 
-          <div className="flex shrink-0 gap-1.5 sm:gap-2">
-            <Button variant="outline" className="h-9 px-3 text-xs border-[#c9c0ae55] text-[var(--paper)] hover:bg-[#1f3d32] sm:h-10 sm:px-4 sm:text-sm" asChild>
-              <Link to={hiring ? '/login?role=employer' : '/login'} onMouseEnter={() => prefetchRoute('/login')}>
-                Log in
-              </Link>
-            </Button>
-            <Button variant={hiring ? 'paper' : 'copper'} className="h-9 px-3 text-xs sm:h-10 sm:px-4 sm:text-sm" asChild>
-              <Link to={registerTo} onMouseEnter={() => prefetchRoute('/register')}>
-                Sign up
-              </Link>
-            </Button>
-          </div>
+          <MarketingSessionButtons hiring={hiring} />
         </div>
         {audience ? (
           <nav className="flex gap-5 overflow-x-auto border-t border-[#c9c0ae14] px-5 py-2.5 text-sm text-[#d8d0c0] sm:px-8 lg:hidden">
@@ -175,6 +162,18 @@ const FOOTER_COLS: { title: string; links: { to: string; label: string }[] }[] =
 ]
 
 function MarketingFooter() {
+  const { signedIn, home, openLabel } = useAccountSession()
+  const cols = FOOTER_COLS.map((col) => ({
+    ...col,
+    links: col.links.map((link) => {
+      if (!signedIn) return link
+      if (link.to === '/login' || link.to === '/register' || link.to.startsWith('/register?')) {
+        return { to: home, label: openLabel }
+      }
+      return link
+    }),
+  }))
+
   return (
     <footer className="mt-8 bg-[#0a100e] px-5 pt-14 pb-8 sm:px-8 sm:pt-16">
       <div className="mx-auto max-w-6xl">
@@ -192,12 +191,12 @@ function MarketingFooter() {
           </div>
 
           <nav aria-label="Footer" className="grid flex-1 grid-cols-2 gap-x-5 gap-y-10 sm:grid-cols-3 sm:gap-x-8 lg:grid-cols-5">
-            {FOOTER_COLS.map((col) => (
+            {cols.map((col) => (
               <div key={col.title}>
                 <p className="text-sm font-semibold text-[var(--paper)]">{col.title}</p>
                 <ul className="mt-4 space-y-2.5">
                   {col.links.map((link) => (
-                    <li key={`${col.title}-${link.label}`}>
+                    <li key={`${col.title}-${link.to}-${link.label}`}>
                       <Link
                         to={link.to}
                         className="text-sm text-[#9a9386] transition-colors hover:text-[var(--paper)]"

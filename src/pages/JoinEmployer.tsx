@@ -5,6 +5,7 @@ import { employerInviteNote } from '@shared/employerInvite'
 import { isStaffRole, sourceLabel } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/ui/feedback'
+import { MarketingSessionButtons } from '@/components/layout/AccountSession'
 import { useAuth } from '@/lib/auth'
 
 export function JoinEmployerPage() {
@@ -32,9 +33,12 @@ export function JoinEmployerPage() {
 
   return (
     <div className="min-h-svh bg-[var(--forest)] text-[var(--paper)]">
-      <div className="mx-auto flex min-h-svh max-w-xl flex-col justify-center px-5 py-16">
+      <div className="mx-auto flex max-w-xl items-center justify-between px-5 pt-6">
         <BrandMark light />
-        <p className="mt-10 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#c6a15b]">
+        <MarketingSessionButtons hiring />
+      </div>
+      <div className="mx-auto flex min-h-[calc(100svh-4.5rem)] max-w-xl flex-col justify-center px-5 py-16">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#c6a15b]">
           Employer invite
         </p>
         <h1 className="mt-3 font-serif text-3xl leading-tight sm:text-5xl">

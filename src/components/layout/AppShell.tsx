@@ -33,8 +33,15 @@ const PRIMARY: { to: string; label: string; icon: LucideIcon; end?: boolean }[] 
   { to: '/app/messages', label: 'Inbox', icon: MessagesSquare },
   { to: '/app/ateliar', label: 'Tracker', icon: Timer },
   { to: '/app/resume', label: 'Resume', icon: ScrollText },
-  { to: '/app/profile', label: 'Profile', icon: User },
   { to: '/app/career', label: 'Coach', icon: LineChart },
+]
+
+const ACCOUNT_LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
+  { to: '/app/profile', label: 'Profile', icon: User },
+  { to: '/app', label: 'Your studio', icon: Home, end: true },
+  { to: '/app/interview', label: 'Interview', icon: MessageSquare },
+  { to: '/app/finances', label: 'Finances', icon: Wallet },
+  { to: '/app/settings', label: 'Settings', icon: Settings },
 ]
 
 interface Note {
@@ -72,12 +79,24 @@ export function AppShell() {
     navigate('/app/settings', { replace: true })
   }
 
+  function goAccount(to: string) {
+    closeMenus()
+    navigate(to, { replace: true })
+  }
+
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (!toolsRef.current?.contains(e.target as Node)) closeMenus()
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeMenus()
+    }
     document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [])
 
   return (
@@ -260,17 +279,40 @@ export function AppShell() {
 
             {accountOpen ? (
               <div className="absolute right-3 top-[calc(100%-0.25rem)] z-50 w-56 overflow-hidden rounded-2xl border border-border bg-[var(--paper)] text-[var(--forest)] shadow-xl sm:right-5">
-                <div className="border-b border-border px-4 py-3">
+                <button
+                  type="button"
+                  className="block w-full border-b border-border px-4 py-3 text-left hover:bg-muted"
+                  onClick={() => goAccount('/app/profile')}
+                  onMouseEnter={() => prefetchRoute('/app/profile')}
+                >
                   <p className="truncate text-sm font-medium">{name}</p>
                   <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[var(--copper)]">
                     Candidate
                   </p>
-                </div>
+                </button>
                 <div className="p-2">
-                  <MenuLink to="/app/profile" icon={User} label="Your studio" onClick={closeMenus} />
-                  <MenuLink to="/app/interview" icon={MessageSquare} label="Interview" onClick={closeMenus} />
-                  <MenuLink to="/app/finances" icon={Wallet} label="Finances" onClick={closeMenus} />
-                  <MenuLink to="/app/settings" icon={Settings} label="Settings" onClick={closeMenus} />
+                  {ACCOUNT_LINKS.map((item) => {
+                    const on =
+                      item.end
+                        ? location.pathname === item.to
+                        : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        className={cn(
+                          'flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm',
+                          on ? 'bg-[#eef3f0]' : 'hover:bg-muted',
+                        )}
+                        onMouseEnter={() => prefetchRoute(item.to)}
+                        onFocus={() => prefetchRoute(item.to)}
+                        onClick={() => goAccount(item.to)}
+                      >
+                        <item.icon className="size-4 opacity-70" />
+                        {item.label}
+                      </button>
+                    )
+                  })}
                 </div>
                 <p className="mx-3 mb-2 rounded-xl border border-[#c6a15b55] bg-[#f7f1e4] px-3 py-2 text-xs leading-relaxed">
                   Packets leave only after you approve.
@@ -278,7 +320,10 @@ export function AppShell() {
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 border-t border-border px-4 py-3 text-sm hover:bg-muted"
-                  onClick={() => void signOut().then(() => navigate('/', { replace: true }))}
+                  onClick={() => {
+                    closeMenus()
+                    void signOut().then(() => navigate('/', { replace: true }))
+                  }}
                 >
                   <LogOut className="size-4" />
                   Sign out
@@ -329,30 +374,3 @@ export function AppShell() {
   )
 }
 
-function MenuLink({
-  to,
-  icon: Icon,
-  label,
-  onClick,
-}: {
-  to: string
-  icon: LucideIcon
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <NavLink
-      to={to}
-      replace
-      onClick={onClick}
-      onMouseEnter={() => prefetchRoute(to)}
-      onFocus={() => prefetchRoute(to)}
-      className={({ isActive }) =>
-        `flex items-center gap-2 rounded-lg px-2 py-2 text-sm ${isActive ? 'bg-[#eef3f0]' : 'hover:bg-muted'}`
-      }
-    >
-      <Icon className="size-4 opacity-70" />
-      {label}
-    </NavLink>
-  )
-}

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ArrowUpRight, Briefcase, Check, MapPin, Sparkles, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LandingVideo, MarketingShell, SocialAdKit } from '@/components/layout/MarketingShell'
+import { SessionHomeCtas, useAccountSession } from '@/components/layout/AccountSession'
 import { BrandCarousel } from '@/components/marketing/BrandCarousel'
 import {
   AloneVsWorkshop,
@@ -135,19 +136,11 @@ export function CandidateLandingPage() {
           <p className="mt-5 max-w-xl text-base leading-relaxed text-[#c9c0ae] sm:text-lg">
             Atelier finds roles from licensed boards and employers here, scores them against your resume, and drafts the letter. You can apply to every match. If the employer is on Atelier, we deliver the packet after you approve. If the job is on LinkedIn, Upwork, or another site, you apply on their official page — we never auto-submit there.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Button variant="copper" size="lg" className="h-12 px-7 text-[0.8rem] font-semibold uppercase tracking-[0.1em]" asChild>
-              <Link to="/register">Start matching</Link>
-            </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-12 border-[#c9c0ae66] px-7 text-[0.8rem] font-semibold uppercase tracking-[0.1em] text-[var(--paper)] hover:bg-[#1f3d32]"
-              asChild
-            >
-              <Link to="/login">Log in</Link>
-            </Button>
-          </div>
+          <SessionHomeCtas
+            audience="candidate"
+            guestPrimary={{ to: '/register', label: 'Start matching' }}
+            guestSecondary={{ to: '/login', label: 'Log in' }}
+          />
           <ul className="mt-6 flex flex-wrap gap-2 text-xs text-[#d8d0c0]">
             {['70% recommended bar', 'Authorized boards', 'You approve every send'].map((item) => (
               <li key={item} className="rounded-full border border-[#c9c0ae33] px-3 py-1.5">
@@ -310,19 +303,11 @@ export function EmployerLandingPage() {
             <span className="size-2 shrink-0 rounded-full bg-[#c6a15b]" />
             One inbox for people who actually fit
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Button variant="paper" size="lg" className="h-12 px-7 text-[0.8rem] font-semibold uppercase tracking-[0.1em]" asChild>
-              <Link to="/register?role=employer">Post a role</Link>
-            </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-12 border-[#c9c0ae66] px-7 text-[0.8rem] font-semibold uppercase tracking-[0.1em] text-[var(--paper)] hover:bg-[#1f3d32]"
-              asChild
-            >
-              <Link to="/">See candidate side</Link>
-            </Button>
-          </div>
+          <SessionHomeCtas
+            audience="employer"
+            guestPrimary={{ to: '/register?role=employer', label: 'Post a role', variant: 'paper' }}
+            guestSecondary={{ to: '/', label: 'See candidate side' }}
+          />
           <ul className="mt-6 flex flex-wrap gap-2 text-xs text-[#d8d0c0]">
             {['Approved packets only', 'Message candidates in-app', 'Join from an admin invite'].map((item) => (
               <li key={item} className="rounded-full border border-[#c9c0ae33] px-3 py-1.5">
@@ -546,6 +531,7 @@ function AudienceCard({
 function InviteClose({ audience }: { audience?: 'candidate' | 'employer' }) {
   const candidate = audience !== 'employer'
   const employer = audience !== 'candidate'
+  const { signedIn, home, openLabel } = useAccountSession()
   return (
     <section className="px-5 pb-16 sm:px-8 sm:pb-20">
       <div className="mx-auto max-w-6xl overflow-hidden rounded-[2rem] border border-[#c9c0ae22] bg-[#0d1b16]/80 px-6 py-12 text-center sm:px-12 sm:py-16">
@@ -576,21 +562,29 @@ function InviteClose({ audience }: { audience?: 'candidate' | 'employer' }) {
               : 'Candidates match and apply with approval. Employers post a role and review real packets. No card required to begin.'}
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
-          {candidate ? (
+          {signedIn ? (
             <Button variant="copper" size="lg" asChild>
-              <Link to="/register">Get started free</Link>
+              <Link to={home}>{openLabel}</Link>
             </Button>
-          ) : null}
-          {employer ? (
-            <Button
-              variant={candidate ? 'outline' : 'copper'}
-              size="lg"
-              className={candidate ? 'border-[#c9c0ae55] text-[var(--paper)] hover:bg-[#1f3d32]' : undefined}
-              asChild
-            >
-              <Link to="/register?role=employer">Post a role free</Link>
-            </Button>
-          ) : null}
+          ) : (
+            <>
+              {candidate ? (
+                <Button variant="copper" size="lg" asChild>
+                  <Link to="/register">Get started free</Link>
+                </Button>
+              ) : null}
+              {employer ? (
+                <Button
+                  variant={candidate ? 'outline' : 'copper'}
+                  size="lg"
+                  className={candidate ? 'border-[#c9c0ae55] text-[var(--paper)] hover:bg-[#1f3d32]' : undefined}
+                  asChild
+                >
+                  <Link to="/register?role=employer">Post a role free</Link>
+                </Button>
+              ) : null}
+            </>
+          )}
         </div>
         <div className="mt-8 flex justify-center">
           <SocialShare light />
