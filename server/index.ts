@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
 import { careerInsights, followUps, interviewQuestions, preparePacket } from '../shared/engine/packets'
 import { matchJobs } from '../shared/engine/matcher'
@@ -27,7 +27,7 @@ import { JOB_CATALOG } from '../shared/jobs'
 import { DEMO_EMPLOYER, DEMO_USER, memory, type EmployerInvite, type StaffInvite, type StoredApplication } from './memory'
 import { extractFileText, parseResumeSmart } from './resume'
 import { confirmUserEmail, ensureProfileRow, registerUser } from './authUsers'
-import { supabaseAdmin, supabaseAuth } from './supabase'
+import { supabaseAdmin } from './supabase'
 import { emptyFinance, summarizeLedger } from '../shared/finances'
 import type { LedgerEntry } from '../shared/finances'
 import { isHiredStatus, sessionSeconds, type TrackerSession } from '../shared/tracker'
@@ -46,6 +46,17 @@ import {
   handleStripeWebhook,
   loadSubscription,
 } from './billing'
+import {
+  clearAuthCookies,
+  cookieOriginAllowed,
+  demoUserFromKind,
+  readAccessCookie,
+  readDemoCookie,
+  rotateAccessCookie,
+  userFromAccessToken,
+  writeAuthCookies,
+  writeDemoCookie,
+} from './session'
 
 const app = new Hono()
 const port = Number(process.env.API_PORT ?? 8787)
@@ -65,9 +76,22 @@ app.use(
   cors({
     origin: corsOrigins,
     allowHeaders: ['Authorization', 'Content-Type'],
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   }),
 )
+
+app.use('*', async (c, next) => {
+  await next()
+  c.header('X-Content-Type-Options', 'nosniff')
+  c.header('X-Frame-Options', 'DENY')
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
+  c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  c.header('X-DNS-Prefetch-Control', 'off')
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    c.header('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
+  }
+})
 
 type AuthUser = { id: string; email: string }
 
@@ -90,25 +114,39 @@ function pruneAuthCache() {
   }
 }
 
-async function auth(c: { req: { header: (n: string) => string | undefined } }): Promise<AuthUser | null> {
-  const header = c.req.header('Authorization') ?? ''
-  const token = header.replace(/^Bearer\s+/i, '')
+async function userFromToken(token: string): Promise<AuthUser | null> {
   if (!token) return null
-  if (token === 'demo' || token.startsWith('demo:')) {
-    return { id: DEMO_USER, email: 'demo@atelier.local' }
-  }
-  if (token === 'employer') {
-    return { id: DEMO_EMPLOYER, email: 'hiring@atelier.local' }
-  }
+  if (token === 'demo' || token.startsWith('demo:')) return demoUserFromKind('demo')
+  if (token === 'employer') return demoUserFromKind('employer')
   const cached = authCache.get(token)
   if (cached && cached.until > Date.now()) return cached.user
-  if (!supabaseAuth) return null
-  const { data } = await supabaseAuth.auth.getUser(token)
-  if (!data.user) return null
-  const user = { id: data.user.id, email: data.user.email ?? '' }
+  const user = await userFromAccessToken(token)
+  if (!user) return null
   authCache.set(token, { user, until: Date.now() + AUTH_TTL_MS })
   pruneAuthCache()
   return user
+}
+
+async function auth(c: Context): Promise<AuthUser | null> {
+  const header = c.req.header('Authorization') ?? ''
+  const bearer = header.replace(/^Bearer\s+/i, '')
+  const cookieToken = readAccessCookie(c)
+  const demo = readDemoCookie(c)
+  const usingCookie = !bearer && Boolean(cookieToken || demo)
+  if (usingCookie && !cookieOriginAllowed(c, corsOrigins)) return null
+
+  if (bearer) {
+    const fromHeader = await userFromToken(bearer)
+    if (fromHeader) return fromHeader
+  }
+  if (demo) return demoUserFromKind(demo)
+  if (cookieToken) {
+    const fromCookie = await userFromToken(cookieToken)
+    if (fromCookie) return fromCookie
+    const rotated = await rotateAccessCookie(c)
+    if (rotated) return userFromToken(rotated)
+  }
+  return null
 }
 
 function socialMetaFromParsed(parsed: unknown) {
@@ -1003,6 +1041,42 @@ app.post('/api/auth/confirm', async (c) => {
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : 'Could not confirm email' }, 400)
   }
+})
+
+app.post('/api/session', async (c) => {
+  if (!cookieOriginAllowed(c, corsOrigins)) return c.json({ error: 'Forbidden' }, 403)
+  const body = (await c.req.json().catch(() => ({}))) as {
+    accessToken?: string
+    refreshToken?: string
+    demo?: false | 'demo' | 'employer'
+  }
+  c.header('Cache-Control', 'no-store')
+  if (body.demo === 'demo' || body.demo === 'employer') {
+    writeDemoCookie(c, body.demo)
+    return c.json({ ok: true, demo: body.demo })
+  }
+  const accessToken = String(body.accessToken ?? '').trim()
+  if (!accessToken) {
+    clearAuthCookies(c)
+    return c.json({ error: 'No session' }, 400)
+  }
+  const user = await userFromAccessToken(accessToken)
+  if (!user) return c.json({ error: 'Invalid session' }, 401)
+  writeAuthCookies(c, accessToken, String(body.refreshToken ?? '').trim() || undefined)
+  return c.json({ ok: true, user })
+})
+
+app.delete('/api/session', async (c) => {
+  clearAuthCookies(c)
+  c.header('Cache-Control', 'no-store')
+  return c.json({ ok: true })
+})
+
+app.get('/api/session', async (c) => {
+  const user = await auth(c)
+  c.header('Cache-Control', 'no-store')
+  if (!user) return c.json({ ok: false }, 401)
+  return c.json({ ok: true, user })
 })
 
 app.get('/api/profile', async (c) => {

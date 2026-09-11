@@ -16,6 +16,38 @@ export function setDemoToken(on: boolean | 'demo' | 'employer') {
   else localStorage.setItem(DEMO_KEY, on === true ? 'demo' : on)
 }
 
+async function sessionFetch(path: string, init: RequestInit = {}) {
+  return fetch(path, { ...init, credentials: 'include' })
+}
+
+export async function writeServerSession(input: {
+  accessToken?: string | null
+  refreshToken?: string | null
+  demo?: false | 'demo' | 'employer'
+}) {
+  try {
+    await sessionFetch('/api/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accessToken: input.accessToken || undefined,
+        refreshToken: input.refreshToken || undefined,
+        demo: input.demo || undefined,
+      }),
+    })
+  } catch {
+    /* cookie is extra hardening; Bearer still works */
+  }
+}
+
+export async function clearServerSession() {
+  try {
+    await sessionFetch('/api/session', { method: 'DELETE' })
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function authHeader(): Promise<Record<string, string>> {
   const token = getDemoToken()
   if (token === 'employer') return { Authorization: 'Bearer employer' }
@@ -34,7 +66,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
-  const res = await fetch(path, { ...init, headers })
+  const res = await sessionFetch(path, { ...init, headers })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
     throw new Error((err as { error?: string }).error ?? 'Request failed')
@@ -51,6 +83,7 @@ export async function apiUpload<T>(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', path)
+    xhr.withCredentials = true
     for (const [k, v] of Object.entries(auth)) xhr.setRequestHeader(k, v)
     xhr.timeout = 120_000
     xhr.upload.onprogress = (event) => {

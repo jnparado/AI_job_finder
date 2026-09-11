@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { Provider, User } from '@supabase/supabase-js'
 import type { CandidateProfile } from '@shared/types'
 import { emptyProfile, isStaffRole } from '@shared/types'
-import { api, getDemoToken, setAccessToken, setDemoToken } from './api'
+import { api, clearServerSession, getDemoToken, setAccessToken, setDemoToken, writeServerSession } from './api'
 import { identityFromUser } from './identity'
 import { oauthOptions } from './social'
 import { supabase, supabaseConfigured, upsertOwnProfile } from './supabase'
@@ -90,16 +90,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ? supabase.auth.onAuthStateChange((event, session) => {
           if (cancelled) return
           setAccessToken(session?.access_token ?? null)
+          if (event === 'SIGNED_OUT') {
+            setDemoToken(false)
+            setDemo(false)
+            setProfile(emptyProfile())
+            void clearServerSession()
+          } else if (session?.access_token) {
+            void writeServerSession({
+              accessToken: session.access_token,
+              refreshToken: session.refresh_token,
+            })
+          }
           if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
             if (session?.user) setUser(session.user)
             return
           }
           setUser(session?.user ?? null)
-          if (event === 'SIGNED_OUT') {
-            setDemoToken(false)
-            setDemo(false)
-            setProfile(emptyProfile())
-          }
         })
       : { data: { subscription: { unsubscribe() {} } } }
 
@@ -123,6 +129,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(session.data.session?.access_token ?? null)
       if (!cancelled) setUser(session.data.session?.user ?? null)
       if (session.data.session?.user) {
+        void writeServerSession({
+          accessToken: session.data.session.access_token,
+          refreshToken: session.data.session.refresh_token,
+        })
         try {
           const p = await api<CandidateProfile>('/api/profile')
           if (!cancelled) setProfile(p)
@@ -163,11 +173,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInDemo: async () => {
         setDemoToken(true)
         setDemo(true)
+        await writeServerSession({ demo: 'demo' })
         return refreshProfile()
       },
       signInDemoEmployer: async () => {
         setDemoToken('employer')
         setDemo(true)
+        await writeServerSession({ demo: 'employer' })
         return refreshProfile()
       },
       signInEmail: async (email, password) => {
@@ -278,6 +290,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAccessToken(null)
         setUser(null)
         setProfile(emptyProfile())
+        await clearServerSession()
         await supabase?.auth.signOut()
       },
     }),

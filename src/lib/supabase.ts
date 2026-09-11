@@ -15,6 +15,7 @@ export const supabase: SupabaseClient | null = supabaseConfigured
         autoRefreshToken: true,
         detectSessionInUrl: true,
         flowType: 'pkce',
+        storageKey: 'atelier-auth',
       },
     })
   : null
