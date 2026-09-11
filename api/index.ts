@@ -3,6 +3,24 @@ export const config = {
   maxDuration: 60,
 }
 
+/** Static reads so Vercel marks these Production secrets as used by the API. */
+void process.env.RAPIDAPI_KEY
+void process.env.OPENAI_API_KEY
+void process.env.OPENAI_MODEL_LUNA
+void process.env.OPENAI_MODEL_TERRA
+void process.env.OPENAI_MODEL_SOL
+void process.env.SUPABASE_URL
+void process.env.SUPABASE_ANON_KEY
+void process.env.SUPABASE_SERVICE_ROLE_KEY
+void process.env.ADZUNA_APP_ID
+void process.env.ADZUNA_APP_KEY
+void process.env.USAJOBS_EMAIL
+void process.env.STRIPE_SECRET_KEY
+void process.env.STRIPE_WEBHOOK_SECRET
+void process.env.PAYPAL_CLIENT_ID
+void process.env.PAYPAL_CLIENT_SECRET
+void process.env.APP_URL
+
 type App = { fetch: (request: Request) => Response | Promise<Response> }
 
 async function loadApp(): Promise<App> {
