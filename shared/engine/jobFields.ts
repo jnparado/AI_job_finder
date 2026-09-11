@@ -59,7 +59,7 @@ export function inferCurrency(raw?: string): Currency {
   if (t === 'GBP' || t.includes('£')) return 'GBP'
   if (t === 'CAD') return 'CAD'
   if (t === 'AUD') return 'AUD'
-  if (t === 'PHP') return 'PHP'
+  if (t === 'PHP' || t.includes('₱') || t.includes('PESO') || t.includes('PHILIPP')) return 'PHP'
   if (t === 'CHF') return 'CHF'
   return 'USD'
 }
@@ -101,5 +101,10 @@ export function asJob(partial: Omit<Job, 'skills'> & { skills?: string[] }): Job
     seniority: partial.seniority ?? inferSeniority(partial.title, description),
     skills: partial.skills ?? [],
     sources: partial.sources ?? [{ source: partial.source, url: partial.applicationUrl }],
+    listingStatus: partial.listingStatus === 'closed' ? 'closed' : 'active',
   }
+}
+
+export function isOpenListing(job: Pick<Job, 'listingStatus'>) {
+  return job.listingStatus !== 'closed'
 }

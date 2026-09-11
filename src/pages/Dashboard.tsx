@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Briefcase,
@@ -13,7 +13,7 @@ import {
   Timer,
 } from 'lucide-react'
 import type { JobMatch } from '@shared/types'
-import { displayName } from '@shared/types'
+import { displayName, isStaffRole } from '@shared/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { cn, initials, prettyStatus, profileCompleteness } from '@/lib/utils'
@@ -47,11 +47,12 @@ const REVIEW = new Set([
 ])
 
 export function DashboardPage() {
-  const { profile } = useAuth()
+  const { profile, destinationFor } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [sort, setSort] = useState<FeedSort>('fit')
   const [prompt, setPrompt] = useState('')
+  const candidateDesk = profile.role !== 'employer' && !isStaffRole(profile.role)
 
   const home = useQuery({
     queryKey: ['candidate-home'],
@@ -62,6 +63,7 @@ export function DashboardPage() {
       return data
     },
     staleTime: 30_000,
+    enabled: candidateDesk,
   })
   const apply = useMutation({
     mutationFn: (jobId: string) =>
@@ -119,6 +121,8 @@ export function DashboardPage() {
     }
     return list.slice(0, 5)
   }, [matches, sort])
+
+  if (!candidateDesk) return <Navigate to={destinationFor(profile)} replace />
 
   function onComposer(e: FormEvent) {
     e.preventDefault()

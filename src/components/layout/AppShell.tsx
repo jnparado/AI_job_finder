@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bell,
@@ -22,7 +22,7 @@ import { api } from '@/lib/api'
 import { prefetchRoute } from '@/lib/prefetch'
 import { isDrillPath } from '@/lib/nav'
 import { BrandMark } from '@/components/ui/feedback'
-import { displayName } from '@shared/types'
+import { displayName, isStaffRole } from '@shared/types'
 import { cn, initials } from '@/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 
@@ -51,9 +51,10 @@ interface Note {
 }
 
 export function AppShell() {
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, destinationFor } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const hiringDesk = profile.role === 'employer' || isStaffRole(profile.role)
   const name = displayName(profile)
   const [bellOpen, setBellOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -65,6 +66,7 @@ export function AppShell() {
     queryKey: ['notifications'],
     queryFn: () => api<Note[]>('/api/notifications'),
     staleTime: 120_000,
+    enabled: !hiringDesk,
   })
   const noteCount = notes.data?.length ?? 0
 
@@ -98,6 +100,8 @@ export function AppShell() {
       document.removeEventListener('keydown', onKey)
     }
   }, [])
+
+  if (hiringDesk) return <Navigate to={destinationFor(profile)} replace />
 
   return (
     <div className={cn('atelier-app overflow-x-clip', messenger ? 'flex h-svh flex-col overflow-hidden' : 'min-h-svh')}>

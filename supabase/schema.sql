@@ -107,6 +107,7 @@ create table if not exists public.jobs (
   apply_channel text,
   posted_at date,
   analysis jsonb,
+  listing_status text default 'active',
   created_at timestamptz default now()
 );
 
@@ -381,6 +382,12 @@ alter table public.profiles add column if not exists locale text;
 alter table public.profiles add column if not exists identities jsonb default '[]'::jsonb;
 alter table public.profiles add column if not exists social_links jsonb default '{}'::jsonb;
 alter table public.jobs add column if not exists employer_id uuid references public.profiles (id) on delete set null;
+alter table public.jobs add column if not exists listing_status text default 'active';
+alter table public.jobs drop constraint if exists jobs_listing_status_check;
+alter table public.jobs add constraint jobs_listing_status_check check (listing_status in ('active', 'closed'));
+drop policy if exists "employers delete own jobs" on public.jobs;
+create policy "employers delete own jobs" on public.jobs for delete
+  using (employer_id = auth.uid());
 alter table public.applications add column if not exists delivered_to_employer boolean default false;
 
 insert into public.job_sources (id, name, kind, authorized)

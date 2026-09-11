@@ -1,17 +1,19 @@
 import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, MapPin, MessagesSquare, Plus } from 'lucide-react'
-import type { Currency, EmploymentType, Job } from '@shared/types'
+import { ArrowLeft, ArrowRight, MessagesSquare } from 'lucide-react'
+import type { Job } from '@shared/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import { initials, moneyBand, prettyStatus } from '@/lib/utils'
+import { initials, prettyStatus } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Card, Badge, Textarea } from '@/components/ui/card'
+import { Card, Badge } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { HiringEmpty, HiringHero, ReadyMark } from '@/components/employer/HiringChrome'
+import { HiringEmpty, HiringHero } from '@/components/employer/HiringChrome'
 import { PortalHome } from '@/components/employer/PortalHome'
+import { JobsDesk } from '@/components/employer/JobsDesk'
+import { PostJobWizard } from '@/components/employer/PostJobWizard'
 import { PayCandidate } from '@/pages/Finances'
 import { ThreadPanel } from '@/components/messages/ThreadPanel'
 
@@ -98,260 +100,23 @@ export function EmployerDashboardPage() {
 }
 
 export function EmployerJobsPage() {
-  const jobs = useQuery({ queryKey: ['employer-jobs'], queryFn: () => api<Job[]>('/api/employer/jobs') })
-  return (
-    <div className="space-y-6">
-      <HiringHero
-        kicker="Roles"
-        title="Job posts"
-        description="These listings appear in candidate search and can receive applications on Atelier."
-        image="employer-tablet.jpg"
-        imageAlt="Hiring lead reviewing a shortlist"
-        compact
-        actions={
-          <Button variant="copper" asChild>
-            <Link to="/employer/jobs/new">
-              <Plus className="size-4" />
-              Post a job
-            </Link>
-          </Button>
-        }
-      />
-      {jobs.data?.length ? (
-        <div className="space-y-3">
-          {jobs.data.map((job) => (
-            <Card key={job.id} className="transition-colors hover:border-[var(--forest)]">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <Badge>Atelier</Badge>
-                  <h2 className="mt-2 text-2xl text-[var(--forest)]">{job.title}</h2>
-                </div>
-                <p className="rounded-full bg-[#e8efe8] px-3 py-1 text-xs font-medium text-[var(--forest)]">
-                  {typeLabel(job.employmentType)}
-                </p>
-              </div>
-              <p className="mt-2 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="size-3.5" />
-                  {job.location || 'Remote'}
-                </span>
-                {job.salaryMin || job.salaryMax ? (
-                  <>
-                    <span>·</span>
-                    <span>{moneyBand(job.salaryMin, job.salaryMax, job.currency)}</span>
-                  </>
-                ) : null}
-              </p>
-              <p className="mt-3 line-clamp-3 text-sm leading-relaxed">{job.description}</p>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <HiringEmpty
-          title="No roles yet"
-          body="Post a job so matched candidates can apply to you directly on Atelier."
-          actionLabel="Post a job"
-          to="/employer/jobs/new"
-          image="employer-review.jpg"
-        />
-      )}
-    </div>
-  )
+  return <JobsDesk />
 }
 
 export function EmployerPostJobPage() {
-  const { profile } = useAuth()
-  const navigate = useNavigate()
-  const qc = useQueryClient()
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [location, setLocation] = useState('Remote worldwide')
-  const [remote, setRemote] = useState(true)
-  const [employmentType, setEmploymentType] = useState<EmploymentType>('full-time')
-  const [salaryMin, setSalaryMin] = useState(80000)
-  const [salaryMax, setSalaryMax] = useState(120000)
-  const [currency, setCurrency] = useState<Currency>('USD')
-  const [skills, setSkills] = useState('React, TypeScript, Node.js')
-  const [error, setError] = useState('')
-  const company = profile.companyName || 'Your company'
-  const ready = title.trim().length > 2 && description.trim().length >= 40
-  const skillList = skills
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-
-  const post = useMutation({
-    mutationFn: () =>
-      api<Job>('/api/employer/jobs', {
-        method: 'POST',
-        body: JSON.stringify({
-          title,
-          description,
-          location,
-          remote,
-          employmentType,
-          salaryMin,
-          salaryMax,
-          currency,
-          skills,
-        }),
-      }),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['employer-jobs'] })
-      navigate('/employer/jobs', { replace: true })
-    },
-    onError: (err) => setError(err instanceof Error ? err.message : 'Could not post the job.'),
-  })
-
-  return (
-    <div className="space-y-6">
-      <Link to="/employer/jobs" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-4" /> All posts
-      </Link>
-      <HiringHero
-        kicker="New role"
-        title="Post a job"
-        description={`Listed as ${company}. Candidates who match will see this in Jobs. When they approve a packet, it lands in your inbox.`}
-        image="employer-meeting.jpg"
-        imageAlt="Hiring pair reviewing a role"
-        compact
-      />
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(17rem,0.85fr)] lg:items-start">
-        <Card>
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault()
-              setError('')
-              if (!ready) {
-                setError('Add a title and at least 40 characters of description.')
-                return
-              }
-              post.mutate()
-            }}
-          >
-            <label className="block space-y-1.5">
-              <Label>Job title</Label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Full Stack Engineer" required />
-            </label>
-            <label className="block space-y-1.5">
-              <Label>Description</Label>
-              <Textarea
-                className="min-h-40"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="What the role does, the stack, and who should apply."
-                required
-              />
-              <p className={`text-xs ${description.trim().length >= 40 ? 'text-muted-foreground' : 'text-[#8f4326]'}`}>
-                {description.trim().length}/40 characters minimum
-              </p>
-            </label>
-            <label className="block space-y-1.5">
-              <Label>Skills (comma separated)</Label>
-              <Input value={skills} onChange={(e) => setSkills(e.target.value)} />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block space-y-1.5">
-                <Label>Location</Label>
-                <Input value={location} onChange={(e) => setLocation(e.target.value)} />
-              </label>
-              <label className="block space-y-1.5">
-                <Label>Employment</Label>
-                <select
-                  className="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm"
-                  value={employmentType}
-                  onChange={(e) => setEmploymentType(e.target.value as EmploymentType)}
-                >
-                  {['full-time', 'part-time', 'contract', 'freelance'].map((t) => (
-                    <option key={t} value={t}>
-                      {typeLabel(t)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block space-y-1.5">
-                <Label>Salary min</Label>
-                <Input type="number" value={salaryMin} onChange={(e) => setSalaryMin(Number(e.target.value))} />
-              </label>
-              <label className="block space-y-1.5">
-                <Label>Salary max</Label>
-                <Input type="number" value={salaryMax} onChange={(e) => setSalaryMax(Number(e.target.value))} />
-              </label>
-              <label className="block space-y-1.5">
-                <Label>Currency</Label>
-                <select
-                  className="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm"
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value as Currency)}
-                >
-                  {['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'PHP', 'CHF'].map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex items-center gap-2 pt-6 text-sm">
-                <input type="checkbox" checked={remote} onChange={(e) => setRemote(e.target.checked)} />
-                Remote
-              </label>
-            </div>
-            {error ? <p className="text-sm text-[#8f4326]">{error}</p> : null}
-            <Button variant="copper" type="submit" disabled={post.isPending || !ready}>
-              {post.isPending ? 'Publishing…' : 'Publish job'}
-            </Button>
-          </form>
-        </Card>
-        <aside className="space-y-4 lg:sticky lg:top-6">
-          <Card className="overflow-hidden p-0 sm:p-0">
-            <div className="bg-[var(--forest)] px-5 py-4 text-[var(--paper)]">
-              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Candidate preview</p>
-              <h2 className="mt-1 font-serif text-2xl leading-tight">{title.trim() || 'Role title'}</h2>
-              <p className="mt-1 text-sm text-[#d8d0c0]">{company}</p>
-            </div>
-            <div className="space-y-3 p-5">
-              <p className="text-sm text-muted-foreground">
-                {location || 'Remote'} · {typeLabel(employmentType)}
-                {remote ? ' · Remote' : ''}
-              </p>
-              <p className="font-serif text-lg text-[var(--forest)]">{moneyBand(salaryMin, salaryMax, currency)}</p>
-              <p className="line-clamp-5 text-sm leading-relaxed text-muted-foreground">
-                {description.trim() || 'The description will appear here as you write it.'}
-              </p>
-              {skillList.length ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {skillList.slice(0, 8).map((skill) => (
-                    <span key={skill} className="rounded-full bg-[#e8efe8] px-2.5 py-1 text-xs text-[var(--forest)]">
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              <div className="space-y-2 border-t border-border pt-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <ReadyMark ready={title.trim().length > 2} />
-                  Title
-                </div>
-                <div className="flex items-center gap-2">
-                  <ReadyMark ready={description.trim().length >= 40} />
-                  Description
-                </div>
-              </div>
-            </div>
-          </Card>
-        </aside>
-      </div>
-    </div>
-  )
+  return <PostJobWizard />
 }
 
 export function EmployerInboxPage() {
   const [params] = useSearchParams()
   const q = (params.get('q') ?? '').trim().toLowerCase()
+  const jobId = params.get('job') ?? ''
   const inbox = useQuery({
     queryKey: ['employer-inbox'],
     queryFn: () => api<InboxRow[]>('/api/employer/applications'),
   })
   const rows = (inbox.data ?? []).filter((a) => {
+    if (jobId && a.job?.id !== jobId) return false
     if (!q) return true
     const hay = [a.candidateName, a.candidateEmail, a.candidateHeadline, a.job?.title, ...(a.job?.skills ?? [])]
       .filter(Boolean)
@@ -363,7 +128,7 @@ export function EmployerInboxPage() {
     <div className="space-y-6">
       <HiringHero
         kicker="Candidates"
-        title={q ? `Results for “${params.get('q')}”` : 'Applicants'}
+        title={q ? `Results for “${params.get('q')}”` : jobId ? 'Applicants for this role' : 'Applicants'}
         description="Packets candidates approved are delivered here. Mark someone hired to open Atelier time tracker. External board jobs still apply on their official sites."
         image="employer-inbox.jpg"
         imageAlt="Employer reviewing approved packets"
@@ -399,11 +164,13 @@ export function EmployerInboxPage() {
         </div>
       ) : (
         <HiringEmpty
-          title={q ? 'No matches' : 'Inbox is empty'}
+          title={q || jobId ? 'No matches' : 'Inbox is empty'}
           body={
             q
               ? 'Nothing in your inbox matches that search.'
-              : 'When a candidate applies to one of your Atelier jobs and approves the packet, it appears here.'
+              : jobId
+                ? 'No approved packets for this role yet.'
+                : 'When a candidate applies to one of your Atelier jobs and approves the packet, it appears here.'
           }
           actionLabel="Post a job"
           to="/employer/jobs/new"
@@ -597,6 +364,15 @@ export function EmployerSettingsPage() {
       <Card className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2>Contracts</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Hired roles, hours, and pay on Atelier.</p>
+        </div>
+        <Link to="/employer/contracts" className="text-sm font-medium text-[#147a48]">
+          Open contracts
+        </Link>
+      </Card>
+      <Card className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2>Time tracker</h2>
           <p className="mt-1 text-sm text-muted-foreground">Hours hired candidates log after you mark them hired.</p>
         </div>
         <Link to="/employer/ateliar" className="text-sm font-medium text-[#147a48]">
@@ -605,8 +381,4 @@ export function EmployerSettingsPage() {
       </Card>
     </div>
   )
-}
-
-function typeLabel(value?: string) {
-  return (value || 'full-time').replaceAll('-', ' ')
 }

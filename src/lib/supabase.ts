@@ -22,11 +22,41 @@ export const supabase: SupabaseClient | null = supabaseConfigured
 
 const INTENDED_ROLE_KEY = 'atelier-intended-role'
 const INTENDED_COMPANY_KEY = 'atelier-intended-company'
+const LAST_ROLE_KEY = 'atelier-last-role'
 
 export function rememberIntendedAccount(role: 'candidate' | 'employer', companyName = '') {
   sessionStorage.setItem(INTENDED_ROLE_KEY, role)
   if (role === 'employer' && companyName) sessionStorage.setItem(INTENDED_COMPANY_KEY, companyName)
   else sessionStorage.removeItem(INTENDED_COMPANY_KEY)
+}
+
+export function peekIntendedRole(): 'candidate' | 'employer' | null {
+  try {
+    const role = sessionStorage.getItem(INTENDED_ROLE_KEY)
+    if (role === 'employer' || role === 'candidate') return role
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+export function rememberLastRole(role?: string) {
+  if (!role) return
+  try {
+    localStorage.setItem(LAST_ROLE_KEY, role)
+  } catch {
+    /* ignore */
+  }
+}
+
+export function lastAccountRole(): 'candidate' | 'employer' | 'admin' | 'super_admin' | null {
+  try {
+    const role = localStorage.getItem(LAST_ROLE_KEY)
+    if (role === 'employer' || role === 'candidate' || role === 'admin' || role === 'super_admin') return role
+  } catch {
+    /* ignore */
+  }
+  return null
 }
 
 export function takeIntendedAccount(): { role: 'candidate' | 'employer'; companyName: string } {

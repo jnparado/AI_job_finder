@@ -50,6 +50,7 @@ const FinancesPage = lazyNamed(() => import('@/pages/Finances'), 'FinancesPage')
 const AteliarPage = lazyNamed(() => import('@/pages/Ateliar'), 'AteliarPage')
 const EmployerApplicationPage = lazyNamed(() => import('@/pages/Employer'), 'EmployerApplicationPage')
 const EmployerCompanyPage = lazyNamed(() => import('@/pages/Employer'), 'EmployerCompanyPage')
+const EmployerContractsPage = lazyNamed(() => import('@/pages/EmployerContracts'), 'EmployerContractsPage')
 const EmployerDashboardPage = lazyNamed(() => import('@/pages/Employer'), 'EmployerDashboardPage')
 const EmployerInboxPage = lazyNamed(() => import('@/pages/Employer'), 'EmployerInboxPage')
 const EmployerJobsPage = lazyNamed(() => import('@/pages/Employer'), 'EmployerJobsPage')
@@ -124,11 +125,13 @@ export default function App() {
                   <Route index element={<EmployerDashboardPage />} />
                   <Route path="jobs" element={<EmployerJobsPage />} />
                   <Route path="jobs/new" element={<EmployerPostJobPage />} />
+                  <Route path="jobs/:id/edit" element={<EmployerPostJobPage />} />
                   <Route path="inbox" element={<EmployerInboxPage />} />
                   <Route path="inbox/:id" element={<EmployerApplicationPage />} />
                   <Route path="messages" element={<EmployerMessagesPage />} />
                   <Route path="messages/:id" element={<EmployerThreadPage />} />
                   <Route path="finances" element={<FinancesPage />} />
+                  <Route path="contracts" element={<EmployerContractsPage />} />
                   <Route path="ateliar" element={<AteliarPage />} />
                   <Route path="company" element={<EmployerCompanyPage />} />
                   <Route path="settings" element={<EmployerSettingsPage />} />

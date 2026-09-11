@@ -90,6 +90,9 @@ export const memory = {
   getJob(id: string) {
     return jobs.get(id)
   },
+  removeJob(id: string) {
+    jobs.delete(id)
+  },
   allJobs() {
     return [...jobs.values()]
   },

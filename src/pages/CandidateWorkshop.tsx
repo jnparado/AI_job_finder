@@ -11,7 +11,8 @@ import { useAuth } from '@/lib/auth'
 import { rememberIntendedAccount } from '@/lib/supabase'
 import { warmCandidateDesk } from '@/lib/prefetch'
 import { SocialAuth } from '@/components/social/SocialAuth'
-import { cn } from '@/lib/utils'
+import { cn, compactPay } from '@/lib/utils'
+import { currencyForLocation } from '@/lib/countries'
 
 const TOTAL = 20
 const DRAFT_KEY = 'atelier-workshop-draft'
@@ -46,14 +47,21 @@ const YEAR_BANDS: { label: string; years: number; level: CareerLevel }[] = [
   { label: '13 years or more', years: 15, level: 'lead' },
 ]
 
-const PAY_BANDS: { label: string; min: number; desired: number }[] = [
-  { label: 'Under $50k', min: 40000, desired: 50000 },
-  { label: '$50k–$80k', min: 50000, desired: 80000 },
-  { label: '$80k–$110k', min: 80000, desired: 110000 },
-  { label: '$110k–$150k', min: 110000, desired: 150000 },
-  { label: '$150k and up', min: 150000, desired: 180000 },
-  { label: 'I will set this later', min: 80000, desired: 120000 },
+const PAY_BANDS: { min: number; desired: number; later?: boolean; under?: boolean; up?: boolean }[] = [
+  { min: 40000, desired: 50000, under: true },
+  { min: 50000, desired: 80000 },
+  { min: 80000, desired: 110000 },
+  { min: 110000, desired: 150000 },
+  { min: 150000, desired: 180000, up: true },
+  { min: 80000, desired: 120000, later: true },
 ]
+
+function payBandLabel(band: (typeof PAY_BANDS)[number], currency: Currency) {
+  if (band.later) return 'I will set this later'
+  if (band.under) return `Under ${compactPay(band.desired, currency)}`
+  if (band.up) return `${compactPay(band.min, currency)} and up`
+  return `${compactPay(band.min, currency)}–${compactPay(band.desired, currency)}`
+}
 
 type Draft = {
   workshop: WorkshopNotes
@@ -146,7 +154,7 @@ function toProfile(draft: Draft, base: CandidateProfile): CandidateProfile {
 }
 
 export function CandidateWorkshop() {
-  const { user, demo, profile, saveProfile, signUpEmail, configured, destinationFor, loading } = useAuth()
+  const { user, demo, profile, saveProfile, signUpEmail, configured, destinationFor, loading, ready } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const signedIn = Boolean(user || demo)
@@ -168,7 +176,7 @@ export function CandidateWorkshop() {
     sessionStorage.setItem(STEP_KEY, String(step))
   }, [d, step])
 
-  if (loading) return <LoadingScreen label="Opening sign up…" />
+  if (loading || (signedIn && !ready)) return <LoadingScreen label="Opening sign up…" />
   if (signedIn) return <Navigate to={destinationFor(profile)} replace />
 
   function patch(next: Partial<Draft>) {
@@ -522,7 +530,10 @@ export function CandidateWorkshop() {
             <Ask title="What pay floor should we respect?">
               <Choices
                 value={`${d.salaryMin}-${d.salaryDesired}`}
-                options={PAY_BANDS.map((b) => ({ value: `${b.min}-${b.desired}`, label: b.label }))}
+                options={PAY_BANDS.map((b) => ({
+                  value: `${b.min}-${b.desired}`,
+                  label: payBandLabel(b, d.currency),
+                }))}
                 onPick={(v) => {
                   const band = PAY_BANDS.find((b) => `${b.min}-${b.desired}` === v)
                   pickAndGo(() => patch({ salaryMin: band?.min ?? 80000, salaryDesired: band?.desired ?? 120000 }))
@@ -537,7 +548,11 @@ export function CandidateWorkshop() {
                 multi
                 value={d.locations}
                 options={['Remote worldwide', 'United States', 'Canada', 'Europe', 'Philippines', 'Australia', 'United Kingdom']}
-                onToggle={(v) => patch({ locations: toggle(d.locations, v) })}
+                onToggle={(v) => {
+                  const locations = toggle(d.locations, v)
+                  const fromPlace = currencyForLocation(v, d.currency)
+                  patch({ locations, currency: fromPlace ?? d.currency })
+                }}
               />
               <Continue disabled={!d.locations.length} onClick={() => go(17)} />
             </Ask>
@@ -587,7 +602,7 @@ export function CandidateWorkshop() {
 
           {step === 19 ? (
             <Ask title="Where are you based?">
-              <CountrySelect value={d.country} onChange={(country) => patch({ country })} />
+              <CountrySelect value={d.country} onChange={(country) => patch({ country, currency: currencyForLocation(country, d.currency) ?? d.currency })} />
               <Input className="mt-3 h-12 rounded-2xl" placeholder="City (optional)" value={d.city} onChange={(e) => patch({ city: e.target.value })} />
               <Continue disabled={!d.country.trim()} onClick={() => go(20)} />
             </Ask>

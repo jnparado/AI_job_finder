@@ -13,6 +13,8 @@ import { SocialAuth } from '@/components/social/SocialAuth'
 import { SocialConnectForm } from '@/components/social/SocialConnectForm'
 import { SocialShare } from '@/components/social/SocialLinks'
 import type { Currency } from '@shared/types'
+import { currencyForLocation } from '@/lib/countries'
+import { money, payCodeLabel } from '@/lib/utils'
 
 interface Settings {
   enabled: boolean
@@ -167,15 +169,17 @@ function PayFloorCard() {
   const { profile, saveProfile } = useAuth()
   const [floor, setFloor] = useState(String(profile.salaryMin || 80000))
   const [desired, setDesired] = useState(String(profile.salaryDesired || 120000))
-  const [currency, setCurrency] = useState<Currency>('PHP')
+  const [currency, setCurrency] = useState<Currency>(
+    () => currencyForLocation(profile.country, profile.currency) ?? profile.currency ?? 'PHP',
+  )
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     setFloor(String(profile.salaryMin || 80000))
     setDesired(String(profile.salaryDesired || 120000))
-    setCurrency('PHP')
-  }, [profile.salaryMin, profile.salaryDesired])
+    setCurrency(currencyForLocation(profile.country, profile.currency) ?? profile.currency ?? 'PHP')
+  }, [profile.salaryMin, profile.salaryDesired, profile.currency, profile.country])
 
   async function onSave() {
     setNote('')
@@ -199,7 +203,10 @@ function PayFloorCard() {
       <div>
         <h2>Pay floor</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          The matcher respects this peso floor. Change the amount if ₱80,000 is not your real minimum.
+          The matcher respects this floor in {payCodeLabel(currency)}.{' '}
+          {currency === 'PHP'
+            ? `Change the amount if ${money(80000, 'PHP')} is not your real minimum.`
+            : `Amounts stay in ${payCodeLabel(currency)} — they are not converted.`}
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -212,7 +219,7 @@ function PayFloorCard() {
           >
             {PAY_CURRENCIES.map((code) => (
               <option key={code} value={code}>
-                {code}
+                {payCodeLabel(code)}
               </option>
             ))}
           </select>

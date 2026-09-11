@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { BrandMark } from '@/components/ui/feedback'
 import { useAuth } from '@/lib/auth'
-import { rememberIntendedAccount, supabase, takeIntendedAccount, upsertOwnProfile } from '@/lib/supabase'
+import { rememberIntendedAccount, rememberLastRole, supabase, takeIntendedAccount, upsertOwnProfile } from '@/lib/supabase'
 import { authHero, brandSrc, localBrandPath } from '@/lib/brandAssets'
 import { emptyProfile, isStaffRole, sourceLabel } from '@shared/types'
 import type { CandidateProfile } from '@shared/types'
@@ -16,15 +16,26 @@ import { SocialAuth } from '@/components/social/SocialAuth'
 import { api } from '@/lib/api'
 import { identityFromUser } from '@/lib/identity'
 import { CandidateWorkshop } from '@/pages/CandidateWorkshop'
-import { prefetchRoute, warmCandidateDesk } from '@/lib/prefetch'
+import { prefetchRoute, warmCandidateDesk, warmEmployerDesk } from '@/lib/prefetch'
 
 const REMEMBER_KEY = 'atelier-remember-email'
+
+function homeAfterSignIn(
+  hiring: boolean,
+  profile: CandidateProfile,
+  destinationFor: (p?: CandidateProfile) => string,
+) {
+  const dest = destinationFor(profile)
+  if (dest === '/admin') return dest
+  if (hiring && !dest.startsWith('/employer')) return '/employer'
+  return dest
+}
 
 export function LoginPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [params] = useSearchParams()
-  const { signInEmail, signInDemo, configured, destinationFor, user, demo, loading } = useAuth()
+  const { signInEmail, signInDemo, configured, destinationFor, user, demo, loading, ready, profile } = useAuth()
   const role: 'candidate' | 'employer' = params.get('role') === 'employer' ? 'employer' : 'candidate'
   const hiring = role === 'employer'
   const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_KEY) ?? '')
@@ -36,15 +47,18 @@ export function LoginPage() {
 
   useEffect(() => {
     rememberIntendedAccount(role)
-  }, [role])
+    if (hiring) prefetchRoute('/employer')
+    else prefetchRoute('/app')
+  }, [hiring, role])
 
   useEffect(() => {
-    if (!hiring) prefetchRoute('/app')
-  }, [hiring])
-
-  useEffect(() => {
-    if (!loading && (user || demo)) navigate(destinationFor(), { replace: true })
-  }, [loading, user, demo, destinationFor, navigate])
+    if (!loading && ready && (user || demo)) {
+      const dest = homeAfterSignIn(hiring, profile, destinationFor)
+      if (dest.startsWith('/employer') || dest === '/admin') warmEmployerDesk(qc)
+      else if (!hiring) warmCandidateDesk(qc)
+      navigate(dest, { replace: true })
+    }
+  }, [loading, ready, user, demo, destinationFor, navigate, profile, hiring, qc])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -53,9 +67,12 @@ export function LoginPage() {
     try {
       if (remember) localStorage.setItem(REMEMBER_KEY, email.trim().toLowerCase())
       else localStorage.removeItem(REMEMBER_KEY)
+      if (hiring) rememberLastRole('employer')
+      rememberIntendedAccount(role)
       const profile = await signInEmail(email, password)
-      const dest = destinationFor(profile)
-      if (dest === '/app') warmCandidateDesk(qc)
+      const dest = homeAfterSignIn(hiring, profile, destinationFor)
+      if (dest.startsWith('/employer') || dest === '/admin') warmEmployerDesk(qc)
+      else warmCandidateDesk(qc)
       navigate(dest, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign in.')
@@ -161,7 +178,7 @@ export function RegisterPage() {
 function EmployerRegisterPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { signUpEmail, configured, destinationFor, user, loading } = useAuth()
+  const { signUpEmail, configured, destinationFor, user, loading, ready, profile } = useAuth()
   const invitedCompany = (params.get('company') ?? '').trim()
   const invitedFrom = params.get('from') ?? ''
   const invitedListing = (params.get('listing') ?? '').trim()
@@ -178,8 +195,8 @@ function EmployerRegisterPage() {
   }, [role, companyName])
 
   useEffect(() => {
-    if (!loading && user) navigate(destinationFor(), { replace: true })
-  }, [loading, user, destinationFor, navigate])
+    if (!loading && ready && user) navigate(destinationFor(profile), { replace: true })
+  }, [loading, ready, user, destinationFor, profile, navigate])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -405,10 +422,10 @@ export function ResetPasswordPage() {
 
 export function VerifyPage() {
   const navigate = useNavigate()
-  const { user, loading, destinationFor } = useAuth()
+  const { user, loading, ready, destinationFor, profile } = useAuth()
   useEffect(() => {
-    if (!loading && user) navigate(destinationFor(), { replace: true })
-  }, [loading, user, destinationFor, navigate])
+    if (!loading && ready && user) navigate(destinationFor(profile), { replace: true })
+  }, [loading, ready, user, destinationFor, profile, navigate])
   return (
     <AuthFrame role="candidate" mode="login" title="Confirm your email" subtitle="We sent a confirmation link to the address you used.">
       <p className="text-sm leading-relaxed text-muted-foreground">
@@ -492,7 +509,8 @@ export function CallbackPage() {
           }
           if (!cancelled) {
             const dest = recovery ? '/auth/reset' : destinationFor(profile)
-            if (dest === '/app') warmCandidateDesk(qc)
+            if (dest.startsWith('/employer') || dest === '/admin') warmEmployerDesk(qc)
+            else if (dest === '/app') warmCandidateDesk(qc)
             navigate(dest, { replace: true })
           }
           return

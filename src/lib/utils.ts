@@ -1,38 +1,86 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import type { Currency } from '@shared/types'
+import { currencyForLocation } from './countries'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function salaryCurrency(currency = 'PHP'): string {
-  const code = (currency || 'PHP').toUpperCase()
+export function salaryCurrency(currency = 'PHP'): Currency {
+  const raw = String(currency || 'PHP').trim()
+  const fromPlace = currencyForLocation(raw)
+  if (fromPlace) return fromPlace
+  const code = raw.toUpperCase().replace(/[\s-]+/g, '')
+  if (code === 'PHP' || code.includes('PESO') || raw.includes('₱')) return 'PHP'
+  if (code === 'EUR' || raw.includes('€')) return 'EUR'
+  if (code === 'GBP' || raw.includes('£')) return 'GBP'
+  if (code === 'CAD') return 'CAD'
+  if (code === 'AUD') return 'AUD'
+  if (code === 'CHF') return 'CHF'
+  if (code === 'USD' || raw.includes('$')) return 'USD'
   try {
-    Intl.NumberFormat('en-PH', { style: 'currency', currency: code }).format(0)
-    return code
+    Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(0)
+    if (code === 'PHP' || code === 'USD' || code === 'EUR' || code === 'GBP' || code === 'CAD' || code === 'AUD' || code === 'CHF') {
+      return code
+    }
   } catch {
-    return 'PHP'
+    /* fallback */
   }
+  return 'PHP'
+}
+
+export function paySymbol(currency = 'PHP'): string {
+  const code = salaryCurrency(currency)
+  if (code === 'PHP') return '₱'
+  if (code === 'EUR') return '€'
+  if (code === 'GBP') return '£'
+  if (code === 'CHF') return 'CHF '
+  if (code === 'CAD') return 'CA$'
+  if (code === 'AUD') return 'A$'
+  return '$'
+}
+
+export function payCodeLabel(currency = 'PHP'): string {
+  const code = salaryCurrency(currency)
+  if (code === 'PHP') return 'PHP · peso'
+  if (code === 'USD') return 'USD'
+  if (code === 'EUR') return 'EUR'
+  if (code === 'GBP') return 'GBP'
+  if (code === 'CAD') return 'CAD'
+  if (code === 'AUD') return 'AUD'
+  return 'CHF'
 }
 
 export function money(n?: number, currency = 'PHP'): string {
   if (n == null) return '—'
   const code = salaryCurrency(currency)
-  return new Intl.NumberFormat(code === 'PHP' ? 'en-PH' : 'en-US', {
-    style: 'currency',
-    currency: code,
-    maximumFractionDigits: 0,
-  }).format(n)
+  const amount = Math.round(n).toLocaleString(code === 'PHP' ? 'en-PH' : 'en-US')
+  if (code === 'PHP') return `₱${amount}`
+  if (code === 'EUR') return `€${amount}`
+  if (code === 'GBP') return `£${amount}`
+  if (code === 'CHF') return `CHF ${amount}`
+  if (code === 'CAD') return `CA$${amount}`
+  if (code === 'AUD') return `A$${amount}`
+  return `$${amount}`
 }
 
 export function salaryMoney(n?: number, currency = 'PHP'): string {
   return money(n, salaryCurrency(currency || 'PHP'))
 }
 
+export function compactPay(n: number, currency = 'USD'): string {
+  const code = salaryCurrency(currency)
+  const abs = Math.abs(n)
+  const amount = abs >= 1000 ? `${Math.round(abs / 1000)}k` : String(Math.round(abs))
+  if (code === 'CHF') return `CHF ${amount}`
+  return `${paySymbol(code)}${amount}`
+}
+
 export function moneyBand(min?: number, max?: number, currency = 'USD'): string {
   if (min == null || max == null) return 'Salary not posted'
-  const fmt = (v: number) => `$${Math.round(v / 1000)}k`
-  return `${fmt(min)}–${fmt(max)} ${currency === 'USD' ? '' : currency}`.trim()
+  const code = salaryCurrency(currency)
+  return `${compactPay(min, code)}–${compactPay(max, code)}`
 }
 
 export function greeting(): string {

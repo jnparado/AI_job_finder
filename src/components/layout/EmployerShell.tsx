@@ -36,7 +36,7 @@ const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean; badge
   { to: '/employer/jobs', label: 'My Jobs', icon: Briefcase, end: true },
   { to: '/employer/inbox', label: 'Applicants', icon: Users, badge: 'inbox' },
   { to: '/employer/messages', label: 'Messages', icon: MessagesSquare, badge: 'messages' },
-  { to: '/employer/ateliar', label: 'Contracts', icon: FileCheck },
+  { to: '/employer/contracts', label: 'Contracts', icon: FileCheck },
   { to: '/employer/finances', label: 'Payments', icon: Wallet },
   { to: '/employer/company', label: 'Company Profile', icon: Building2 },
   { to: '/employer/settings', label: 'Settings', icon: Settings },
@@ -96,7 +96,13 @@ export function EmployerShell() {
   function onSearch(e: FormEvent) {
     e.preventDefault()
     const q = query.trim()
-    navigate(q ? `/employer/inbox?q=${encodeURIComponent(q)}` : '/employer/inbox')
+    if (!q) {
+      navigate('/employer/inbox')
+    } else if (/^con-/i.test(q) || /contract/i.test(q)) {
+      navigate(`/employer/contracts`)
+    } else {
+      navigate(`/employer/inbox?q=${encodeURIComponent(q)}`)
+    }
     setOpen(false)
   }
 
@@ -238,7 +244,7 @@ export function EmployerShell() {
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search candidates, skills, or job titles…"
+              placeholder="Search candidates, jobs, or contracts…"
               className="h-11 w-full rounded-full border border-[#e4ebe6] bg-[#f4f7f5] pl-10 pr-12 text-sm outline-none placeholder:text-muted-foreground/80 focus:border-[#147a48] focus:bg-white"
             />
             <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#d7ddd8] bg-white px-1.5 text-[0.65rem] font-medium text-muted-foreground sm:inline">

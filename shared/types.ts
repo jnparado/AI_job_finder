@@ -58,6 +58,7 @@ export interface Job {
   postedAt?: string
   canonicalKey?: string
   employerId?: string
+  listingStatus?: 'active' | 'closed'
 }
 
 export interface ExperienceEntry {

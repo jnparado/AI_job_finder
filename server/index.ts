@@ -7,7 +7,7 @@ import { canonicalKey, normalizeAndDedupe } from '../shared/engine/normalize'
 import { configuredProviders, discoverJobs } from './discover'
 import { coachInterview, enrichMatches, planSearch, strategizeCareer, writePacket } from './agents'
 import { routerStatus } from './ai'
-import { asJob, inferSeniority } from '../shared/engine/jobFields'
+import { asJob, inferSeniority, isOpenListing } from '../shared/engine/jobFields'
 import type {
   CandidateProfile,
   Currency,
@@ -560,10 +560,13 @@ async function saveProfile(user: AuthUser, profile: CandidateProfile) {
   return profile
 }
 
+let listingStatusColumn: boolean | null = null
+
 async function persistJobs(jobs: ReturnType<typeof normalizeAndDedupe>['jobs']) {
   liveJobsCache = null
   memory.setJobs(jobs)
   if (!supabaseAdmin) return
+  const includeListing = listingStatusColumn !== false
   const rows = jobs.map((job) => ({
     id: job.id,
     source: job.source,
@@ -587,20 +590,80 @@ async function persistJobs(jobs: ReturnType<typeof normalizeAndDedupe>['jobs']) 
     apply_channel: job.applyChannel,
     posted_at: job.postedAt,
     employer_id: job.employerId ?? null,
+    ...(includeListing ? { listing_status: job.listingStatus ?? 'active' } : {}),
   }))
   try {
     for (let i = 0; i < rows.length; i += 40) {
-      const { error } = await supabaseAdmin.from('jobs').upsert(rows.slice(i, i + 40))
-      if (error && /employer_id/.test(error.message)) {
-        const stripped = rows.slice(i, i + 40).map(({ employer_id: _e, ...rest }) => rest)
-        await supabaseAdmin.from('jobs').upsert(stripped)
-      } else if (error) {
+      const chunk = rows.slice(i, i + 40)
+      const jobsChunk = jobs.slice(i, i + 40)
+      const { error } = await supabaseAdmin.from('jobs').upsert(chunk)
+      if (!error) {
+        if (includeListing) listingStatusColumn = true
+        continue
+      }
+      let next = chunk
+      let storeListingInAnalysis = false
+      if (/employer_id/.test(error.message)) {
+        next = next.map(({ employer_id: _e, ...rest }) => rest)
+      }
+      if (/listing_status/.test(error.message)) {
+        listingStatusColumn = false
+        next = next.map(({ listing_status: _s, ...rest }) => rest)
+        storeListingInAnalysis = true
+      }
+      if (next === chunk) {
         console.warn('persistJobs', error.message)
+        continue
+      }
+      const { error: err2 } = await supabaseAdmin.from('jobs').upsert(next)
+      if (err2) {
+        let retry = next
+        if (/employer_id/.test(err2.message)) retry = retry.map(({ employer_id: _e, ...rest }) => rest)
+        if (/listing_status/.test(err2.message)) {
+          listingStatusColumn = false
+          retry = retry.map(({ listing_status: _s, ...rest }) => rest)
+          storeListingInAnalysis = true
+        }
+        if (retry === next) {
+          console.warn('persistJobs', err2.message)
+        } else {
+          const { error: err3 } = await supabaseAdmin.from('jobs').upsert(retry)
+          if (err3) console.warn('persistJobs', err3.message)
+        }
+      }
+      if (storeListingInAnalysis) {
+        for (const job of jobsChunk) {
+          if (job.listingStatus === 'closed') await mergeListingStatusAnalysis(job.id, 'closed')
+        }
       }
     }
   } catch (err) {
     console.warn('persistJobs', err)
   }
+}
+
+async function mergeListingStatusAnalysis(id: string, listingStatus: 'active' | 'closed') {
+  if (!supabaseAdmin) return
+  const { data } = await supabaseAdmin.from('jobs').select('analysis').eq('id', id).maybeSingle()
+  const prev =
+    data?.analysis && typeof data.analysis === 'object' && !Array.isArray(data.analysis)
+      ? (data.analysis as Record<string, unknown>)
+      : {}
+  const { error } = await supabaseAdmin.from('jobs').update({ analysis: { ...prev, listingStatus } }).eq('id', id)
+  if (error) console.warn('mergeListingStatusAnalysis', error.message)
+}
+
+function listingFromRow(row: Record<string, unknown>): 'active' | 'closed' {
+  const col = String(row.listing_status ?? '').trim().toLowerCase()
+  if (col === 'closed' || col === 'active') return col
+  const analysis = row.analysis
+  if (analysis && typeof analysis === 'object' && !Array.isArray(analysis)) {
+    const nested = String((analysis as Record<string, unknown>).listingStatus ?? '')
+      .trim()
+      .toLowerCase()
+    if (nested === 'closed' || nested === 'active') return nested
+  }
+  return 'active'
 }
 
 function jobFromRow(row: Record<string, unknown>): Job {
@@ -630,6 +693,7 @@ function jobFromRow(row: Record<string, unknown>): Job {
     postedAt: row.posted_at ? String(row.posted_at).slice(0, 10) : undefined,
     canonicalKey: row.canonical_key ? String(row.canonical_key) : undefined,
     employerId: row.employer_id ? String(row.employer_id) : undefined,
+    listingStatus: listingFromRow(row),
   })
 }
 
@@ -874,7 +938,7 @@ async function scoreReadyJobs(user: AuthUser): Promise<JobMatch[]> {
 }
 
 async function scoreReadyJobsFresh(user: AuthUser): Promise<JobMatch[]> {
-  const fallbackJobs = user.id === DEMO_USER ? memory.allJobs() : memory.atelierJobs()
+  const fallbackJobs = (user.id === DEMO_USER ? memory.allJobs() : memory.atelierJobs()).filter(isOpenListing)
   const [profile, live] = await Promise.all([
     loadProfile(user),
     Promise.race([
@@ -892,7 +956,7 @@ async function scoreReadyJobsFresh(user: AuthUser): Promise<JobMatch[]> {
   }
   for (const job of memory.atelierJobs()) byId.set(job.id, job)
   for (const match of memory.getMatches(user.id)) byId.set(match.job.id, match.job)
-  const jobs = [...byId.values()].filter((job) => job.title && job.company)
+  const jobs = [...byId.values()].filter((job) => job.title && job.company && isOpenListing(job))
   memory.setJobs(jobs)
   const scored = matchJobs(jobs, profile)
   const prev = new Map(memory.getMatches(user.id).map((row) => [row.job.id, row]))
@@ -924,7 +988,7 @@ async function runSearch(user: AuthUser, minMatch = 0, maxJobs = 40) {
     new Promise<{ query: string }>((resolve) => setTimeout(() => resolve({ query: fallback }), 1200)),
   ])
   const discovered = await discoverJobs(profile, { query: planned.query || fallback, deadlineMs: 7000 })
-  const posted = memory.atelierJobs()
+  const posted = memory.atelierJobs().filter(isOpenListing)
   const parsedJobs = [...posted, ...discovered.jobs]
   const { jobs, duplicatesRemoved } = normalizeAndDedupe(parsedJobs)
   await persistJobs(jobs)
@@ -1366,6 +1430,7 @@ async function createDraftPacket(
   const stored = (await ensureJob(jobId)) ?? JOB_CATALOG.find((row) => row.id === jobId)
   if (!stored) return { error: 'Job not found.', status: 404 }
   const job = asJob(stored)
+  if (!isOpenListing(job)) return { error: 'This listing is closed.', status: 400 }
   await persistJobs([job])
   const match = findMatch(userId, jobId, profile)
   if (!match) return { error: 'Could not score this role for the candidate.', status: 400 }
@@ -1511,6 +1576,7 @@ app.post('/api/applications/:id/approve', async (c) => {
   const profile = await loadProfile(user)
   const match = findMatch(user.id, row.jobId, profile)
   const job = match?.job ?? memory.getJob(row.jobId)
+  if (job && !isOpenListing(job)) return c.json({ error: 'This listing is closed.' }, 400)
   const direct = isEmployerJob(job)
   row.authorized = true
   row.status = 'submitted'
@@ -1674,6 +1740,112 @@ app.get('/api/employer/jobs', async (c) => {
   return c.json(await loadEmployerJobs(user.id))
 })
 
+app.get('/api/employer/jobs/:id', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+  const id = c.req.param('id')
+  const job = (await loadEmployerJobs(user.id)).find((row) => row.id === id)
+  if (!job) return c.json({ error: 'Job not found.' }, 404)
+  return c.json(job)
+})
+
+app.patch('/api/employer/jobs/:id', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+  const id = c.req.param('id')
+  const current = (await loadEmployerJobs(user.id)).find((row) => row.id === id)
+  if (!current) return c.json({ error: 'Job not found.' }, 404)
+  const body = (await c.req.json().catch(() => ({}))) as Partial<{
+    title: string
+    description: string
+    location: string
+    remote: boolean
+    employmentType: EmploymentType
+    salaryMin: number
+    salaryMax: number
+    currency: Currency
+    skills: string[] | string
+    requiredExperience: number
+    seniority: Job['seniority']
+    listingStatus: 'active' | 'closed'
+  }>
+  if (body.listingStatus != null && body.listingStatus !== 'active' && body.listingStatus !== 'closed') {
+    return c.json({ error: 'Use listingStatus active or closed.' }, 400)
+  }
+  const title = body.title != null ? String(body.title).trim() : current.title
+  const description = body.description != null ? String(body.description).trim() : current.description
+  if (!title || description.length < 40) {
+    return c.json({ error: 'Add a title and a description of at least 40 characters.' }, 400)
+  }
+  const skills = body.skills != null ? parseJobSkills(body.skills) : current.skills
+  const salaryMin =
+    body.salaryMin !== undefined
+      ? Number.isFinite(body.salaryMin) && body.salaryMin > 0
+        ? body.salaryMin
+        : undefined
+      : current.salaryMin
+  const salaryMax =
+    body.salaryMax !== undefined
+      ? Number.isFinite(body.salaryMax) && body.salaryMax > 0
+        ? body.salaryMax
+        : undefined
+      : current.salaryMax
+  const next = asJob({
+    ...current,
+    title,
+    description,
+    location: body.location != null ? String(body.location) : current.location,
+    remote: body.remote != null ? Boolean(body.remote) : current.remote,
+    employmentType: body.employmentType ?? current.employmentType,
+    salaryMin,
+    salaryMax,
+    currency: body.currency ?? current.currency,
+    skills,
+    requiredSkills: body.skills != null ? skills : current.requiredSkills,
+    requiredExperience:
+      body.requiredExperience !== undefined ? Number(body.requiredExperience) || undefined : current.requiredExperience,
+    seniority: body.seniority ?? current.seniority,
+    listingStatus: body.listingStatus ?? current.listingStatus ?? 'active',
+  })
+  await persistJobs([next])
+  return c.json(next)
+})
+
+app.delete('/api/employer/jobs/:id', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+  const id = c.req.param('id')
+  const current = (await loadEmployerJobs(user.id)).find((row) => row.id === id)
+  if (!current) return c.json({ error: 'Job not found.' }, 404)
+  let applicantCount = memory.allApplications().filter((row) => row.jobId === id).length
+  if (supabaseAdmin) {
+    const { count, error } = await supabaseAdmin
+      .from('applications')
+      .select('id', { count: 'exact', head: true })
+      .eq('job_id', id)
+    if (error) console.warn('delete job applicants', error.message)
+    applicantCount = Math.max(applicantCount, count ?? 0)
+  }
+  if (applicantCount > 0) {
+    return c.json({ error: 'This role has applicants. Close the listing instead of deleting it.' }, 409)
+  }
+  if (supabaseAdmin) {
+    await supabaseAdmin.from('job_matches').delete().eq('job_id', id)
+    await supabaseAdmin.from('job_listings').delete().eq('job_id', id)
+    const { error } = await supabaseAdmin.from('jobs').delete().eq('id', id)
+    if (error) return c.json({ error: error.message }, 400)
+  }
+  memory.removeJob(id)
+  liveJobsCache = null
+  return c.json({ ok: true })
+})
+
 app.post('/api/employer/jobs', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
@@ -1750,6 +1922,7 @@ function makeAtelierJob(input: {
       postedAt: new Date().toISOString().slice(0, 10),
       employerId: input.employerId,
       canonicalKey: canonicalKey({ company, title }),
+      listingStatus: 'active',
     }),
   }
 }
@@ -2347,11 +2520,11 @@ async function loadLiveJobs(): Promise<Job[]> {
 
 async function loadCandidateJobs(): Promise<Job[]> {
   if (liveJobsCache && Date.now() - liveJobsCache.at < LIVE_JOBS_TTL_MS) return liveJobsCache.jobs
-  if (!supabaseAdmin) return memory.atelierJobs()
+  if (!supabaseAdmin) return memory.atelierJobs().filter(isOpenListing)
   const { data, error } = await supabaseAdmin
     .from('jobs')
     .select(
-      'id, source, source_job_id, title, company, description, location, remote, employment_type, salary_min, salary_max, currency, skills, required_skills, preferred_skills, required_experience, seniority, application_url, apply_channel, posted_at, employer_id, canonical_key',
+      'id, source, source_job_id, title, company, description, location, remote, employment_type, salary_min, salary_max, currency, skills, required_skills, preferred_skills, required_experience, seniority, application_url, apply_channel, posted_at, employer_id, canonical_key, analysis',
     )
     .order('posted_at', { ascending: false })
     .limit(80)
@@ -2359,7 +2532,7 @@ async function loadCandidateJobs(): Promise<Job[]> {
     console.warn('loadCandidateJobs', error.message)
     return memory.atelierJobs()
   }
-  const jobs = (data ?? []).map((row) => jobFromRow(row as Record<string, unknown>))
+  const jobs = (data ?? []).map((row) => jobFromRow(row as Record<string, unknown>)).filter(isOpenListing)
   liveJobsCache = { jobs, at: Date.now() }
   return jobs
 }

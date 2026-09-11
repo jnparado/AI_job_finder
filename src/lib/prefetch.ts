@@ -24,6 +24,7 @@ const loaders: Record<string, () => Promise<unknown>> = {
   '/employer/inbox': () => import('@/pages/Employer'),
   '/employer/messages': () => import('@/pages/Messages'),
   '/employer/finances': () => import('@/pages/Finances'),
+  '/employer/contracts': () => import('@/pages/EmployerContracts'),
   '/employer/ateliar': () => import('@/pages/Ateliar'),
   '/employer/company': () => import('@/pages/Employer'),
   '/employer/settings': () => import('@/pages/Employer'),
@@ -34,7 +35,8 @@ const warmed = new Set<string>()
 
 export function prefetchRoute(to: string) {
   const path = to.split('?')[0]
-  const load = loaders[path]
+  const load =
+    loaders[path] ?? (/^\/employer\/jobs\/.+\/edit$/.test(path) ? loaders['/employer/jobs/new'] : undefined)
   if (!load || warmed.has(path)) return
   warmed.add(path)
   void load()
@@ -42,9 +44,28 @@ export function prefetchRoute(to: string) {
 
 export function warmCandidateDesk(qc: QueryClient) {
   prefetchRoute('/app')
+  prefetchRoute('/app/jobs')
+  prefetchRoute('/app/applications')
   void qc.prefetchQuery({
     queryKey: ['candidate-home'],
     queryFn: () => api('/api/candidate/home'),
+    staleTime: 30_000,
+  })
+}
+
+export function warmEmployerDesk(qc: QueryClient) {
+  prefetchRoute('/employer')
+  prefetchRoute('/employer/jobs')
+  prefetchRoute('/employer/inbox')
+  prefetchRoute('/employer/contracts')
+  void qc.prefetchQuery({
+    queryKey: ['employer-jobs'],
+    queryFn: () => api('/api/employer/jobs'),
+    staleTime: 30_000,
+  })
+  void qc.prefetchQuery({
+    queryKey: ['employer-inbox'],
+    queryFn: () => api('/api/employer/applications'),
     staleTime: 30_000,
   })
 }

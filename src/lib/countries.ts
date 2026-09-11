@@ -1,3 +1,5 @@
+import type { Currency } from '@shared/types'
+
 export const COUNTRIES = [
   'Afghanistan',
   'Albania',
@@ -195,6 +197,59 @@ export const COUNTRIES = [
   'Zambia',
   'Zimbabwe',
 ] as const
+
+const EURO: ReadonlySet<string> = new Set([
+  'Austria',
+  'Belgium',
+  'Croatia',
+  'Cyprus',
+  'Estonia',
+  'Finland',
+  'France',
+  'Germany',
+  'Greece',
+  'Ireland',
+  'Italy',
+  'Latvia',
+  'Lithuania',
+  'Luxembourg',
+  'Malta',
+  'Monaco',
+  'Montenegro',
+  'Netherlands',
+  'Portugal',
+  'San Marino',
+  'Slovakia',
+  'Slovenia',
+  'Spain',
+  'Vatican City',
+])
+
+const NAMED: Record<string, Currency> = {
+  Philippines: 'PHP',
+  'United States': 'USD',
+  'United Kingdom': 'GBP',
+  Canada: 'CAD',
+  Australia: 'AUD',
+  Switzerland: 'CHF',
+  Liechtenstein: 'CHF',
+}
+
+export function currencyForLocation(place?: string, fallback?: Currency): Currency | undefined {
+  const raw = (place ?? '').trim()
+  if (!raw || /worldwide|anywhere|^remote$/i.test(raw)) return fallback
+  if (NAMED[raw]) return NAMED[raw]
+  if (EURO.has(raw) || raw === 'Europe') return 'EUR'
+  const t = raw.toLowerCase()
+  if (/\bphilippines\b|\bmanila\b|\bcebu\b|\bdavao\b|\bpeso\b/.test(t) || t === 'ph') return 'PHP'
+  if (/\bunited states\b|\busa\b|\bu\.s\.a?\b|\bamerica\b/.test(t)) return 'USD'
+  if (/\bunited kingdom\b|\b\buk\b|\bengland\b|\bscotland\b|\bwales\b|\bbritain\b/.test(t)) return 'GBP'
+  if (/\bcanada\b/.test(t)) return 'CAD'
+  if (/\baustralia\b/.test(t)) return 'AUD'
+  if (/\bswitzerland\b|\bswiss\b/.test(t)) return 'CHF'
+  if (/\beurope\b|\beurozone\b/.test(t)) return 'EUR'
+  return fallback
+}
 
 export function filterCountries(query: string): string[] {
   const q = query.trim().toLowerCase()

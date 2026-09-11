@@ -6,7 +6,7 @@ import { prefetchRoute } from '@/lib/prefetch'
 import { initials } from '@/lib/utils'
 
 export function useAccountSession() {
-  const { loading, user, demo, profile, destinationFor } = useAuth()
+  const { loading, ready, user, demo, profile, destinationFor } = useAuth()
   const signedIn = Boolean(user || demo)
   const home = destinationFor(profile)
   const name = displayName(profile)
@@ -15,15 +15,15 @@ export function useAccountSession() {
     : profile.role === 'employer'
       ? 'Open hiring'
       : 'Open studio'
-  return { loading, signedIn, profile, home, name, openLabel }
+  return { loading, ready, signedIn, profile, home, name, openLabel }
 }
 
 export function MarketingSessionButtons({ hiring }: { hiring?: boolean }) {
-  const { loading, signedIn, home, name, openLabel } = useAccountSession()
+  const { loading, signedIn, home, name, openLabel, ready } = useAccountSession()
   const loginTo = hiring ? '/login?role=employer' : '/login'
   const registerTo = hiring ? '/register?role=employer' : '/register'
 
-  if (loading) {
+  if (loading || (signedIn && !ready)) {
     return <div className="h-10 w-36 animate-pulse rounded-full bg-[#1f3d32]" aria-hidden />
   }
 
@@ -72,10 +72,10 @@ export function SessionHomeCtas({
   guestPrimary: { to: string; label: string; variant?: 'copper' | 'paper' }
   guestSecondary?: { to: string; label: string }
 }) {
-  const { loading, signedIn, home, openLabel } = useAccountSession()
+  const { loading, ready, signedIn, home, openLabel } = useAccountSession()
   const primaryVariant = audience === 'employer' ? 'paper' : 'copper'
 
-  if (loading) {
+  if (loading || (signedIn && !ready)) {
     return <div className="h-12 w-40 animate-pulse rounded-full bg-[#1f3d32]" aria-hidden />
   }
 
