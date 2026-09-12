@@ -7,6 +7,8 @@ import {
   Briefcase,
   Calendar,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleHelp,
   Crown,
   Home,
@@ -63,6 +65,8 @@ interface ThreadRow {
   unreadCount?: number
 }
 
+const SIDEBAR_KEY = 'atelier-candidate-sidebar'
+
 export function AppShell() {
   const { profile, signOut, destinationFor } = useAuth()
   const navigate = useNavigate()
@@ -70,6 +74,13 @@ export function AppShell() {
   const hiringDesk = profile.role === 'employer' || isStaffRole(profile.role)
   const name = displayName(profile)
   const [open, setOpen] = useState(false)
+  const [mini, setMini] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const [bellOpen, setBellOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
@@ -99,6 +110,18 @@ export function AppShell() {
     setAccountOpen(false)
   }
 
+  function toggleMini() {
+    setMini((cur) => {
+      const next = !cur
+      try {
+        localStorage.setItem(SIDEBAR_KEY, next ? '1' : '0')
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }
+
   function onSearch(e: FormEvent) {
     e.preventDefault()
     const q = query.trim()
@@ -113,6 +136,10 @@ export function AppShell() {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') closeMenus()
       const tag = (e.target as HTMLElement | null)?.tagName
+      if (e.key === '[' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault()
+        toggleMini()
+      }
       if ((e.key === 'k' || e.key === 'K' || e.key === '/') && tag !== 'INPUT' && tag !== 'TEXTAREA') {
         e.preventDefault()
         searchRef.current?.focus()
@@ -128,12 +155,35 @@ export function AppShell() {
 
   if (hiringDesk) return <Navigate to={destinationFor(profile)} replace />
 
-  function sidebar() {
+  function sidebar(collapsed: boolean, onToggleMini?: () => void) {
     return (
       <>
-        <Link to="/app" replace onClick={() => setOpen(false)} className="shrink-0" aria-label="Atelier home">
-          <BrandMark light compact />
-        </Link>
+        <div className={cn('flex items-center', collapsed ? 'flex-col gap-3' : 'justify-between gap-2')}>
+          <Link to="/app" replace onClick={() => setOpen(false)} className="min-w-0 shrink-0" aria-label="Atelier home">
+            <BrandMark light compact={collapsed} markOnly={collapsed} />
+          </Link>
+          {onToggleMini ? (
+            <button
+              type="button"
+              aria-label={collapsed ? 'Expand sidebar' : 'Minimize sidebar'}
+              title={collapsed ? 'Expand sidebar' : 'Minimize sidebar'}
+              className="grid size-8 shrink-0 place-items-center rounded-lg text-[#e8eeeb] ring-1 ring-white/25 transition-colors hover:bg-white/10 hover:text-white"
+              onClick={onToggleMini}
+            >
+              {collapsed ? (
+                <span className="inline-flex items-center">
+                  <span className="mr-0.5 h-3.5 w-px bg-current opacity-80" />
+                  <ChevronRight className="size-3.5" strokeWidth={2} />
+                </span>
+              ) : (
+                <span className="inline-flex items-center">
+                  <span className="mr-0.5 h-3.5 w-px bg-current opacity-80" />
+                  <ChevronLeft className="size-3.5" strokeWidth={2} />
+                </span>
+              )}
+            </button>
+          ) : null}
+        </div>
 
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden">
           {LINKS.map((l, i) => (
@@ -142,12 +192,14 @@ export function AppShell() {
               to={l.to}
               end={l.end}
               replace={!isDrillPath(l.to)}
+              title={collapsed ? l.label : undefined}
               onMouseEnter={() => prefetchRoute(l.to)}
               onFocus={() => prefetchRoute(l.to)}
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  'group relative flex items-center gap-2.5 rounded-xl py-2.5 pl-3.5 pr-3 text-sm transition-colors',
+                  'group relative flex items-center rounded-xl text-sm transition-colors',
+                  collapsed ? 'justify-center px-0 py-2.5' : 'gap-2.5 py-2.5 pl-3.5 pr-3',
                   isActive
                     ? 'bg-[#0d3a2e] font-medium text-white before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-full before:bg-[#5ecf8c]'
                     : 'text-[#c5d0cb] hover:bg-white/5 hover:text-white',
@@ -155,9 +207,21 @@ export function AppShell() {
               }
             >
               <l.icon className="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-              <span className="min-w-0 flex-1 truncate">{l.label}</span>
+              <span
+                className={cn(
+                  'min-w-0 truncate transition-all duration-300',
+                  collapsed ? 'w-0 overflow-hidden opacity-0' : 'flex-1 opacity-100',
+                )}
+              >
+                {l.label}
+              </span>
               {l.badge === 'messages' && unread ? (
-                <span className="grid min-w-5 place-items-center rounded-full bg-[#e23d3d] px-1.5 text-[0.65rem] font-semibold leading-5 text-white">
+                <span
+                  className={cn(
+                    'grid min-w-5 place-items-center rounded-full bg-[#e23d3d] px-1.5 text-[0.65rem] font-semibold leading-5 text-white',
+                    collapsed && 'absolute right-1 top-1 min-w-4 px-1',
+                  )}
+                >
                   {unread > 99 ? '99+' : unread}
                 </span>
               ) : null}
@@ -165,31 +229,49 @@ export function AppShell() {
           ))}
         </nav>
 
-        <div className="rounded-2xl bg-gradient-to-br from-[#0a3328] to-[#001510] p-4 ring-1 ring-[#c6a15b40]">
-          <div className="flex items-center gap-2 text-[#c6a15b]">
-            <Crown className="size-4" />
-            <p className="text-sm font-medium text-white">Upgrade to Pro</p>
-          </div>
-          <p className="mt-2 text-xs leading-relaxed text-[#a8b8b1]">
-            Stronger AI matching and coach notes from your real scores.
-          </p>
+        {collapsed ? (
           <Link
             to="/app/resume"
             replace
+            title="Upgrade to Pro"
             onClick={() => setOpen(false)}
-            className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-xl bg-white text-sm font-medium !text-black hover:bg-[#f4f0e8]"
+            className="grid size-10 place-items-center self-center rounded-xl text-[#c6a15b] ring-1 ring-[#c6a15b40] hover:bg-white/5"
           >
-            Upgrade Now →
+            <Crown className="size-4" />
           </Link>
-        </div>
+        ) : (
+          <>
+            <div className="rounded-2xl bg-gradient-to-br from-[#0a3328] to-[#001510] p-4 ring-1 ring-[#c6a15b40]">
+              <div className="flex items-center gap-2 text-[#c6a15b]">
+                <Crown className="size-4" />
+                <p className="text-sm font-medium text-white">Upgrade to Pro</p>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-[#a8b8b1]">
+                Stronger AI matching and coach notes from your real scores.
+              </p>
+              <Link
+                to="/app/resume"
+                replace
+                onClick={() => setOpen(false)}
+                className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-xl bg-white text-sm font-medium !text-black hover:bg-[#f4f0e8]"
+              >
+                Upgrade Now →
+              </Link>
+            </div>
 
-        <div className="relative mt-1 overflow-hidden rounded-2xl">
-          <img src={localBrandPath('candidate-window.jpg')} alt="" className="h-24 w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#002018] via-[#002018]/60 to-transparent" />
-          <p className="absolute inset-x-3 bottom-3 font-serif text-sm italic leading-snug text-white">
-            A brighter career starts here.
-          </p>
-        </div>
+            <div className="relative mt-1 overflow-hidden rounded-2xl">
+              <img
+                src={localBrandPath('candidate-window.jpg', 'candidate')}
+                alt=""
+                className="h-24 w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#002018] via-[#002018]/60 to-transparent" />
+              <p className="absolute inset-x-3 bottom-3 font-serif text-sm italic leading-snug text-white">
+                A brighter career starts here.
+              </p>
+            </div>
+          </>
+        )}
       </>
     )
   }
@@ -208,13 +290,19 @@ export function AppShell() {
             <button type="button" className="absolute right-4 top-4" aria-label="Close" onClick={() => setOpen(false)}>
               <X className="size-5" />
             </button>
-            {sidebar()}
+            {sidebar(false)}
           </aside>
         </div>
       ) : null}
 
-      <aside className="sticky top-0 z-20 hidden h-svh w-[16.25rem] shrink-0 flex-col gap-5 overflow-y-auto bg-[#002018] px-4 py-5 text-[#e8eeeb] lg:flex">
-        {sidebar()}
+      <aside
+        className={cn(
+          'sticky top-0 z-20 hidden h-svh shrink-0 flex-col gap-5 overflow-y-auto bg-[#002018] text-[#e8eeeb] lg:flex',
+          'transition-[width,padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+          mini ? 'w-[4.75rem] px-2.5 py-5' : 'w-[16.25rem] px-4 py-5',
+        )}
+      >
+        {sidebar(mini, toggleMini)}
       </aside>
 
       <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', messenger && 'h-full min-h-0 lg:h-svh')}>

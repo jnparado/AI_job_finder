@@ -220,7 +220,7 @@ export function DashboardPage() {
 
             <div className="relative min-h-[11rem] overflow-hidden">
               <img
-                src={localBrandPath('candidate-hero.jpg')}
+                src={localBrandPath('candidate-hero.jpg', 'candidate')}
                 alt=""
                 className="absolute inset-0 h-full w-full object-cover object-center"
               />
