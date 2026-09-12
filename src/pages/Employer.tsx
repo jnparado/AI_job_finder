@@ -11,6 +11,7 @@ import { PortalHome } from '@/components/employer/PortalHome'
 import { JobsDesk } from '@/components/employer/JobsDesk'
 import { ApplicantsDesk } from '@/components/employer/ApplicantsDesk'
 import { FindCandidatesDesk } from '@/components/employer/FindCandidatesDesk'
+import { CompanyProfileDesk } from '@/components/employer/CompanyProfileDesk'
 import { PostJobWizard } from '@/components/employer/PostJobWizard'
 
 export function EmployerSetupPage() {
@@ -106,58 +107,7 @@ export function EmployerApplicationPage() {
 }
 
 export function EmployerCompanyPage() {
-  const { profile, saveProfile } = useAuth()
-  const [companyName, setCompanyName] = useState(profile.companyName ?? '')
-  const [companyWebsite, setCompanyWebsite] = useState(profile.companyWebsite ?? '')
-  const [firstName, setFirstName] = useState(profile.firstName)
-  const [lastName, setLastName] = useState(profile.lastName)
-  const [saved, setSaved] = useState(false)
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault()
-    await saveProfile({
-      companyName: companyName.trim(),
-      companyWebsite: companyWebsite.trim(),
-      firstName,
-      lastName,
-    })
-    setSaved(true)
-  }
-
-  return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <HiringHero
-        kicker="Company"
-        title="Company profile"
-        description="Candidates see this name on jobs you post."
-        image="employer-studio.jpg"
-        compact
-      />
-      <Card>
-        <form className="space-y-4" onSubmit={(e) => void onSubmit(e)}>
-          <label className="block space-y-1.5">
-            <Label>Your name</Label>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First" required />
-              <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last" required />
-            </div>
-          </label>
-          <label className="block space-y-1.5">
-            <Label>Company name</Label>
-            <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} required />
-          </label>
-          <label className="block space-y-1.5">
-            <Label>Website (optional)</Label>
-            <Input value={companyWebsite} onChange={(e) => setCompanyWebsite(e.target.value)} />
-          </label>
-          <Button variant="copper" type="submit">
-            Save profile
-          </Button>
-          {saved ? <p className="text-sm text-[#147a48]">Saved.</p> : null}
-        </form>
-      </Card>
-    </div>
-  )
+  return <CompanyProfileDesk />
 }
 
 export function EmployerSettingsPage() {

@@ -6,6 +6,8 @@ import {
   Briefcase,
   Building2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleHelp,
   Crown,
   FileCheck,
@@ -160,9 +162,10 @@ export function EmployerShell() {
   }, [])
 
   function sidebar(collapsed: boolean, onToggleMini?: () => void) {
+    const planLabel = company === 'Your company' ? 'Employer' : company
     return (
       <>
-        <div className={cn('flex items-center', collapsed ? 'flex-col-reverse gap-3' : 'justify-between gap-2')}>
+        <div className={cn('flex items-center', collapsed ? 'flex-col gap-3' : 'justify-between gap-2')}>
           <button type="button" className="min-w-0 text-left" onClick={() => navigate('/employer', { replace: true })}>
             <BrandMark light compact={collapsed} markOnly={collapsed} />
           </button>
@@ -171,41 +174,62 @@ export function EmployerShell() {
               type="button"
               aria-label={collapsed ? 'Expand sidebar' : 'Minimize sidebar'}
               title={collapsed ? 'Expand sidebar' : 'Minimize sidebar'}
-              className="grid size-9 shrink-0 place-items-center rounded-full text-[#f4f0e8] ring-1 ring-white/25 transition-colors hover:bg-white/10 hover:text-white"
+              className="grid size-8 shrink-0 place-items-center rounded-lg text-[#f4f0e8] ring-1 ring-white/30 transition-colors hover:bg-white/10 hover:text-white"
               onClick={onToggleMini}
             >
-              <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
-                <rect x="3.25" y="6.25" width="17.5" height="11.5" rx="2.75" />
-                <path d="M9 6.25v11.5" />
-              </svg>
+              {collapsed ? (
+                <span className="inline-flex items-center text-[#f4f0e8]">
+                  <span className="mr-0.5 h-3.5 w-px bg-current opacity-80" />
+                  <ChevronRight className="size-3.5" strokeWidth={2} />
+                </span>
+              ) : (
+                <span className="inline-flex items-center text-[#f4f0e8]">
+                  <span className="mr-0.5 h-3.5 w-px bg-current opacity-80" />
+                  <ChevronLeft className="size-3.5" strokeWidth={2} />
+                </span>
+              )}
             </button>
           ) : null}
         </div>
-        <div className={cn('overflow-hidden transition-all duration-300', collapsed ? 'h-0 opacity-0' : 'h-auto opacity-100')}>
-          <p className="whitespace-nowrap px-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[#7dcea0]">
-            Employer portal
-          </p>
-          <Link
-            to="/employer/company"
-            replace
-            onClick={() => setOpen(false)}
-            className="mt-2 flex items-center justify-between gap-2 rounded-xl px-2 py-2 text-sm text-[#e7e1d4] hover:bg-[#1f3d32]"
-          >
-            <span className="truncate font-medium">{company}</span>
-            <ChevronDown className="size-4 shrink-0 opacity-70" />
-          </Link>
-        </div>
+
         {collapsed ? (
           <Link
             to="/employer/company"
             replace
-            title={company}
+            title={`${person} · ${planLabel}`}
             onClick={() => setOpen(false)}
-            className="grid size-10 place-items-center self-center rounded-xl text-[#e7e1d4] hover:bg-[#1f3d32]"
+            className="grid size-10 place-items-center self-center overflow-hidden rounded-full ring-1 ring-white/20 hover:ring-white/40"
           >
-            <Building2 className="size-4" />
+            {profile.avatarUrl ? (
+              <img src={profile.avatarUrl} alt="" className="size-10 object-cover" />
+            ) : (
+              <span className="grid size-10 place-items-center bg-[#1f3d32] font-serif text-sm text-[#f4f0e8]">
+                {initials(person)}
+              </span>
+            )}
           </Link>
-        ) : null}
+        ) : (
+          <Link
+            to="/employer/company"
+            replace
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2.5 rounded-xl px-1.5 py-2 text-[#e7e1d4] transition-colors hover:bg-[#1f3d32]"
+          >
+            {profile.avatarUrl ? (
+              <img src={profile.avatarUrl} alt="" className="size-9 shrink-0 rounded-full object-cover" />
+            ) : (
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#1f3d32] font-serif text-sm text-[#f4f0e8] ring-1 ring-white/15">
+                {initials(person)}
+              </span>
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold leading-tight text-white">{person}</span>
+              <span className="mt-0.5 block truncate text-xs text-[#a8b5ad]">{planLabel}</span>
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-[#a8b5ad]" strokeWidth={1.75} />
+          </Link>
+        )}
+
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden">
           {LINKS.map((l, i) => (
             <NavLink
