@@ -162,7 +162,6 @@ export function EmployerShell() {
   }, [])
 
   function sidebar(collapsed: boolean, onToggleMini?: () => void) {
-    const planLabel = company === 'Your company' ? 'Employer' : company
     return (
       <>
         <div className={cn('flex items-center', collapsed ? 'flex-col gap-3' : 'justify-between gap-2')}>
@@ -192,43 +191,31 @@ export function EmployerShell() {
           ) : null}
         </div>
 
+        <div className={cn('overflow-hidden transition-all duration-300', collapsed ? 'h-0 opacity-0' : 'h-auto opacity-100')}>
+          <p className="whitespace-nowrap px-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">
+            Employer portal
+          </p>
+          <Link
+            to="/employer/company"
+            replace
+            onClick={() => setOpen(false)}
+            className="mt-1.5 flex items-center justify-between gap-2 rounded-xl px-1 py-1.5 text-white hover:bg-[#1f3d32]"
+          >
+            <span className="truncate text-base font-medium leading-snug">{company}</span>
+            <ChevronDown className="size-4 shrink-0 text-white/80" strokeWidth={2} />
+          </Link>
+        </div>
         {collapsed ? (
           <Link
             to="/employer/company"
             replace
-            title={`${person} · ${planLabel}`}
+            title={company}
             onClick={() => setOpen(false)}
-            className="grid size-10 place-items-center self-center overflow-hidden rounded-full ring-1 ring-white/20 hover:ring-white/40"
+            className="grid size-10 place-items-center self-center rounded-xl text-[#e7e1d4] hover:bg-[#1f3d32]"
           >
-            {profile.avatarUrl ? (
-              <img src={profile.avatarUrl} alt="" className="size-10 object-cover" />
-            ) : (
-              <span className="grid size-10 place-items-center bg-[#1f3d32] font-serif text-sm text-[#f4f0e8]">
-                {initials(person)}
-              </span>
-            )}
+            <Building2 className="size-4" />
           </Link>
-        ) : (
-          <Link
-            to="/employer/company"
-            replace
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 rounded-xl px-1.5 py-2 text-[#e7e1d4] transition-colors hover:bg-[#1f3d32]"
-          >
-            {profile.avatarUrl ? (
-              <img src={profile.avatarUrl} alt="" className="size-9 shrink-0 rounded-full object-cover" />
-            ) : (
-              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#1f3d32] font-serif text-sm text-[#f4f0e8] ring-1 ring-white/15">
-                {initials(person)}
-              </span>
-            )}
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold leading-tight text-white">{person}</span>
-              <span className="mt-0.5 block truncate text-xs text-[#a8b5ad]">{planLabel}</span>
-            </span>
-            <ChevronRight className="size-4 shrink-0 text-[#a8b5ad]" strokeWidth={1.75} />
-          </Link>
-        )}
+        ) : null}
 
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden">
           {LINKS.map((l, i) => (
