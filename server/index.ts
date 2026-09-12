@@ -2052,6 +2052,9 @@ function toTalentCard(profile: CandidateProfile) {
     verified: Boolean(profile.onboardingCompleted || profile.resumeText),
     bio: profile.careerGoals || profile.headline || '',
     availability: talentAvailability(profile),
+    matchScore: undefined as number | undefined,
+    matchedSkills: undefined as string[] | undefined,
+    matchJobTitle: undefined as string | undefined,
   }
 }
 

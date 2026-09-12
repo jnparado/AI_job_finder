@@ -8,7 +8,6 @@ import {
   FileText,
   Filter,
   MapPin,
-  MoreHorizontal,
   PenLine,
   Plus,
   Search,
@@ -51,7 +50,6 @@ export function EmployerContractsPage() {
   const [pageSize, setPageSize] = useState(10)
   const [moreFilters, setMoreFilters] = useState(false)
   const [typeFilter, setTypeFilter] = useState('all')
-  const [menuId, setMenuId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [tab, setTab] = useState<DetailTab>('overview')
 
@@ -128,7 +126,6 @@ export function EmployerContractsPage() {
     next.set('id', id)
     setParams(next, { replace: true })
     setTab('overview')
-    setMenuId(null)
   }
 
   function closeRow() {
@@ -272,7 +269,7 @@ export function EmployerContractsPage() {
           ) : null}
 
           <div className="hidden overflow-x-auto lg:block">
-            <table className="w-full min-w-[52rem] text-left text-sm">
+            <table className="w-full min-w-[64rem] text-left text-sm">
               <thead className="bg-[#f7faf8] text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Contract</th>
@@ -315,46 +312,47 @@ export function EmployerContractsPage() {
                         <StatusPill phase={bucket} />
                       </td>
                       <td className="px-3 py-3 tabular-nums">{paid > 0 ? money(paid, row.job?.currency) : '—'}</td>
-                      <td className="relative px-3 py-3">
-                        <button
-                          type="button"
-                          className="grid size-8 place-items-center rounded-full hover:bg-[#eef3f0]"
-                          aria-label="Actions"
-                          onClick={() => setMenuId(menuId === row.id ? null : row.id)}
-                        >
-                          <MoreHorizontal className="size-4" />
-                        </button>
-                        {menuId === row.id ? (
-                          <div className="absolute right-3 z-20 w-44 overflow-hidden rounded-xl border border-border bg-white py-1 shadow-lg">
-                            <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => openRow(row.id)}>
-                              View
-                            </button>
-                            <Link to={`/employer/messages/${row.id}`} className="block px-3 py-2 text-sm hover:bg-muted" onClick={() => setMenuId(null)}>
-                              Message
-                            </Link>
-                            <Link to="/employer/ateliar" className="block px-3 py-2 text-sm hover:bg-muted" onClick={() => setMenuId(null)}>
-                              Time tracker
-                            </Link>
-                            {bucket === 'active' ? (
-                              <button
-                                type="button"
-                                className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                                onClick={() => update.mutate({ id: row.id, status: 'completed' })}
-                              >
-                                Mark completed
-                              </button>
-                            ) : null}
-                            {bucket !== 'cancelled' ? (
-                              <button
-                                type="button"
-                                className="block w-full px-3 py-2 text-left text-sm text-[#8f4326] hover:bg-muted"
-                                onClick={() => update.mutate({ id: row.id, status: 'rejected' })}
-                              >
-                                Cancel contract
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-full px-3"
+                            onClick={() => openRow(row.id)}
+                          >
+                            View
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-8 rounded-full px-3" asChild>
+                            <Link to={`/employer/messages/${row.id}`}>Message</Link>
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-8 rounded-full px-3" asChild>
+                            <Link to="/employer/ateliar">Hours</Link>
+                          </Button>
+                          {bucket === 'active' ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 rounded-full bg-[#147a48] px-3 hover:bg-[#0f5e37]"
+                              disabled={update.isPending}
+                              onClick={() => update.mutate({ id: row.id, status: 'completed' })}
+                            >
+                              Complete
+                            </Button>
+                          ) : null}
+                          {bucket !== 'cancelled' ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-full border-[#e8c4b6] px-3 text-[#8f4326] hover:bg-[#fdf4f0]"
+                              disabled={update.isPending}
+                              onClick={() => update.mutate({ id: row.id, status: 'rejected' })}
+                            >
+                              Cancel
+                            </Button>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -382,6 +380,40 @@ export function EmployerContractsPage() {
                       {paid > 0 ? ` · ${money(paid, row.job?.currency)}` : ''}
                     </p>
                   </button>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-full px-3" onClick={() => openRow(row.id)}>
+                      View
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-8 rounded-full px-3" asChild>
+                      <Link to={`/employer/messages/${row.id}`}>Message</Link>
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-8 rounded-full px-3" asChild>
+                      <Link to="/employer/ateliar">Hours</Link>
+                    </Button>
+                    {bucket === 'active' ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 rounded-full bg-[#147a48] px-3 hover:bg-[#0f5e37]"
+                        disabled={update.isPending}
+                        onClick={() => update.mutate({ id: row.id, status: 'completed' })}
+                      >
+                        Complete
+                      </Button>
+                    ) : null}
+                    {bucket !== 'cancelled' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-full border-[#e8c4b6] px-3 text-[#8f4326] hover:bg-[#fdf4f0]"
+                        disabled={update.isPending}
+                        onClick={() => update.mutate({ id: row.id, status: 'rejected' })}
+                      >
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </div>
                 </article>
               )
             })}
