@@ -77,9 +77,37 @@ function hintedRole(user: User | null, profile: CandidateProfile, synced: boolea
   return parseAccountRole(profile.role)
 }
 
+const COMPANY_CACHE_KEY = 'atelier-company-name'
+
+function readCachedCompany(userId?: string) {
+  if (!userId) return ''
+  try {
+    return localStorage.getItem(`${COMPANY_CACHE_KEY}:${userId}`)?.trim() ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function writeCachedCompany(userId: string | undefined, companyName?: string | null) {
+  const name = companyName?.trim()
+  if (!userId || !name) return
+  try {
+    localStorage.setItem(`${COMPANY_CACHE_KEY}:${userId}`, name)
+  } catch {
+    /* ignore */
+  }
+}
+
+function rememberProfile(p: CandidateProfile) {
+  rememberLastRole(p.role)
+  writeCachedCompany(p.id, p.companyName)
+  return p
+}
+
 function seedFromUser(user: User): CandidateProfile {
   const role = hintedRole(user, { ...emptyProfile(), email: user.email ?? '', id: user.id }, false)
-  const company = String(user.user_metadata?.company_name ?? '')
+  const company =
+    String(user.user_metadata?.company_name ?? '').trim() || readCachedCompany(user.id)
   return {
     ...emptyProfile(),
     id: user.id,
@@ -90,6 +118,33 @@ function seedFromUser(user: User): CandidateProfile {
   }
 }
 
+/** Keep already-loaded fields when auth re-seeds the same user (avoids name/company flash). */
+function mergeSeed(current: CandidateProfile, seed: CandidateProfile): CandidateProfile {
+  if (!current.id || current.id !== seed.id) {
+    return {
+      ...seed,
+      companyName: seed.companyName || readCachedCompany(seed.id),
+    }
+  }
+  return {
+    ...seed,
+    firstName: seed.firstName || current.firstName,
+    lastName: seed.lastName || current.lastName,
+    companyName: seed.companyName || current.companyName || readCachedCompany(seed.id),
+    companyWebsite: seed.companyWebsite || current.companyWebsite,
+    avatarUrl: seed.avatarUrl || current.avatarUrl,
+    headline: seed.headline || current.headline,
+    industry: seed.industry || current.industry,
+    city: seed.city || current.city,
+    country: seed.country || current.country,
+    onboardingCompleted: seed.onboardingCompleted || current.onboardingCompleted,
+    role:
+      current.role === 'employer' || isStaffRole(current.role)
+        ? current.role
+        : seed.role,
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<User | null>(null)
@@ -97,18 +152,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<CandidateProfile>(emptyProfile())
 
   const refreshProfile = useCallback(async () => {
-    const p = await api<CandidateProfile>('/api/profile')
-    rememberLastRole(p.role)
+    const p = rememberProfile(await api<CandidateProfile>('/api/profile'))
     setProfile(p)
     return p
   }, [])
 
   const syncSocialProfile = useCallback(async (next: User) => {
     try {
-      return await api<CandidateProfile>('/api/profile/sync-identity', {
-        method: 'POST',
-        body: JSON.stringify(identityFromUser(next)),
-      })
+      return rememberProfile(
+        await api<CandidateProfile>('/api/profile/sync-identity', {
+          method: 'POST',
+          body: JSON.stringify(identityFromUser(next)),
+        }),
+      )
     } catch {
       return refreshProfile()
     }
@@ -126,18 +182,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const seed = seedFromUser(next)
     if (seed.role === 'employer' || isStaffRole(seed.role)) rememberLastRole(seed.role)
     setUser(next)
-    setProfile(seed)
+    setProfile((current) => mergeSeed(current, seed))
     if (!profileInflight || inflightUid !== uid) {
       inflightUid = uid
       profileInflight = (async () => {
         try {
           const synced = usesSocialIdentity(next) ? await syncSocialProfile(next) : await refreshProfile()
-          rememberLastRole(synced.role)
           setProfile((current) => (current.id === uid ? synced : current))
           return synced
         } catch {
           const fallback = seedFromUser(next)
-          setProfile((current) => (current.id === uid ? fallback : current))
+          setProfile((current) => (current.id === uid ? mergeSeed(current, fallback) : current))
           return fallback
         } finally {
           if (inflightUid === uid) {
@@ -147,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       })()
     }
-    return seed
+    return profileInflight
   }, [refreshProfile, syncSocialProfile])
 
   useEffect(() => {
@@ -244,10 +299,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return '/app'
       },
       saveProfile: async (patch) => {
-        const next = await api<CandidateProfile>('/api/profile', {
-          method: 'POST',
-          body: JSON.stringify(patch),
-        })
+        const next = rememberProfile(
+          await api<CandidateProfile>('/api/profile', {
+            method: 'POST',
+            body: JSON.stringify(patch),
+          }),
+        )
         setProfile(next)
         return next
       },

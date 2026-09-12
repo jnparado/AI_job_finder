@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactElement, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   BadgeCheck,
@@ -134,6 +134,12 @@ export function CompanyProfileDesk() {
     youtube: profile.socialLinks?.youtube ?? '',
   })
   const [extra, setExtra] = useState(() => readExtra(profile.id))
+
+  useEffect(() => {
+    const next = profile.companyName?.trim()
+    if (!next) return
+    setCompanyName((cur) => (cur.trim() ? cur : next))
+  }, [profile.companyName])
 
   const company = companyName.trim() || 'Your company'
   const tagline = (extra.tagline || headline).trim() || 'Tell candidates what your company stands for.'

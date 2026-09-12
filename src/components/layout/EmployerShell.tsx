@@ -55,6 +55,16 @@ interface ThreadRow {
 }
 
 const SIDEBAR_KEY = 'atelier-employer-sidebar'
+const COMPANY_CACHE_KEY = 'atelier-company-name'
+
+function cachedCompanyName(userId?: string) {
+  if (!userId) return ''
+  try {
+    return localStorage.getItem(`${COMPANY_CACHE_KEY}:${userId}`)?.trim() || ''
+  } catch {
+    return ''
+  }
+}
 
 export function EmployerShell() {
   const { profile, signOut } = useAuth()
@@ -76,7 +86,7 @@ export function EmployerShell() {
   const searchRef = useRef<HTMLInputElement>(null)
   const messenger = location.pathname.startsWith('/employer/messages')
   const person = displayName(profile)
-  const company = profile.companyName?.trim() || 'Your company'
+  const company = profile.companyName?.trim() || cachedCompanyName(profile.id) || 'Your company'
 
   const notes = useQuery({
     queryKey: ['notifications'],

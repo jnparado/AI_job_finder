@@ -68,9 +68,9 @@ export function PortalHome() {
             <div className="mt-3 flex flex-wrap gap-2">
               <Link
                 to="/employer/jobs/new"
-                className="inline-flex h-10 items-center gap-2 rounded-full bg-[#147a48] px-4 text-sm font-medium text-white hover:bg-[#0f5e37]"
+                className="inline-flex h-10 items-center gap-2 rounded-full bg-[#147a48] px-4 text-sm font-medium !text-white hover:bg-[#0f5e37]"
               >
-                <Plus className="size-4" />
+                <Plus className="size-4 text-white" />
                 Post a Job
               </Link>
               <Link

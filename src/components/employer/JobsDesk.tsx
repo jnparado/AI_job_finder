@@ -11,7 +11,6 @@ import { DRAFT_KEY } from '@/components/employer/PostJobWizard'
 import { JobConfirmDialog } from '@/components/employer/JobConfirmDialog'
 import { JobIcon } from '@/components/employer/JobIcon'
 import { isJobClosed, type JobManageAction } from '@/components/employer/jobListing'
-import { JobManageMenu } from '@/components/employer/JobManageMenu'
 import { useEmployerJobActions } from '@/components/employer/useEmployerJobActions'
 
 interface InboxRow {
@@ -263,8 +262,8 @@ export function JobsDesk() {
           )
         ) : shown.length ? (
           <>
-            <div className="hidden overflow-x-auto overflow-y-visible lg:block">
-              <table className="w-full min-w-[720px] text-left text-sm">
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full min-w-[64rem] text-left text-sm">
                 <thead className="bg-[#f7faf8] text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Job Title</th>
@@ -272,7 +271,7 @@ export function JobsDesk() {
                     <th className="px-4 py-3 font-semibold">Pay</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Posted Date</th>
-                    <th className="px-4 py-3 font-semibold">Actions</th>
+                    <th className="px-4 py-3 text-right font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -391,7 +390,7 @@ function JobRow({
         <StatusChip hired={hired} closed={isJobClosed(job)} />
       </td>
       <td className="px-4 py-3 text-muted-foreground">{formatPosted(job.postedAt)}</td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 text-right">
         <JobActions job={job} apps={apps} hired={hired} onAsk={onAsk} />
       </td>
     </tr>
@@ -441,18 +440,32 @@ function JobActions({
   hired: boolean
   onAsk: (id: string, title: string, action: JobManageAction, applicants: number) => void
 }) {
+  const closed = isJobClosed(job)
+  const editPath = `/employer/jobs/${encodeURIComponent(job.id)}/edit`
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-[18rem] flex-wrap items-center justify-end gap-1.5">
       <Button variant="outline" size="sm" className="rounded-lg" asChild>
         <Link to={`/employer/inbox?job=${encodeURIComponent(job.id)}`}>
           {hired ? 'View Hired' : 'View Applicants'}
         </Link>
       </Button>
-      <JobManageMenu
-        job={job}
-        applicants={apps.length}
-        onAction={(action) => onAsk(job.id, job.title, action, apps.length)}
-      />
+      <Button variant="outline" size="sm" className="rounded-lg" asChild>
+        <Link to={editPath}>Edit</Link>
+      </Button>
+      <button
+        type="button"
+        className="inline-flex h-8 items-center rounded-lg border border-[#e4ebe6] px-2.5 text-xs font-medium text-[var(--forest)] hover:bg-[#f4f7f5]"
+        onClick={() => onAsk(job.id, job.title, closed ? 'reopen' : 'close', apps.length)}
+      >
+        {closed ? 'Reopen' : 'Close'}
+      </button>
+      <button
+        type="button"
+        className="inline-flex h-8 items-center rounded-lg border border-[#f0d9d0] px-2.5 text-xs font-medium text-[#b85c38] hover:bg-[#fbf4f1]"
+        onClick={() => onAsk(job.id, job.title, 'delete', apps.length)}
+      >
+        Delete
+      </button>
     </div>
   )
 }

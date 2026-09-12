@@ -329,7 +329,7 @@ export function FindCandidatesDesk() {
                   <HeroPoint icon={Globe} label="Global Talent" hint="Hire anywhere" />
                   <HeroPoint icon={Sparkles} label="AI Recommendations" hint="Get AI-powered suggestions" />
                 </ul>
-                <Button className="mt-4 h-9 rounded-full bg-[#13261f] hover:bg-[#0d1b16] lg:hidden" asChild>
+                <Button className="mt-4 h-9 rounded-full bg-[#13261f] !text-white hover:bg-[#0d1b16] lg:hidden" asChild>
                   <Link to="/employer/jobs/new">Post a Job</Link>
                 </Button>
               </div>
@@ -346,7 +346,7 @@ export function FindCandidatesDesk() {
                   <p className="text-xs leading-relaxed text-[var(--forest)]">
                     Post a job or hire directly from top candidates.
                   </p>
-                  <Button className="mt-2 h-8 w-full rounded-full bg-[#13261f] text-xs hover:bg-[#0d1b16]" asChild>
+                  <Button className="mt-2 h-8 w-full rounded-full bg-[#13261f] !text-white text-xs hover:bg-[#0d1b16]" asChild>
                     <Link to="/employer/jobs/new">Post a Job</Link>
                   </Button>
                 </div>
@@ -530,7 +530,7 @@ export function FindCandidatesDesk() {
                           : 'Try another filter, or post a job so more people can be matched to you.'}
                     </p>
                     {tab !== 'saved' ? (
-                      <Button className="mt-4 rounded-xl bg-[#147a48] hover:bg-[#0f5e37]" asChild>
+                      <Button className="mt-4 rounded-xl bg-[#147a48] !text-white hover:bg-[#0f5e37]" asChild>
                         <Link to="/employer/jobs/new">Post a Job</Link>
                       </Button>
                     ) : null}
@@ -787,7 +787,7 @@ export function FindCandidatesDesk() {
                   {invite.isPending ? 'Sending…' : 'Send invite'}
                 </Button>
               ) : (
-                <Button className="rounded-xl bg-[#147a48] hover:bg-[#0f5e37]" asChild>
+                <Button className="rounded-xl bg-[#147a48] !text-white hover:bg-[#0f5e37]" asChild>
                   <Link to="/employer/jobs/new">Post a Job</Link>
                 </Button>
               )}
