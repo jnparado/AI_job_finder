@@ -467,7 +467,8 @@ async function applyStaffInvite(email: string, userId: string) {
 async function loadProfile(user: AuthUser, opts?: { staffInvite?: boolean }): Promise<CandidateProfile> {
   const hit = profileCache.get(user.id)
   if (hit && Date.now() - hit.at < PROFILE_TTL_MS && !opts?.staffInvite) return hit.profile
-  if (supabaseAdmin) {
+  const isDemo = user.id === DEMO_USER || user.id === DEMO_EMPLOYER
+  if (supabaseAdmin && !isDemo) {
     try {
       if (opts?.staffInvite) await applyStaffInvite(user.email, user.id)
       const [{ data }, { data: skills }, { data: experience }] = await Promise.all([

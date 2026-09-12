@@ -306,79 +306,79 @@ export function FindCandidatesDesk() {
 
   return (
     <>
-      <div className={cn('grid items-start gap-6', tab !== 'invites' && 'xl:grid-cols-[minmax(0,1fr)_18rem]')}>
-        <div className="min-w-0 space-y-4">
-          {tab === 'invites' ? (
-            <InviteHistory invites={invites} people={people} onOpen={openPerson} />
-          ) : (
-            <>
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Find Candidates
-              </p>
-              <section className="grid items-center gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(15rem,18.5rem)]">
-                <div>
-                  <h1 className="font-serif text-[1.85rem] leading-[1.12] text-[var(--forest)] sm:text-[2.15rem]">
-                    Discover great talent for your team
-                  </h1>
-                  <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#4d5a54]">
-                    Search, filter, and connect with skilled professionals. Find the right candidates and build your
-                    dream team faster.
+      <div className="space-y-4">
+        {tab === 'invites' ? (
+          <InviteHistory invites={invites} people={people} onOpen={openPerson} />
+        ) : (
+          <>
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Find Candidates
+            </p>
+            <section className="grid items-center gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(16rem,20rem)]">
+              <div>
+                <h1 className="font-serif text-[1.85rem] leading-[1.12] text-[var(--forest)] sm:text-[2.15rem]">
+                  Discover great talent for your team
+                </h1>
+                <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#4d5a54]">
+                  Search, filter, and connect with skilled professionals. Find the right candidates and build your dream
+                  team faster.
+                </p>
+                <ul className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 text-sm text-[var(--forest)] sm:grid-cols-4">
+                  <HeroPoint icon={ShieldCheck} label="Verified Profiles" hint="Real people, real skills" />
+                  <HeroPoint icon={Search} label="Advanced Search" hint="Find the perfect match" />
+                  <HeroPoint icon={Globe} label="Global Talent" hint="Hire anywhere" />
+                  <HeroPoint icon={Sparkles} label="AI Recommendations" hint="Get AI-powered suggestions" />
+                </ul>
+                <Button className="mt-4 h-9 rounded-full bg-[#13261f] hover:bg-[#0d1b16] lg:hidden" asChild>
+                  <Link to="/employer/jobs/new">Post a Job</Link>
+                </Button>
+              </div>
+              <div className="relative hidden h-[14rem] overflow-hidden rounded-2xl sm:block lg:h-[15.5rem]">
+                <img
+                  src={localBrandPath('employer-hero.jpg', 'employer')}
+                  alt=""
+                  className="h-full w-full object-cover object-[center_18%]"
+                />
+                <p className="pointer-events-none absolute left-3 top-[38%] max-w-[8.25rem] font-serif text-[1.05rem] italic leading-tight text-[var(--forest)] drop-shadow-[0_1px_8px_rgba(255,255,255,0.9)]">
+                  Great hiring builds great teams.
+                </p>
+                <div className="absolute bottom-3 right-3 w-[12rem] rounded-2xl bg-white p-3 shadow-[0_12px_28px_rgba(19,38,31,0.14)]">
+                  <p className="text-xs leading-relaxed text-[var(--forest)]">
+                    Post a job or hire directly from top candidates.
                   </p>
-                  <ul className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 text-sm text-[var(--forest)] xl:grid-cols-4">
-                    <HeroPoint icon={ShieldCheck} label="Verified Profiles" hint="Real people, real skills" />
-                    <HeroPoint icon={Search} label="Advanced Search" hint="Find the perfect match" />
-                    <HeroPoint icon={Globe} label="Global Talent" hint="Hire anywhere" />
-                    <HeroPoint icon={Sparkles} label="AI Recommendations" hint="Get AI-powered suggestions" />
-                  </ul>
-                  <Button className="mt-4 h-9 rounded-full bg-[#13261f] hover:bg-[#0d1b16] lg:hidden" asChild>
+                  <Button className="mt-2 h-8 w-full rounded-full bg-[#13261f] text-xs hover:bg-[#0d1b16]" asChild>
                     <Link to="/employer/jobs/new">Post a Job</Link>
                   </Button>
                 </div>
-                <div className="relative hidden h-[13.75rem] overflow-hidden rounded-2xl lg:block">
-                  <img
-                    src={localBrandPath('employer-hero.jpg', 'employer')}
-                    alt=""
-                    className="h-full w-full object-cover object-[center_20%]"
-                  />
-                  <p className="pointer-events-none absolute left-3 top-[38%] max-w-[8.25rem] font-serif text-[1.02rem] italic leading-tight text-[var(--forest)] drop-shadow-[0_1px_8px_rgba(255,255,255,0.85)]">
-                    Great hiring builds great teams.
-                  </p>
-                  <div className="absolute bottom-3 right-3 w-[11.75rem] rounded-2xl bg-white p-3 shadow-[0_12px_28px_rgba(19,38,31,0.14)]">
-                    <p className="text-xs leading-relaxed text-[var(--forest)]">
-                      Post a job or hire directly from top candidates.
-                    </p>
-                    <Button className="mt-2 h-8 w-full rounded-full bg-[#13261f] text-xs hover:bg-[#0d1b16]" asChild>
-                      <Link to="/employer/jobs/new">Post a Job</Link>
-                    </Button>
-                  </div>
-                </div>
-              </section>
-
-              <div className="-mx-1 flex gap-1 overflow-x-auto border-b border-[#e4ebe6] px-1">
-                {(
-                  [
-                    ['search', 'Talent Search'],
-                    ['recommended', 'Recommended (AI)'],
-                    ['saved', 'Saved Candidates'],
-                    ['invites', 'Invite History'],
-                  ] as const
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setTab(id)}
-                    className={cn(
-                      'shrink-0 border-b-2 px-3 py-2.5 text-sm',
-                      tab === id
-                        ? 'border-[#147a48] font-medium text-[var(--forest)]'
-                        : 'border-transparent text-muted-foreground hover:text-[var(--forest)]',
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
               </div>
+            </section>
 
+            <div className="-mx-1 flex gap-1 overflow-x-auto border-b border-[#e4ebe6] px-1">
+              {(
+                [
+                  ['search', 'Talent Search'],
+                  ['recommended', 'Recommended (AI)'],
+                  ['saved', 'Saved Candidates'],
+                  ['invites', 'Invite History'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setTab(id)}
+                  className={cn(
+                    'shrink-0 border-b-2 px-3 py-2.5 text-sm',
+                    tab === id
+                      ? 'border-[#147a48] font-medium text-[var(--forest)]'
+                      : 'border-transparent text-muted-foreground hover:text-[var(--forest)]',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
               <div className="min-w-0 space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="relative min-w-[14rem] flex-1">
@@ -555,18 +555,14 @@ export function FindCandidatesDesk() {
                   </div>
                 ) : null}
               </div>
-            </>
-          )}
-        </div>
 
-        {tab !== 'invites' ? (
-          <aside
-            id="candidate-filters"
-            className={cn(
-              'space-y-4 rounded-2xl border border-[#e4ebe6] bg-white p-4 shadow-[0_10px_28px_rgba(19,38,31,0.04)] xl:sticky xl:top-24',
-              filtersOpen ? 'block' : 'hidden xl:block',
-            )}
-          >
+              <aside
+                id="candidate-filters"
+                className={cn(
+                  'space-y-4 rounded-2xl border border-[#e4ebe6] bg-white p-4 shadow-[0_10px_28px_rgba(19,38,31,0.04)] xl:sticky xl:top-24',
+                  filtersOpen ? 'block' : 'hidden xl:block',
+                )}
+              >
             <div className="flex items-center justify-between">
               <p className="font-medium text-[var(--forest)]">Filters</p>
               <button type="button" className="text-sm text-[#147a48] hover:underline" onClick={clearFilters}>
@@ -726,8 +722,10 @@ export function FindCandidatesDesk() {
             >
               Apply Filters
             </Button>
-          </aside>
-        ) : null}
+              </aside>
+            </div>
+          </>
+        )}
       </div>
 
       {selected ? (

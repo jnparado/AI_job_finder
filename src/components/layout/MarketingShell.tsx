@@ -163,16 +163,21 @@ const FOOTER_COLS: { title: string; links: { to: string; label: string }[] }[] =
 
 function MarketingFooter() {
   const { signedIn, home, openLabel } = useAccountSession()
-  const cols = FOOTER_COLS.map((col) => ({
-    ...col,
-    links: col.links.map((link) => {
-      if (!signedIn) return link
-      if (link.to === '/login' || link.to === '/register' || link.to.startsWith('/register?')) {
-        return { to: home, label: openLabel }
-      }
-      return link
-    }),
-  }))
+  const cols = FOOTER_COLS.map((col) => {
+    let deskLinked = false
+    return {
+      ...col,
+      links: col.links.flatMap((link) => {
+        if (!signedIn) return [link]
+        if (link.to === '/login' || link.to === '/register' || link.to.startsWith('/register?')) {
+          if (deskLinked) return []
+          deskLinked = true
+          return [{ to: home, label: openLabel }]
+        }
+        return [link]
+      }),
+    }
+  })
 
   return (
     <footer className="mt-8 bg-[#0a100e] px-5 pt-14 pb-8 sm:px-8 sm:pt-16">
@@ -195,8 +200,8 @@ function MarketingFooter() {
               <div key={col.title}>
                 <p className="text-sm font-semibold text-[var(--paper)]">{col.title}</p>
                 <ul className="mt-4 space-y-2.5">
-                  {col.links.map((link) => (
-                    <li key={`${col.title}-${link.to}-${link.label}`}>
+                  {col.links.map((link, i) => (
+                    <li key={`${col.title}-${i}-${link.to}-${link.label}`}>
                       <Link
                         to={link.to}
                         className="text-sm text-[#9a9386] transition-colors hover:text-[var(--paper)]"
