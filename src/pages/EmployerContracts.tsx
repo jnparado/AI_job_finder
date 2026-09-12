@@ -77,8 +77,10 @@ export function EmployerContractsPage() {
   const jobs = [...new Set(contracts.map((row) => row.job?.title).filter(Boolean))] as string[]
 
   const filtered = useMemo(() => {
+    const list = inbox.data ?? []
+    const rows = list.filter((row) => isContractStatus(row.status))
     const q = query.trim().toLowerCase()
-    return contracts.filter((row) => {
+    return rows.filter((row) => {
       const bucket = phaseOf(row.status)
       if (phase !== 'all' && bucket !== phase) return false
       if (statusFilter !== 'all' && bucket !== statusFilter) return false
@@ -91,7 +93,7 @@ export function EmployerContractsPage() {
         .toLowerCase()
       return hay.includes(q)
     })
-  }, [contracts, jobFilter, phase, query, statusFilter, typeFilter])
+  }, [inbox.data, jobFilter, phase, query, statusFilter, typeFilter])
 
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const slice = filtered.slice(page * pageSize, page * pageSize + pageSize)
@@ -147,7 +149,7 @@ export function EmployerContractsPage() {
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-serif text-4xl leading-tight text-[var(--forest)]">Contracts</h1>
+          <h1 className="font-serif text-2xl leading-tight text-[var(--forest)] sm:text-3xl">Contracts</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Manage hired roles, track hours, and send pay. This is not a signed legal file unless you add one off-platform.
           </p>
@@ -167,7 +169,7 @@ export function EmployerContractsPage() {
 
       <div className={cn('grid items-start gap-4', selected ? 'xl:grid-cols-[minmax(0,1fr)_22.5rem]' : '')}>
         <div className="overflow-hidden rounded-2xl border border-[#e4ebe6] bg-white shadow-[0_12px_32px_rgba(19,38,31,0.04)]">
-          <div className="flex flex-wrap gap-1 border-b border-[#eef3f0] px-2 pt-2">
+          <div className="flex gap-1 overflow-x-auto border-b border-[#eef3f0] px-2 pt-2">
             {(
               [
                 ['all', `All Contracts (${counts.all})`],
@@ -181,7 +183,7 @@ export function EmployerContractsPage() {
                 key={id}
                 type="button"
                 className={cn(
-                  'border-b-2 px-3 py-2.5 text-sm',
+                  'shrink-0 border-b-2 px-3 py-2.5 text-sm',
                   phase === id
                     ? 'border-[#147a48] font-medium text-[#147a48]'
                     : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -269,7 +271,7 @@ export function EmployerContractsPage() {
             </div>
           ) : null}
 
-          <div className="overflow-x-auto">
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[52rem] text-left text-sm">
               <thead className="bg-[#f7faf8] text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 <tr>
@@ -360,6 +362,30 @@ export function EmployerContractsPage() {
               </tbody>
             </table>
           </div>
+          <div className="space-y-3 p-3 lg:hidden">
+            {slice.map((row) => {
+              const paid = paidFor(pay, row.id)
+              const bucket = phaseOf(row.status)
+              return (
+                <article key={row.id} className="rounded-2xl border border-[#e4ebe6] p-4">
+                  <button type="button" className="w-full text-left" onClick={() => openRow(row.id)}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-[var(--forest)]">{contractCode(row)}</p>
+                        <p className="mt-1 truncate text-sm text-muted-foreground">{row.job?.title || 'Role'}</p>
+                        <p className="mt-1 truncate text-sm">{row.candidateName || row.candidateEmail}</p>
+                      </div>
+                      <StatusPill phase={bucket} />
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {fmtDate(row.submittedAt || row.createdAt)}
+                      {paid > 0 ? ` · ${money(paid, row.job?.currency)}` : ''}
+                    </p>
+                  </button>
+                </article>
+              )
+            })}
+          </div>
           {!slice.length ? (
             <p className="px-4 py-12 text-center text-sm text-muted-foreground">
               No contracts yet. Mark a candidate hired from Applicants to open one.
@@ -422,7 +448,15 @@ export function EmployerContractsPage() {
         </div>
 
         {selected ? (
-          <aside className="overflow-hidden rounded-2xl border border-[#e4ebe6] bg-white shadow-[0_12px_32px_rgba(19,38,31,0.06)] xl:sticky xl:top-24">
+          <button
+            type="button"
+            className="fixed inset-0 z-[70] bg-[#13261f]/40 xl:hidden"
+            aria-label="Close details"
+            onClick={closeRow}
+          />
+        ) : null}
+        {selected ? (
+          <aside className="fixed inset-x-0 bottom-0 z-[80] max-h-[92vh] overflow-y-auto rounded-t-3xl border border-[#e4ebe6] bg-white shadow-[0_12px_32px_rgba(19,38,31,0.06)] xl:static xl:z-auto xl:max-h-none xl:overflow-hidden xl:rounded-2xl xl:sticky xl:top-24">
             <div className="flex items-start justify-between gap-3 border-b border-[#eef3f0] px-5 py-4">
               <div>
                 <p className="text-sm font-semibold text-[var(--forest)]">Contract Details</p>

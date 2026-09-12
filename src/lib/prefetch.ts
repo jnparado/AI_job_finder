@@ -21,6 +21,7 @@ const loaders: Record<string, () => Promise<unknown>> = {
   '/employer': () => import('@/pages/Employer'),
   '/employer/jobs': () => import('@/pages/Employer'),
   '/employer/jobs/new': () => import('@/pages/Employer'),
+  '/employer/candidates': () => import('@/pages/Employer'),
   '/employer/inbox': () => import('@/pages/Employer'),
   '/employer/messages': () => import('@/pages/Messages'),
   '/employer/finances': () => import('@/pages/Finances'),
@@ -56,6 +57,7 @@ export function warmCandidateDesk(qc: QueryClient) {
 export function warmEmployerDesk(qc: QueryClient) {
   prefetchRoute('/employer')
   prefetchRoute('/employer/jobs')
+  prefetchRoute('/employer/candidates')
   prefetchRoute('/employer/inbox')
   prefetchRoute('/employer/contracts')
   void qc.prefetchQuery({
@@ -66,6 +68,11 @@ export function warmEmployerDesk(qc: QueryClient) {
   void qc.prefetchQuery({
     queryKey: ['employer-inbox'],
     queryFn: () => api('/api/employer/applications'),
+    staleTime: 30_000,
+  })
+  void qc.prefetchQuery({
+    queryKey: ['employer-candidates'],
+    queryFn: () => api('/api/employer/candidates'),
     staleTime: 30_000,
   })
 }

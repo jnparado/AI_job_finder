@@ -24,7 +24,7 @@ import type {
 import { displayName, emptyProfile, isStaffRole, parseAccountRole, type AccountRole, type SocialIdentity } from '../shared/types'
 import { isAtelierJob } from '../shared/applyBoards'
 import { JOB_CATALOG } from '../shared/jobs'
-import { DEMO_EMPLOYER, DEMO_USER, memory, type EmployerInvite, type StaffInvite, type StoredApplication } from './memory'
+import { DEMO_EMPLOYER, DEMO_USER, memory, type EmployerInvite, type StaffInvite, type StoredApplication, type TalentInvite } from './memory'
 import { extractFileText, parseResumeSmart } from './resume'
 import { confirmUserEmail, ensureProfileRow, registerUser } from './authUsers'
 import { supabaseAdmin } from './supabase'
@@ -562,12 +562,18 @@ async function saveProfile(user: AuthUser, profile: CandidateProfile) {
 
 let listingStatusColumn: boolean | null = null
 
+function stripDbRow(row: Record<string, unknown>, key: string) {
+  const next = { ...row }
+  delete next[key]
+  return next
+}
+
 async function persistJobs(jobs: ReturnType<typeof normalizeAndDedupe>['jobs']) {
   liveJobsCache = null
   memory.setJobs(jobs)
   if (!supabaseAdmin) return
   const includeListing = listingStatusColumn !== false
-  const rows = jobs.map((job) => ({
+  const rows: Record<string, unknown>[] = jobs.map((job) => ({
     id: job.id,
     source: job.source,
     source_job_id: job.sourceJobId ?? job.id,
@@ -601,14 +607,14 @@ async function persistJobs(jobs: ReturnType<typeof normalizeAndDedupe>['jobs']) 
         if (includeListing) listingStatusColumn = true
         continue
       }
-      let next = chunk
+      let next: Record<string, unknown>[] = chunk
       let storeListingInAnalysis = false
       if (/employer_id/.test(error.message)) {
-        next = next.map(({ employer_id: _e, ...rest }) => rest)
+        next = next.map((row) => stripDbRow(row, 'employer_id'))
       }
       if (/listing_status/.test(error.message)) {
         listingStatusColumn = false
-        next = next.map(({ listing_status: _s, ...rest }) => rest)
+        next = next.map((row) => stripDbRow(row, 'listing_status'))
         storeListingInAnalysis = true
       }
       if (next === chunk) {
@@ -617,11 +623,11 @@ async function persistJobs(jobs: ReturnType<typeof normalizeAndDedupe>['jobs']) 
       }
       const { error: err2 } = await supabaseAdmin.from('jobs').upsert(next)
       if (err2) {
-        let retry = next
-        if (/employer_id/.test(err2.message)) retry = retry.map(({ employer_id: _e, ...rest }) => rest)
+        let retry: Record<string, unknown>[] = next
+        if (/employer_id/.test(err2.message)) retry = retry.map((row) => stripDbRow(row, 'employer_id'))
         if (/listing_status/.test(err2.message)) {
           listingStatusColumn = false
-          retry = retry.map(({ listing_status: _s, ...rest }) => rest)
+          retry = retry.map((row) => stripDbRow(row, 'listing_status'))
           storeListingInAnalysis = true
         }
         if (retry === next) {
@@ -711,9 +717,7 @@ async function loadEmployerJobs(employerId: string): Promise<Job[]> {
   }
   const fromDb = data.map((row) => jobFromRow(row as Record<string, unknown>))
   memory.setJobs(fromDb)
-  const byId = new Map(fromDb.map((job) => [job.id, job]))
-  for (const job of local) if (!byId.has(job.id)) byId.set(job.id, job)
-  return [...byId.values()]
+  return fromDb
 }
 
 function applicationFromRow(
@@ -866,7 +870,83 @@ async function hydrateApplications(filter: { userId?: string; jobIds?: string[] 
 async function prepareEmployerInbox(employerId: string) {
   const jobs = await loadEmployerJobs(employerId)
   await hydrateApplications({ jobIds: jobs.map((job) => job.id) })
-  return employerInbox(employerId)
+  const rows = employerInbox(employerId)
+  const scores = new Map<string, { score: number; matchedSkills: string[] }>()
+  if (supabaseAdmin) {
+    const jobIds = [...new Set(rows.map((row) => row.jobId))]
+    if (jobIds.length) {
+      const { data } = await supabaseAdmin
+        .from('job_matches')
+        .select('user_id, job_id, overall_score, matched_skills')
+        .in('job_id', jobIds)
+      for (const row of data ?? []) {
+        scores.set(`${row.user_id}:${row.job_id}`, {
+          score: Number(row.overall_score ?? 0),
+          matchedSkills: Array.isArray(row.matched_skills) ? row.matched_skills.map(String) : [],
+        })
+      }
+    }
+  }
+  const userIds = [...new Set(rows.map((row) => row.userId))]
+  const profiles = new Map<string, CandidateProfile>()
+  for (const id of userIds) {
+    const local = memory.listProfiles().find((row) => row.id === id)
+    if (local) profiles.set(id, local)
+  }
+  if (supabaseAdmin && userIds.length) {
+    let { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select(
+        'id, email, first_name, last_name, headline, current_title, desired_title, city, country, skills, ai_skills, years_experience, career_level, work_modes, remote_worldwide, salary_min, salary_desired, currency, avatar_url, career_goals, social_links, parsed_profile, onboarding_completed',
+      )
+      .in('id', userIds)
+    if (error && /skills|career_level|work_modes|salary|avatar|career_goals|social_links|parsed_profile/.test(error.message)) {
+      const retry = await supabaseAdmin
+        .from('profiles')
+        .select('id, email, first_name, last_name, headline, current_title, desired_title, city, country, years_experience')
+        .in('id', userIds)
+      data = retry.data as typeof data
+      error = retry.error
+    }
+    if (error) console.warn('employer inbox profiles', error.message)
+    for (const row of data ?? []) {
+      const profile = profileFromRow(row as Record<string, unknown>, String(row.email ?? ''))
+      if (!profile.id) continue
+      const prior = profiles.get(profile.id)
+      profiles.set(profile.id, prior ? { ...prior, ...profile, id: profile.id } : profile)
+    }
+  }
+
+  return rows.map((row) => {
+    const mem = memory.getMatches(row.userId).find((m) => m.job.id === row.jobId)
+    const db = scores.get(`${row.userId}:${row.jobId}`)
+    const score = mem?.score ?? db?.score
+    const matchedSkills = mem?.matchedSkills ?? db?.matchedSkills ?? []
+    const person = profiles.get(row.userId)
+    const skills = [...new Set([...(matchedSkills ?? []), ...(person?.skills ?? []), ...(person?.aiSkills ?? [])])].filter(Boolean)
+    const location = [person?.city, person?.country].filter(Boolean).join(', ')
+    return {
+      ...row,
+      matchScore: Number.isFinite(score) && (score ?? 0) > 0 ? score : undefined,
+      matchedSkills: matchedSkills.length ? matchedSkills : undefined,
+      candidateHeadline: row.candidateHeadline || person?.headline || person?.desiredTitle || person?.currentTitle,
+      candidateTitle: person?.desiredTitle || person?.currentTitle || person?.headline,
+      candidateCity: person?.city || '',
+      candidateCountry: person?.country || '',
+      candidateLocation: location,
+      yearsExperience: person?.yearsExperience || 0,
+      careerLevel: person?.careerLevel,
+      avatarUrl: person?.avatarUrl || '',
+      skills: skills.slice(0, 16),
+      salaryMin: person?.salaryMin,
+      salaryDesired: person?.salaryDesired,
+      currency: person?.currency,
+      remoteWorldwide: person?.remoteWorldwide,
+      workModes: person?.workModes,
+      bio: person?.careerGoals || '',
+      socialLinks: person?.socialLinks && Object.keys(person.socialLinks).length ? person.socialLinks : undefined,
+    }
+  })
 }
 
 async function persistMatches(userId: string, list: JobMatch[]) {
@@ -1823,22 +1903,31 @@ app.delete('/api/employer/jobs/:id', async (c) => {
   const id = c.req.param('id')
   const current = (await loadEmployerJobs(user.id)).find((row) => row.id === id)
   if (!current) return c.json({ error: 'Job not found.' }, 404)
-  let applicantCount = memory.allApplications().filter((row) => row.jobId === id).length
-  if (supabaseAdmin) {
-    const { count, error } = await supabaseAdmin
-      .from('applications')
-      .select('id', { count: 'exact', head: true })
-      .eq('job_id', id)
-    if (error) console.warn('delete job applicants', error.message)
-    applicantCount = Math.max(applicantCount, count ?? 0)
-  }
-  if (applicantCount > 0) {
+  const authorizedCount = memory
+    .allApplications()
+    .filter((row) => row.jobId === id && row.authorized).length
+  if (authorizedCount > 0) {
     return c.json({ error: 'This role has applicants. Close the listing instead of deleting it.' }, 409)
   }
   if (supabaseAdmin) {
+    const { count, error: countErr } = await supabaseAdmin
+      .from('applications')
+      .select('id', { count: 'exact', head: true })
+      .eq('job_id', id)
+      .eq('authorized', true)
+    if (countErr) console.warn('delete job applicants', countErr.message)
+    if ((count ?? 0) > 0) {
+      return c.json({ error: 'This role has applicants. Close the listing instead of deleting it.' }, 409)
+    }
+    const { data: draftRows } = await supabaseAdmin.from('applications').select('id').eq('job_id', id)
+    const draftIds = (draftRows ?? []).map((row) => String(row.id))
+    if (draftIds.length) {
+      await supabaseAdmin.from('application_answers').delete().in('application_id', draftIds)
+      await supabaseAdmin.from('applications').delete().in('id', draftIds)
+    }
     await supabaseAdmin.from('job_matches').delete().eq('job_id', id)
     await supabaseAdmin.from('job_listings').delete().eq('job_id', id)
-    const { error } = await supabaseAdmin.from('jobs').delete().eq('id', id)
+    const { error } = await supabaseAdmin.from('jobs').delete().eq('id', id).eq('employer_id', user.id)
     if (error) return c.json({ error: error.message }, 400)
   }
   memory.removeJob(id)
@@ -1926,6 +2015,161 @@ function makeAtelierJob(input: {
     }),
   }
 }
+
+function talentAvailability(profile: CandidateProfile): 'now' | 'open' {
+  if (profile.remoteWorldwide || profile.workModes.includes('remote')) return 'now'
+  return 'open'
+}
+
+function talentName(profile: CandidateProfile) {
+  return `${profile.firstName} ${profile.lastName}`.trim() || profile.headline || profile.desiredTitle || 'Candidate'
+}
+
+function toTalentCard(profile: CandidateProfile) {
+  const name = talentName(profile)
+  const title = profile.desiredTitle || profile.currentTitle || profile.headline || 'Candidate'
+  const location =
+    [profile.city, profile.country].filter(Boolean).join(', ') || (profile.remoteWorldwide ? 'Remote' : '')
+  return {
+    id: String(profile.id ?? ''),
+    name,
+    headline: profile.headline || title,
+    title,
+    city: profile.city,
+    country: profile.country,
+    location,
+    skills: [...new Set([...profile.skills, ...profile.aiSkills])].filter(Boolean).slice(0, 16),
+    yearsExperience: profile.yearsExperience,
+    careerLevel: profile.careerLevel,
+    industry: profile.industry,
+    workModes: profile.workModes,
+    remoteWorldwide: profile.remoteWorldwide,
+    salaryMin: profile.salaryMin,
+    salaryDesired: profile.salaryDesired,
+    currency: profile.currency,
+    avatarUrl: profile.avatarUrl || '',
+    verified: Boolean(profile.onboardingCompleted || profile.resumeText),
+    bio: profile.careerGoals || profile.headline || '',
+    availability: talentAvailability(profile),
+  }
+}
+
+async function loadDirectoryProfiles(): Promise<CandidateProfile[]> {
+  const byId = new Map<string, CandidateProfile>()
+  for (const row of memory.listProfiles()) {
+    if (row.role && row.role !== 'candidate') continue
+    if (!row.id) continue
+    byId.set(row.id, row)
+  }
+  if (supabaseAdmin) {
+    let { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select(
+        'id, email, role, first_name, last_name, headline, current_title, desired_title, city, country, skills, ai_skills, years_experience, career_level, industry, work_modes, remote_worldwide, salary_min, salary_desired, currency, avatar_url, career_goals, onboarding_completed, resume_text, parsed_profile',
+      )
+      .limit(300)
+    if (error && /skills|ai_skills|career_level|work_modes|remote_worldwide|salary|avatar|career_goals|resume_text|parsed_profile/.test(error.message)) {
+      const retry = await supabaseAdmin
+        .from('profiles')
+        .select(
+          'id, email, role, first_name, last_name, headline, current_title, desired_title, city, country, years_experience, industry, onboarding_completed',
+        )
+        .limit(300)
+      data = retry.data as typeof data
+      error = retry.error
+    }
+    if (error) console.warn('employer candidates', error.message)
+    for (const row of data ?? []) {
+      const role = parseAccountRole(row.role)
+      if (role !== 'candidate') continue
+      const profile = profileFromRow(row as Record<string, unknown>, String(row.email ?? ''))
+      if (!profile.id) continue
+      const prior = byId.get(profile.id)
+      byId.set(profile.id, prior ? { ...prior, ...profile, id: profile.id } : profile)
+    }
+  }
+  return [...byId.values()].filter((row) => {
+    if (!row.id) return false
+    return Boolean(
+      talentName(row) !== 'Candidate' ||
+        row.headline ||
+        row.desiredTitle ||
+        row.currentTitle ||
+        row.skills.length ||
+        row.resumeText,
+    )
+  })
+}
+
+app.get('/api/employer/candidates', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+
+  const roles = (await loadEmployerJobs(user.id)).filter(isOpenListing)
+  const people = (await loadDirectoryProfiles())
+    .filter((row) => row.id && row.id !== user.id)
+    .map((row) => {
+      const card = toTalentCard(row)
+      if (!roles.length) return card
+      const best = matchJobs(roles, row)[0]
+      if (!best) return card
+      return {
+        ...card,
+        matchScore: best.score,
+        matchedSkills: best.matchedSkills.slice(0, 8),
+        matchJobTitle: best.job.title,
+      }
+    })
+    .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0) || a.name.localeCompare(b.name))
+
+  return c.json({
+    people,
+    invites: memory.listTalentInvites(user.id),
+  })
+})
+
+app.post('/api/employer/candidates/:id/invite', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role !== 'employer') return c.json({ error: 'Employer account required' }, 403)
+
+  const candidateId = c.req.param('id')
+  const body = (await c.req.json().catch(() => ({}))) as { jobId?: string }
+  const job = (await loadEmployerJobs(user.id)).find((row) => row.id === body.jobId)
+  if (!job) return c.json({ error: 'Pick one of your jobs to invite them to.' }, 400)
+  if (!isOpenListing(job)) return c.json({ error: 'Reopen this job before inviting candidates.' }, 400)
+
+  const people = await loadDirectoryProfiles()
+  const candidate = people.find((row) => row.id === candidateId)
+  if (!candidate?.id) return c.json({ error: 'Candidate not found.' }, 404)
+
+  const already = memory
+    .listTalentInvites(user.id)
+    .find((row) => row.candidateId === candidateId && row.jobId === job.id)
+  if (already) return c.json({ invite: already, already: true })
+
+  const company = profile.companyName?.trim() || displayName(profile) || 'An employer'
+  const invite: TalentInvite = {
+    id: crypto.randomUUID(),
+    employerId: user.id,
+    candidateId: candidate.id,
+    candidateName: talentName(candidate),
+    jobId: job.id,
+    jobTitle: job.title,
+    createdAt: new Date().toISOString(),
+  }
+  memory.addTalentInvite(invite)
+  await notifyUser(
+    candidate.id,
+    `${company} invited you to apply`,
+    `${company} asked you to look at ${job.title}. Review the role and send a packet only if you want to.`,
+    `/app/jobs/${encodeURIComponent(job.id)}`,
+  )
+  return c.json({ invite })
+})
 
 app.get('/api/employer/applications', async (c) => {
   const user = await auth(c)

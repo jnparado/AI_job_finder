@@ -16,9 +16,12 @@ import {
 } from 'lucide-react'
 import type { Job } from '@shared/types'
 import { api } from '@/lib/api'
-import { useAuth } from '@/lib/auth'
 import { cn, initials, prettyStatus, postedLabel } from '@/lib/utils'
 import { localBrandPath } from '@/lib/brandAssets'
+import { JobConfirmDialog } from '@/components/employer/JobConfirmDialog'
+import { isJobClosed } from '@/components/employer/jobListing'
+import { JobManageMenu } from '@/components/employer/JobManageMenu'
+import { useEmployerJobActions } from '@/components/employer/useEmployerJobActions'
 
 interface InboxRow {
   id: string
@@ -31,7 +34,6 @@ interface InboxRow {
 }
 
 export function PortalHome() {
-  const { profile } = useAuth()
   const jobs = useQuery({ queryKey: ['employer-jobs'], queryFn: () => api<Job[]>('/api/employer/jobs') })
   const inbox = useQuery({
     queryKey: ['employer-inbox'],
@@ -39,8 +41,9 @@ export function PortalHome() {
   })
   const roles = jobs.data ?? []
   const list = inbox.data ?? []
+  const activeRoles = roles.filter((job) => !isJobClosed(job))
   const hired = list.filter((a) => a.status === 'offer' || a.status === 'hired')
-  const company = profile.companyName || 'Your company'
+  const { confirm, error: actionError, busy, ask, cancelConfirm, runConfirm } = useEmployerJobActions()
   const skillCounts = skillDemand(roles)
   const weeks = insightWeeks(list)
   const applicantDelta = periodDelta(list.map((a) => a.submittedAt))
@@ -48,55 +51,46 @@ export function PortalHome() {
   const jobDelta = periodDelta(roles.map((j) => j.postedAt))
 
   return (
-    <div className="mx-auto max-w-[1180px] space-y-5">
-      <section className="overflow-hidden rounded-[1.75rem] border border-[#dce8e0] bg-gradient-to-r from-[#e7f3ea] via-[#eef6f0] to-white shadow-[0_18px_40px_rgba(19,38,31,0.06)]">
-        <div className="grid lg:grid-cols-[minmax(0,1.05fr)_minmax(18rem,0.95fr)]">
-          <div className="p-6 sm:p-8 lg:p-10">
+    <div className="mx-auto max-w-[1180px] space-y-4">
+      <section className="overflow-hidden rounded-2xl border border-[#dce8e0] bg-gradient-to-r from-[#e7f3ea] via-[#eef6f0] to-white shadow-[0_10px_24px_rgba(19,38,31,0.05)]">
+        <div className="grid items-center lg:grid-cols-[minmax(0,1.2fr)_minmax(14rem,0.7fr)]">
+          <div className="p-4 sm:p-5">
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#147a48]">
               Build. Hire. Grow.
             </p>
-            <h1 className="mt-3 font-serif text-[2.15rem] leading-[1.12] text-[var(--forest)] sm:text-[2.75rem]">
+            <h1 className="mt-1.5 font-serif text-2xl leading-tight text-[var(--forest)] sm:text-[1.85rem]">
               Find the right talent, faster with AI.
             </h1>
-            <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#4d5a54] sm:text-base">
+            <p className="desk-hero-extra mt-1.5 max-w-lg text-sm leading-relaxed text-[#4d5a54]">
               Post a job, get matched with qualified candidates, and build your team with confidence. Packets arrive
               only after they approve.
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="mt-3 flex flex-wrap gap-2">
               <Link
                 to="/employer/jobs/new"
-                className="inline-flex h-11 items-center gap-2 rounded-full bg-[#147a48] px-5 text-sm font-medium text-white hover:bg-[#0f5e37]"
+                className="inline-flex h-10 items-center gap-2 rounded-full bg-[#147a48] px-4 text-sm font-medium text-white hover:bg-[#0f5e37]"
               >
                 <Plus className="size-4" />
                 Post a Job
               </Link>
               <Link
-                to="/employer/inbox"
-                className="inline-flex h-11 items-center gap-2 rounded-full border border-[var(--forest)] bg-white px-5 text-sm font-medium text-[var(--forest)] hover:bg-[#eef3f0]"
+                to="/employer/candidates"
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-[var(--forest)] bg-white px-4 text-sm font-medium text-[var(--forest)] hover:bg-[#eef3f0]"
               >
                 <Search className="size-4" />
                 Find Candidates
               </Link>
             </div>
           </div>
-          <div className="relative min-h-[16rem] p-5 lg:min-h-[22rem] lg:p-6">
+          <div className="desk-hero-photo relative hidden h-32 p-3 sm:block lg:h-[10.5rem] lg:p-3">
             <img
               src={localBrandPath('employer-hero.jpg', 'employer')}
               alt=""
-              className="h-full w-full rounded-[1.4rem] object-cover object-center"
+              className="h-full w-full rounded-2xl object-cover object-center"
             />
-            <div className="absolute left-8 top-8 hidden max-w-[10.5rem] rounded-2xl bg-[#147a48] p-3 text-white shadow-lg sm:block">
-              <Sparkles className="size-4" />
-              <p className="mt-1 text-xs font-medium leading-snug">AI matched candidates</p>
-            </div>
-            <p className="absolute bottom-24 left-8 hidden max-w-[11rem] font-serif text-lg italic leading-tight text-[var(--forest)] sm:block">
-              Great talent builds great companies.
-            </p>
-            <div className="absolute bottom-8 right-8 hidden w-[13.5rem] rounded-2xl bg-white p-3.5 shadow-[0_16px_32px_rgba(19,38,31,0.12)] lg:block">
-              <p className="text-sm leading-relaxed text-[var(--forest)]">
-                “Atelier helped us find people who actually fit — packets only after they said yes.”
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">{company} · hiring on Atelier</p>
+            <div className="absolute left-4 top-4 hidden max-w-[9.5rem] rounded-xl bg-[#147a48] p-2 text-white shadow-lg xl:block">
+              <Sparkles className="size-3.5" />
+              <p className="mt-1 text-[0.7rem] font-medium leading-snug">AI matched candidates</p>
             </div>
           </div>
         </div>
@@ -104,18 +98,18 @@ export function PortalHome() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard icon={Users} label="Total Candidates" value={list.length} hint={applicantDelta} />
-        <StatCard icon={Briefcase} label="Active Jobs" value={roles.length} hint={jobDelta} />
+        <StatCard icon={Briefcase} label="Active Jobs" value={activeRoles.length} hint={jobDelta} />
         <StatCard icon={Inbox} label="Total Applicants" value={list.length} hint={applicantDelta} />
         <StatCard icon={Handshake} label="Hired" value={hired.length} hint={hiredDelta} />
         <Link
           to="/employer/jobs/new"
-          className="flex items-center justify-between gap-3 rounded-[1.4rem] bg-[var(--forest)] p-5 text-[var(--paper)] shadow-[0_12px_28px_rgba(19,38,31,0.12)]"
+          className="flex items-center justify-between gap-3 rounded-[1.4rem] border border-[#e4ebe6] bg-white p-5 text-[var(--forest)] shadow-[0_10px_28px_rgba(19,38,31,0.04)]"
         >
           <div>
-            <Target className="size-5 text-[#7dcea0]" />
-            <p className="mt-3 text-sm leading-relaxed">Post a job today and let AI find the best candidates for you.</p>
+            <Target className="size-5 text-[#147a48]" />
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">Post a job today and let AI find the best candidates for you.</p>
           </div>
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-white/10">
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#e8f3ec] text-[#147a48]">
             <ArrowRight className="size-4" />
           </span>
         </Link>
@@ -134,7 +128,7 @@ export function PortalHome() {
           {list.length ? (
             <ul className="divide-y divide-[#eef3f0]">
               {list.slice(0, 5).map((a) => (
-                <li key={a.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                <li key={a.id} className="flex min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0">
                   <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#e8f3ec] font-serif text-sm text-[var(--forest)]">
                     {initials(a.candidateName || a.candidateEmail || 'C')}
                   </span>
@@ -161,7 +155,10 @@ export function PortalHome() {
                     <p className="text-[0.65rem] text-muted-foreground">{ago(a.submittedAt)}</p>
                   </div>
                   <Link
-                    to={`/employer/inbox/${a.id}`}
+                    to={`/employer/inbox?${new URLSearchParams({
+                      id: a.id,
+                      ...(a.job?.id ? { job: a.job.id } : {}),
+                    }).toString()}`}
                     className="rounded-full border border-[#d7ddd8] px-3 py-1.5 text-xs font-medium text-[var(--forest)] hover:border-[var(--forest)]"
                   >
                     View
@@ -186,6 +183,7 @@ export function PortalHome() {
             <ul className="space-y-3">
               {roles.slice(0, 4).map((job) => {
                 const count = list.filter((a) => a.job?.id === job.id).length
+                const closed = isJobClosed(job)
                 return (
                   <li key={job.id} className="flex items-center gap-3">
                     <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#e8f3ec] text-[var(--forest)]">
@@ -197,7 +195,20 @@ export function PortalHome() {
                         {postedLabel(job.postedAt)} · {count} {count === 1 ? 'applicant' : 'applicants'}
                       </p>
                     </div>
-                    <span className="rounded-full bg-[#e8f3ec] px-2.5 py-1 text-[0.65rem] font-medium text-[#147a48]">Active</span>
+                    <span
+                      className={cn(
+                        'rounded-full px-2.5 py-1 text-[0.65rem] font-medium',
+                        closed ? 'bg-[#eef3f0] text-muted-foreground' : 'bg-[#e8f3ec] text-[#147a48]',
+                      )}
+                    >
+                      {closed ? 'Closed' : 'Active'}
+                    </span>
+                    <JobManageMenu
+                      job={job}
+                      applicants={count}
+                      align="left"
+                      onAction={(action) => ask(job.id, job.title, action, count)}
+                    />
                   </li>
                 )
               })}
@@ -207,6 +218,18 @@ export function PortalHome() {
           )}
         </Panel>
       </div>
+
+      {confirm ? (
+        <JobConfirmDialog
+          title={confirm.title}
+          action={confirm.action}
+          applicants={confirm.applicants}
+          error={actionError}
+          busy={busy}
+          onCancel={cancelConfirm}
+          onConfirm={runConfirm}
+        />
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Panel title="Hiring Insights">
@@ -234,7 +257,7 @@ export function PortalHome() {
         <Panel title="Quick Actions">
           <div className="grid grid-cols-2 gap-2.5">
             <Action to="/employer/jobs/new" icon={Plus} label="Post a Job" hint="Reach top talent" tone="forest" />
-            <Action to="/employer/inbox" icon={Search} label="Find Candidates" hint="Browse & connect" tone="sage" />
+            <Action to="/employer/candidates" icon={Search} label="Find Candidates" hint="Browse & connect" tone="sage" />
             <Action to="/employer/messages" icon={Send} label="Messages" hint="Talk after they apply" tone="copper" />
             <Action to="/employer/finances" icon={BarChart3} label="View Reports" hint="Track hiring pay" tone="gold" />
           </div>

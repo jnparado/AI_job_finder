@@ -73,7 +73,15 @@ export function LoadingScreen({ label = 'Loading…' }: { label?: string }) {
   )
 }
 
-export function BrandMark({ light = false, compact = false }: { light?: boolean; compact?: boolean }) {
+export function BrandMark({
+  light = false,
+  compact = false,
+  markOnly = false,
+}: {
+  light?: boolean
+  compact?: boolean
+  markOnly?: boolean
+}) {
   return (
     <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
       <img
@@ -85,7 +93,7 @@ export function BrandMark({ light = false, compact = false }: { light?: boolean;
         fetchPriority="high"
         className={`${compact ? 'size-8 sm:size-10' : 'size-10'} shrink-0 rounded-xl object-cover shadow-[0_0_0_1px_rgba(198,161,91,0.28)]`}
       />
-      <div className="min-w-0">
+      <div className={markOnly ? 'sr-only' : 'min-w-0'}>
         <div
           className={`font-serif leading-none ${compact ? 'text-base sm:text-lg' : 'text-lg'} ${
             light ? 'text-white [text-shadow:0_1px_12px_rgba(0,0,0,0.55)]' : ''

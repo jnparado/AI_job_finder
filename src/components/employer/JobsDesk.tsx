@@ -1,28 +1,18 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  Briefcase,
-  CheckCircle2,
-  Clock,
-  Code2,
-  FileText,
-  Filter,
-  Megaphone,
-  MoreHorizontal,
-  Palette,
-  PenLine,
-  Plus,
-  Smartphone,
-  Users,
-  X,
-} from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { CheckCircle2, Clock, FileText, Filter, Plus, Users, X } from 'lucide-react'
 import type { Job } from '@shared/types'
 import { api } from '@/lib/api'
 import { cn, initials, moneyBand } from '@/lib/utils'
 import { localBrandPath } from '@/lib/brandAssets'
 import { Button } from '@/components/ui/button'
 import { DRAFT_KEY } from '@/components/employer/PostJobWizard'
+import { JobConfirmDialog } from '@/components/employer/JobConfirmDialog'
+import { JobIcon } from '@/components/employer/JobIcon'
+import { isJobClosed, type JobManageAction } from '@/components/employer/jobListing'
+import { JobManageMenu } from '@/components/employer/JobManageMenu'
+import { useEmployerJobActions } from '@/components/employer/useEmployerJobActions'
 
 interface InboxRow {
   id: string
@@ -35,12 +25,10 @@ interface InboxRow {
 
 type Tab = 'all' | 'active' | 'hired' | 'closed' | 'drafts'
 type SortKey = 'latest' | 'oldest' | 'applicants'
-type ConfirmAction = 'close' | 'reopen' | 'delete'
 
 const PAGE = 8
 
 export function JobsDesk() {
-  const qc = useQueryClient()
   const jobs = useQuery({ queryKey: ['employer-jobs'], queryFn: () => api<Job[]>('/api/employer/jobs') })
   const inbox = useQuery({
     queryKey: ['employer-inbox'],
@@ -52,20 +40,16 @@ export function JobsDesk() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [banner, setBanner] = useState(() => sessionStorage.getItem('atelier-jobs-banner') !== 'off')
   const [filterOpen, setFilterOpen] = useState(false)
-  const [menuId, setMenuId] = useState<string | null>(null)
-  const [confirm, setConfirm] = useState<{ id: string; title: string; action: ConfirmAction; applicants: number } | null>(
-    null,
-  )
-  const [actionError, setActionError] = useState('')
+  const { confirm, error: actionError, busy, ask, cancelConfirm, runConfirm } = useEmployerJobActions()
 
-  const roles = jobs.data ?? []
-  const list = inbox.data ?? []
   const draft = readDraft()
   const hasDraft = Boolean(draft?.title?.trim())
-  const hiredApps = list.filter((a) => a.status === 'offer' || a.status === 'hired' || a.status === 'completed')
-  const waiting = list.filter((a) => a.status === 'submitted' || a.status === 'under_review')
+  const hiredApps = (inbox.data ?? []).filter((a) => a.status === 'offer' || a.status === 'hired' || a.status === 'completed')
+  const waiting = (inbox.data ?? []).filter((a) => a.status === 'submitted' || a.status === 'under_review')
 
   const rows = useMemo(() => {
+    const roles = jobs.data ?? []
+    const list = inbox.data ?? []
     const byJob = new Map<string, InboxRow[]>()
     for (const row of list) {
       const id = row.job?.id
@@ -80,9 +64,9 @@ export function JobsDesk() {
       return { job, apps, hired, kind: 'live' as const }
     })
     if (typeFilter !== 'all') next = next.filter((row) => (row.job.employmentType || 'full-time') === typeFilter)
-    if (tab === 'active') next = next.filter((row) => !row.hired && !isClosed(row.job))
+    if (tab === 'active') next = next.filter((row) => !row.hired && !isJobClosed(row.job))
     if (tab === 'hired') next = next.filter((row) => row.hired)
-    if (tab === 'closed') next = next.filter((row) => isClosed(row.job))
+    if (tab === 'closed') next = next.filter((row) => isJobClosed(row.job))
     if (tab === 'drafts') next = []
     next.sort((a, b) => {
       if (sort === 'applicants') return b.apps.length - a.apps.length
@@ -91,13 +75,15 @@ export function JobsDesk() {
       return sort === 'oldest' ? at - bt : bt - at
     })
     return next
-  }, [roles, list, tab, sort, typeFilter])
+  }, [jobs.data, inbox.data, tab, sort, typeFilter])
 
+  const roles = jobs.data ?? []
+  const list = inbox.data ?? []
   const shown = tab === 'drafts' ? [] : rows.slice(page * PAGE, page * PAGE + PAGE)
   const pages = Math.max(1, Math.ceil(rows.length / PAGE))
-  const closedCount = roles.filter(isClosed).length
+  const closedCount = roles.filter(isJobClosed).length
   const activeCount = roles.filter((job) => {
-    if (isClosed(job)) return false
+    if (isJobClosed(job)) return false
     const apps = list.filter((a) => a.job?.id === job.id)
     return !apps.some((a) => a.status === 'offer' || a.status === 'hired' || a.status === 'completed')
   }).length
@@ -105,29 +91,6 @@ export function JobsDesk() {
     const apps = list.filter((a) => a.job?.id === job.id)
     return apps.some((a) => a.status === 'offer' || a.status === 'hired' || a.status === 'completed')
   }).length
-
-  const patchJob = useMutation({
-    mutationFn: ({ id, listingStatus }: { id: string; listingStatus: 'active' | 'closed' }) =>
-      api(`/api/employer/jobs/${id}`, { method: 'PATCH', body: JSON.stringify({ listingStatus }) }),
-    onSuccess: async () => {
-      setActionError('')
-      setConfirm(null)
-      setMenuId(null)
-      await qc.invalidateQueries({ queryKey: ['employer-jobs'] })
-    },
-    onError: (err) => setActionError(err instanceof Error ? err.message : 'Could not update the listing.'),
-  })
-
-  const deleteJob = useMutation({
-    mutationFn: (id: string) => api(`/api/employer/jobs/${id}`, { method: 'DELETE' }),
-    onSuccess: async () => {
-      setActionError('')
-      setConfirm(null)
-      setMenuId(null)
-      await qc.invalidateQueries({ queryKey: ['employer-jobs'] })
-    },
-    onError: (err) => setActionError(err instanceof Error ? err.message : 'Could not delete the job.'),
-  })
 
   function closeBanner() {
     sessionStorage.setItem('atelier-jobs-banner', 'off')
@@ -146,7 +109,7 @@ export function JobsDesk() {
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-serif text-4xl leading-tight text-[var(--forest)]">My Jobs</h1>
+          <h1 className="font-serif text-2xl leading-tight text-[var(--forest)] sm:text-3xl">My Jobs</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Manage your job postings, track applicants, and find the right talent.
           </p>
@@ -200,9 +163,9 @@ export function JobsDesk() {
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-[#e4ebe6] bg-white shadow-[0_12px_32px_rgba(19,38,31,0.04)]">
+      <div className="rounded-2xl border border-[#e4ebe6] bg-white shadow-[0_12px_32px_rgba(19,38,31,0.04)]">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eef3f0] px-4 py-3">
-          <div className="flex flex-wrap gap-1">
+          <div className="flex gap-1 overflow-x-auto">
             {(
               [
                 ['all', `All Jobs (${roles.length})`],
@@ -220,7 +183,7 @@ export function JobsDesk() {
                   setPage(0)
                 }}
                 className={cn(
-                  'rounded-full px-3 py-1.5 text-sm',
+                  'shrink-0 rounded-full px-3 py-1.5 text-sm',
                   tab === id ? 'bg-[#e8f3ec] font-medium text-[#147a48]' : 'text-muted-foreground hover:bg-[#f4f7f5]',
                 )}
               >
@@ -300,7 +263,7 @@ export function JobsDesk() {
           )
         ) : shown.length ? (
           <>
-            <div className="hidden overflow-x-auto lg:block">
+            <div className="hidden overflow-x-auto overflow-y-visible lg:block">
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="bg-[#f7faf8] text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   <tr>
@@ -314,34 +277,14 @@ export function JobsDesk() {
                 </thead>
                 <tbody>
                   {shown.map((row) => (
-                    <JobRow
-                      key={row.job.id}
-                      {...row}
-                      menuOpen={menuId === row.job.id}
-                      onMenu={() => setMenuId((cur) => (cur === row.job.id ? null : row.job.id))}
-                      onAsk={(action) => {
-                        setActionError('')
-                        setMenuId(null)
-                        setConfirm({ id: row.job.id, title: row.job.title, action, applicants: row.apps.length })
-                      }}
-                    />
+                    <JobRow key={row.job.id} {...row} onAsk={ask} />
                   ))}
                 </tbody>
               </table>
             </div>
             <div className="space-y-3 p-3 lg:hidden">
               {shown.map((row) => (
-                <JobCard
-                  key={row.job.id}
-                  {...row}
-                  menuOpen={menuId === row.job.id}
-                  onMenu={() => setMenuId((cur) => (cur === row.job.id ? null : row.job.id))}
-                  onAsk={(action) => {
-                    setActionError('')
-                    setMenuId(null)
-                    setConfirm({ id: row.job.id, title: row.job.title, action, applicants: row.apps.length })
-                  }}
-                />
+                <JobCard key={row.job.id} {...row} onAsk={ask} />
               ))}
             </div>
             <div className="flex items-center justify-between border-t border-[#eef3f0] px-4 py-3 text-sm text-muted-foreground">
@@ -389,79 +332,15 @@ export function JobsDesk() {
       </div>
 
       {confirm ? (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-[#13261f]/45 p-4"
-          onClick={() => !(patchJob.isPending || deleteJob.isPending) && setConfirm(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl border border-[#e4ebe6] bg-white p-5 shadow-[0_20px_50px_rgba(19,38,31,0.18)]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="font-serif text-2xl text-[var(--forest)]">
-              {confirm.action === 'delete'
-                ? 'Delete this job?'
-                : confirm.action === 'close'
-                  ? 'Close this listing?'
-                  : 'Reopen this listing?'}
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              {confirm.action === 'delete'
-                ? confirm.applicants
-                  ? `“${confirm.title}” has applicants, so it cannot be deleted. Close it instead — it leaves candidate search and keeps the inbox.`
-                  : `“${confirm.title}” will be removed. This cannot be undone.`
-                : confirm.action === 'close'
-                  ? `“${confirm.title}” will leave candidate search. Applicants stay in your inbox.`
-                  : `“${confirm.title}” will show in candidate search again.`}
-            </p>
-            {actionError ? <p className="mt-3 text-sm text-[#8f4326]">{actionError}</p> : null}
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-xl"
-                disabled={patchJob.isPending || deleteJob.isPending}
-                onClick={() => setConfirm(null)}
-              >
-                Cancel
-              </Button>
-              {confirm.action === 'delete' && confirm.applicants ? (
-                <Button
-                  type="button"
-                  className="rounded-xl bg-[#147a48] hover:bg-[#0f5e37]"
-                  disabled={patchJob.isPending}
-                  onClick={() => patchJob.mutate({ id: confirm.id, listingStatus: 'closed' })}
-                >
-                  {patchJob.isPending ? 'Closing…' : 'Mark as closed'}
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  className={cn(
-                    'rounded-xl',
-                    confirm.action === 'delete' ? 'bg-[#b85c38] hover:bg-[#9a4a2c]' : 'bg-[#147a48] hover:bg-[#0f5e37]',
-                  )}
-                  disabled={patchJob.isPending || deleteJob.isPending}
-                  onClick={() => {
-                    if (confirm.action === 'delete') deleteJob.mutate(confirm.id)
-                    else patchJob.mutate({ id: confirm.id, listingStatus: confirm.action === 'close' ? 'closed' : 'active' })
-                  }}
-                >
-                  {confirm.action === 'delete'
-                    ? deleteJob.isPending
-                      ? 'Deleting…'
-                      : 'Delete'
-                    : confirm.action === 'close'
-                      ? patchJob.isPending
-                        ? 'Closing…'
-                        : 'Mark as closed'
-                      : patchJob.isPending
-                        ? 'Reopening…'
-                        : 'Reopen'}
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
+        <JobConfirmDialog
+          title={confirm.title}
+          action={confirm.action}
+          applicants={confirm.applicants}
+          error={actionError}
+          busy={busy}
+          onCancel={cancelConfirm}
+          onConfirm={runConfirm}
+        />
       ) : null}
     </div>
   )
@@ -471,16 +350,12 @@ function JobRow({
   job,
   apps,
   hired,
-  menuOpen,
-  onMenu,
   onAsk,
 }: {
   job: Job
   apps: InboxRow[]
   hired: boolean
-  menuOpen: boolean
-  onMenu: () => void
-  onAsk: (action: ConfirmAction) => void
+  onAsk: (id: string, title: string, action: JobManageAction, applicants: number) => void
 }) {
   const faces = apps.slice(0, 3)
   const category = job.skills[0] || job.employmentType?.replace('-', ' ') || 'Role'
@@ -488,7 +363,7 @@ function JobRow({
     <tr className="border-t border-[#eef3f0]">
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
-          <JobMark title={job.title} category={category} />
+          <JobIcon title={job.title} category={category} className="size-10 shrink-0" />
           <div className="min-w-0">
             <p className="truncate font-medium text-[var(--forest)]">{job.title}</p>
             <p className="text-xs text-muted-foreground">{category}</p>
@@ -513,11 +388,11 @@ function JobRow({
       </td>
       <td className="px-4 py-3 text-muted-foreground">{moneyBand(job.salaryMin, job.salaryMax, job.currency)}</td>
       <td className="px-4 py-3">
-        <StatusChip hired={hired} closed={isClosed(job)} />
+        <StatusChip hired={hired} closed={isJobClosed(job)} />
       </td>
       <td className="px-4 py-3 text-muted-foreground">{formatPosted(job.postedAt)}</td>
       <td className="px-4 py-3">
-        <JobActions job={job} apps={apps} hired={hired} menuOpen={menuOpen} onMenu={onMenu} onAsk={onAsk} />
+        <JobActions job={job} apps={apps} hired={hired} onAsk={onAsk} />
       </td>
     </tr>
   )
@@ -527,33 +402,29 @@ function JobCard({
   job,
   apps,
   hired,
-  menuOpen,
-  onMenu,
   onAsk,
 }: {
   job: Job
   apps: InboxRow[]
   hired: boolean
-  menuOpen: boolean
-  onMenu: () => void
-  onAsk: (action: ConfirmAction) => void
+  onAsk: (id: string, title: string, action: JobManageAction, applicants: number) => void
 }) {
   const category = job.skills[0] || job.employmentType?.replace('-', ' ') || 'Role'
   return (
     <article className="rounded-2xl border border-[#e4ebe6] p-4">
       <div className="flex items-start gap-3">
-        <JobMark title={job.title} category={category} />
+        <JobIcon title={job.title} category={category} className="size-10 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="font-medium text-[var(--forest)]">{job.title}</p>
           <p className="text-xs text-muted-foreground">{category}</p>
         </div>
-        <StatusChip hired={hired} closed={isClosed(job)} />
+        <StatusChip hired={hired} closed={isJobClosed(job)} />
       </div>
       <p className="mt-3 text-sm text-muted-foreground">
         {apps.length} {apps.length === 1 ? 'applicant' : 'applicants'} · {formatPosted(job.postedAt)}
       </p>
       <div className="mt-3">
-        <JobActions job={job} apps={apps} hired={hired} menuOpen={menuOpen} onMenu={onMenu} onAsk={onAsk} />
+        <JobActions job={job} apps={apps} hired={hired} onAsk={onAsk} />
       </div>
     </article>
   )
@@ -563,18 +434,13 @@ function JobActions({
   job,
   apps,
   hired,
-  menuOpen,
-  onMenu,
   onAsk,
 }: {
   job: Job
   apps: InboxRow[]
   hired: boolean
-  menuOpen: boolean
-  onMenu: () => void
-  onAsk: (action: ConfirmAction) => void
+  onAsk: (id: string, title: string, action: JobManageAction, applicants: number) => void
 }) {
-  const closed = isClosed(job)
   return (
     <div className="flex items-center gap-2">
       <Button variant="outline" size="sm" className="rounded-lg" asChild>
@@ -582,60 +448,12 @@ function JobActions({
           {hired ? 'View Hired' : 'View Applicants'}
         </Link>
       </Button>
-      <div className="relative">
-        {menuOpen ? (
-          <button type="button" className="fixed inset-0 z-20 cursor-default" aria-label="Close menu" onClick={onMenu} />
-        ) : null}
-        <button
-          type="button"
-          className="relative z-30 grid size-8 place-items-center rounded-lg border border-[#e4ebe6] text-[var(--forest)] hover:bg-[#f4f7f5]"
-          aria-label="Job actions"
-          aria-expanded={menuOpen}
-          onClick={onMenu}
-        >
-          <MoreHorizontal className="size-4" />
-        </button>
-        {menuOpen ? (
-          <div className="absolute right-0 z-30 mt-1 w-48 overflow-hidden rounded-xl border border-[#e4ebe6] bg-white py-1 shadow-lg">
-            <Link
-              to={`/employer/jobs/${encodeURIComponent(job.id)}/edit`}
-              className="block px-3 py-2 text-sm text-[var(--forest)] hover:bg-[#f4f7f5]"
-            >
-              Edit
-            </Link>
-            <button
-              type="button"
-              className="block w-full px-3 py-2 text-left text-sm text-[var(--forest)] hover:bg-[#f4f7f5]"
-              onClick={() => onAsk(closed ? 'reopen' : 'close')}
-            >
-              {closed ? 'Reopen listing' : 'Mark as closed'}
-            </button>
-            <button
-              type="button"
-              className="block w-full px-3 py-2 text-left text-sm text-[#b85c38] hover:bg-[#fbf4f1]"
-              onClick={() => onAsk('delete')}
-            >
-              Delete
-            </button>
-            {apps.length ? (
-              <p className="border-t border-[#eef3f0] px-3 py-2 text-[0.65rem] leading-relaxed text-muted-foreground">
-                Has applicants — delete asks you to close instead.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+      <JobManageMenu
+        job={job}
+        applicants={apps.length}
+        onAction={(action) => onAsk(job.id, job.title, action, apps.length)}
+      />
     </div>
-  )
-}
-
-function JobMark({ title, category }: { title: string; category: string }) {
-  const Icon = iconFor(title, category)
-  const tone = toneFor(title, category)
-  return (
-    <span className={cn('grid size-10 shrink-0 place-items-center rounded-xl', tone)}>
-      <Icon className="size-4" />
-    </span>
   )
 }
 
@@ -693,29 +511,6 @@ function Stat({
       ) : null}
     </div>
   )
-}
-
-function iconFor(title: string, category: string) {
-  const t = `${title} ${category}`.toLowerCase()
-  if (/design|figma|ui|ux/.test(t)) return Palette
-  if (/mobile|flutter|ios|android/.test(t)) return Smartphone
-  if (/market|social|content|writer/.test(t)) return /writer|content|write/.test(t) ? PenLine : Megaphone
-  if (/react|node|code|develop|engineer|software/.test(t)) return Code2
-  return Briefcase
-}
-
-function toneFor(title: string, category: string) {
-  const t = `${title} ${category}`.toLowerCase()
-  if (/design|figma|ui|ux/.test(t)) return 'bg-[#e6f4f4] text-[#2a8a86]'
-  if (/mobile|flutter/.test(t)) return 'bg-[#eaf3ff] text-[#3b6fd8]'
-  if (/writer|content|write/.test(t)) return 'bg-[#fff6e0] text-[#c49a12]'
-  if (/market|social/.test(t)) return 'bg-[#ffece6] text-[#d2653a]'
-  if (/react|laravel|code|develop/.test(t)) return 'bg-[#ece7ff] text-[#6b4fb0]'
-  return 'bg-[#e8f3ec] text-[#147a48]'
-}
-
-function isClosed(job: Job) {
-  return job.listingStatus === 'closed'
 }
 
 function formatPosted(iso?: string) {

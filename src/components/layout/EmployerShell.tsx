@@ -32,7 +32,7 @@ import type { LucideIcon } from 'lucide-react'
 const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean; badge?: 'inbox' | 'messages' }[] = [
   { to: '/employer', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/employer/jobs/new', label: 'Post a Job', icon: Plus },
-  { to: '/employer/inbox', label: 'Find Candidates', icon: Search },
+  { to: '/employer/candidates', label: 'Find Candidates', icon: Search },
   { to: '/employer/jobs', label: 'My Jobs', icon: Briefcase, end: true },
   { to: '/employer/inbox', label: 'Applicants', icon: Users, badge: 'inbox' },
   { to: '/employer/messages', label: 'Messages', icon: MessagesSquare, badge: 'messages' },
@@ -52,11 +52,20 @@ interface ThreadRow {
   unreadCount?: number
 }
 
+const SIDEBAR_KEY = 'atelier-employer-sidebar'
+
 export function EmployerShell() {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [open, setOpen] = useState(false)
+  const [mini, setMini] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const [bellOpen, setBellOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
@@ -93,15 +102,27 @@ export function EmployerShell() {
     setAccountOpen(false)
   }
 
+  function toggleMini() {
+    setMini((cur) => {
+      const next = !cur
+      try {
+        localStorage.setItem(SIDEBAR_KEY, next ? '1' : '0')
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }
+
   function onSearch(e: FormEvent) {
     e.preventDefault()
     const q = query.trim()
-    if (!q) {
-      navigate('/employer/inbox')
-    } else if (/^con-/i.test(q) || /contract/i.test(q)) {
-      navigate(`/employer/contracts`)
+    if (/^con-/i.test(q) || /contract/i.test(q)) {
+      navigate('/employer/contracts')
+    } else if (location.pathname.startsWith('/employer/inbox')) {
+      navigate(q ? `/employer/inbox?q=${encodeURIComponent(q)}` : '/employer/inbox')
     } else {
-      navigate(`/employer/inbox?q=${encodeURIComponent(q)}`)
+      navigate(q ? `/employer/candidates?q=${encodeURIComponent(q)}` : '/employer/candidates')
     }
     setOpen(false)
   }
@@ -113,6 +134,18 @@ export function EmployerShell() {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') closeMenus()
       const tag = (e.target as HTMLElement | null)?.tagName
+      if (e.key === '[' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault()
+        setMini((cur) => {
+          const next = !cur
+          try {
+            localStorage.setItem(SIDEBAR_KEY, next ? '1' : '0')
+          } catch {
+            /* ignore */
+          }
+          return next
+        })
+      }
       if ((e.key === 'k' || e.key === 'K' || e.key === '/') && tag !== 'INPUT' && tag !== 'TEXTAREA') {
         e.preventDefault()
         searchRef.current?.focus()
@@ -126,95 +159,147 @@ export function EmployerShell() {
     }
   }, [])
 
-  const sidebar = (
-    <>
-      <button type="button" className="text-left" onClick={() => navigate('/employer', { replace: true })}>
-        <BrandMark light />
-      </button>
-      <div className="px-1">
-        <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[#7dcea0]">Employer portal</p>
-        <Link
-          to="/employer/company"
-          replace
-          onClick={() => setOpen(false)}
-          className="mt-2 flex items-center justify-between gap-2 rounded-xl px-2 py-2 text-sm text-[#e7e1d4] hover:bg-[#1f3d32]"
-        >
-          <span className="truncate font-medium">{company}</span>
-          <ChevronDown className="size-4 shrink-0 opacity-70" />
-        </Link>
-      </div>
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
-        {LINKS.map((l, i) => {
-          if (l.label === 'Find Candidates') {
-            return (
-              <Link
-                key={`${l.label}-${i}`}
-                to="/employer/inbox"
-                onMouseEnter={() => prefetchRoute('/employer/inbox')}
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-[#d8d0c0] hover:bg-[#1f3d32]/70"
-              >
-                <l.icon className="size-4 opacity-80" />
-                {l.label}
-              </Link>
-            )
-          }
-          return (
+  function sidebar(collapsed: boolean, onToggleMini?: () => void) {
+    return (
+      <>
+        <div className={cn('flex items-center', collapsed ? 'flex-col-reverse gap-3' : 'justify-between gap-2')}>
+          <button type="button" className="min-w-0 text-left" onClick={() => navigate('/employer', { replace: true })}>
+            <BrandMark light compact={collapsed} markOnly={collapsed} />
+          </button>
+          {onToggleMini ? (
+            <button
+              type="button"
+              aria-label={collapsed ? 'Expand sidebar' : 'Minimize sidebar'}
+              title={collapsed ? 'Expand sidebar' : 'Minimize sidebar'}
+              className="grid size-9 shrink-0 place-items-center rounded-full text-[#f4f0e8] ring-1 ring-white/25 transition-colors hover:bg-white/10 hover:text-white"
+              onClick={onToggleMini}
+            >
+              <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+                <rect x="3.25" y="6.25" width="17.5" height="11.5" rx="2.75" />
+                <path d="M9 6.25v11.5" />
+              </svg>
+            </button>
+          ) : null}
+        </div>
+        <div className={cn('overflow-hidden transition-all duration-300', collapsed ? 'h-0 opacity-0' : 'h-auto opacity-100')}>
+          <p className="whitespace-nowrap px-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[#7dcea0]">
+            Employer portal
+          </p>
+          <Link
+            to="/employer/company"
+            replace
+            onClick={() => setOpen(false)}
+            className="mt-2 flex items-center justify-between gap-2 rounded-xl px-2 py-2 text-sm text-[#e7e1d4] hover:bg-[#1f3d32]"
+          >
+            <span className="truncate font-medium">{company}</span>
+            <ChevronDown className="size-4 shrink-0 opacity-70" />
+          </Link>
+        </div>
+        {collapsed ? (
+          <Link
+            to="/employer/company"
+            replace
+            title={company}
+            onClick={() => setOpen(false)}
+            className="grid size-10 place-items-center self-center rounded-xl text-[#e7e1d4] hover:bg-[#1f3d32]"
+          >
+            <Building2 className="size-4" />
+          </Link>
+        ) : null}
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden">
+          {LINKS.map((l, i) => (
             <NavLink
               key={`${l.label}-${i}`}
               to={l.to}
               end={l.end}
               replace={!isDrillPath(l.to)}
+              title={collapsed ? l.label : undefined}
               onMouseEnter={() => prefetchRoute(l.to)}
               onFocus={() => prefetchRoute(l.to)}
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors',
+                  'group relative flex items-center rounded-xl text-sm transition-[background-color,color,padding,gap] duration-300',
+                  collapsed ? 'justify-center px-0 py-2.5' : 'gap-2.5 px-3 py-2.5',
                   isActive ? 'bg-[#147a48] text-white' : 'text-[#d8d0c0] hover:bg-[#1f3d32]/70',
                 )
               }
             >
-              <l.icon className="size-4 opacity-80" />
-              <span className="flex-1">{l.label}</span>
+              <l.icon className="size-4 shrink-0 opacity-80" />
+              <span
+                className={cn(
+                  'overflow-hidden whitespace-nowrap transition-all duration-300',
+                  collapsed ? 'w-0 opacity-0' : 'w-auto flex-1 opacity-100',
+                )}
+              >
+                {l.label}
+              </span>
               {l.badge === 'inbox' && waiting ? (
-                <span className="grid min-w-5 place-items-center rounded-full bg-[#e23d3d] px-1.5 text-[0.65rem] font-semibold leading-5 text-white">
+                <span
+                  className={cn(
+                    'grid min-w-5 place-items-center rounded-full bg-[#e23d3d] px-1.5 text-[0.65rem] font-semibold leading-5 text-white',
+                    collapsed && 'absolute right-1 top-1 min-w-4 px-1',
+                  )}
+                >
                   {waiting > 99 ? '99+' : waiting}
                 </span>
               ) : null}
               {l.badge === 'messages' && unread ? (
-                <span className="grid min-w-5 place-items-center rounded-full bg-[#e23d3d] px-1.5 text-[0.65rem] font-semibold leading-5 text-white">
+                <span
+                  className={cn(
+                    'grid min-w-5 place-items-center rounded-full bg-[#e23d3d] px-1.5 text-[0.65rem] font-semibold leading-5 text-white',
+                    collapsed && 'absolute right-1 top-1 min-w-4 px-1',
+                  )}
+                >
                   {unread > 99 ? '99+' : unread}
                 </span>
               ) : null}
             </NavLink>
-          )
-        })}
-      </nav>
-      <Link
-        to="/employer/finances"
-        replace
-        onClick={() => setOpen(false)}
-        className="rounded-2xl bg-gradient-to-br from-[#1a3d2e] to-[#0d1b16] p-4 text-[var(--paper)] ring-1 ring-[#c6a15b33]"
-      >
-        <div className="flex items-center gap-2 text-[#c6a15b]">
-          <Crown className="size-4" />
-          <span className="text-sm font-medium">Hiring plan</span>
-        </div>
-        <p className="mt-2 text-xs leading-relaxed text-[#c9c0ae]">
-          First year of hiring is free. After that the Hiring plan is billed yearly.
-        </p>
-        <span className="mt-3 inline-flex text-sm font-medium text-[#7dcea0]">
-          View payments →
-        </span>
-      </Link>
-    </>
-  )
+          ))}
+        </nav>
+        <Link
+          to="/employer/finances"
+          replace
+          title={collapsed ? 'Hiring plan' : undefined}
+          onClick={() => setOpen(false)}
+          className={cn(
+            'text-[var(--paper)] ring-1 ring-[#c6a15b33] transition-all duration-300',
+            collapsed
+              ? 'grid size-10 place-items-center self-center rounded-xl bg-gradient-to-br from-[#1a3d2e] to-[#0d1b16]'
+              : 'rounded-2xl bg-gradient-to-br from-[#1a3d2e] to-[#0d1b16] p-4',
+          )}
+        >
+          <div className="flex items-center gap-2 text-[#c6a15b]">
+            <Crown className="size-4 shrink-0" />
+            <span
+              className={cn(
+                'overflow-hidden whitespace-nowrap text-sm font-medium transition-all duration-300',
+                collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100',
+              )}
+            >
+              Hiring plan
+            </span>
+          </div>
+          <div
+            className={cn(
+              'overflow-hidden transition-all duration-300',
+              collapsed ? 'mt-0 max-h-0 opacity-0' : 'mt-2 max-h-24 opacity-100',
+            )}
+          >
+            <p className="text-xs leading-relaxed text-[#c9c0ae]">
+              First year of hiring is free. After that the Hiring plan is billed yearly.
+            </p>
+            <span className="mt-3 inline-flex text-sm font-medium text-[#7dcea0]">View payments →</span>
+          </div>
+        </Link>
+      </>
+    )
+  }
 
   return (
     <div
       className={cn(
-        'hiring-portal lg:grid lg:grid-cols-[16.25rem_minmax(0,1fr)]',
+        'hiring-portal lg:flex',
         messenger ? 'h-svh overflow-hidden' : 'min-h-svh',
       )}
     >
@@ -225,16 +310,22 @@ export function EmployerShell() {
             <button type="button" className="absolute right-4 top-4" aria-label="Close" onClick={() => setOpen(false)}>
               <X className="size-5" />
             </button>
-            {sidebar}
+            {sidebar(false)}
           </aside>
         </div>
       ) : null}
-      <aside className="sticky top-0 hidden h-svh flex-col gap-6 overflow-y-auto bg-[var(--sidebar)] p-5 text-[var(--sidebar-foreground)] lg:flex">
-        {sidebar}
+      <aside
+        className={cn(
+          'sticky top-0 z-20 hidden h-svh shrink-0 flex-col bg-[var(--sidebar)] text-[var(--sidebar-foreground)] lg:flex',
+          'transition-[width,padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+          mini ? 'w-[4.75rem] gap-4 px-2.5 py-5' : 'w-[16.25rem] gap-6 px-5 py-5',
+        )}
+      >
+        {sidebar(mini, toggleMini)}
       </aside>
 
-      <div className={cn('flex min-h-0 min-w-0 flex-col', messenger && 'h-full min-h-0 lg:h-svh')}>
-        <header className="sticky top-0 z-30 flex shrink-0 items-center gap-3 border-b border-[#e4ebe6] bg-white px-4 py-3 sm:px-6">
+      <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', messenger && 'h-full min-h-0 lg:h-svh')}>
+        <header className="sticky top-0 z-30 flex min-w-0 shrink-0 items-center gap-2 border-b border-[#e4ebe6] bg-white px-3 py-3 sm:gap-3 sm:px-6">
           <button type="button" className="grid size-10 place-items-center lg:hidden" aria-label="Open menu" onClick={() => setOpen(true)}>
             <Menu className="size-5 text-[var(--forest)]" />
           </button>
@@ -244,7 +335,11 @@ export function EmployerShell() {
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search candidates, jobs, or contracts…"
+              placeholder={
+                location.pathname.startsWith('/employer/inbox')
+                  ? 'Search applicants…'
+                  : 'Search candidates…'
+              }
               className="h-11 w-full rounded-full border border-[#e4ebe6] bg-[#f4f7f5] pl-10 pr-12 text-sm outline-none placeholder:text-muted-foreground/80 focus:border-[#147a48] focus:bg-white"
             />
             <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#d7ddd8] bg-white px-1.5 text-[0.65rem] font-medium text-muted-foreground sm:inline">
@@ -272,7 +367,7 @@ export function EmployerShell() {
             <button
               type="button"
               aria-label="Help"
-              className="grid size-10 place-items-center rounded-full text-[var(--forest)] hover:bg-[#eef3f0]"
+              className="hidden size-10 place-items-center rounded-full text-[var(--forest)] hover:bg-[#eef3f0] sm:grid"
               onClick={() => {
                 setBellOpen(false)
                 setAccountOpen(false)
@@ -371,7 +466,7 @@ export function EmployerShell() {
             'min-w-0 flex-1',
             messenger
               ? 'flex min-h-0 flex-col p-0 [&>*]:h-full [&>*]:min-h-0'
-              : 'px-4 py-5 sm:px-6 sm:py-6 lg:px-8',
+              : 'min-w-0 overflow-x-clip px-3 py-4 sm:px-6 sm:py-6 lg:px-8',
           )}
         >
           <Outlet />

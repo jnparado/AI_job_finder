@@ -71,6 +71,20 @@ body {
   background: #f3f6f4;
 }
 
+.hiring-portal aside {
+  will-change: width;
+}
+
+@media (max-height: 760px) {
+  .desk-hero-photo {
+    display: none !important;
+  }
+
+  .desk-hero-extra {
+    display: none !important;
+  }
+}
+
 .atelier-card > h2:first-child {
   position: relative;
   padding-bottom: 0.8rem;

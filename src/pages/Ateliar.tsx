@@ -260,10 +260,10 @@ function TrackerHeader({
 }) {
   return (
     <section className="overflow-hidden rounded-3xl border border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)] shadow-[0_16px_40px_rgba(13,27,22,0.12)]">
-      <div className="flex flex-wrap items-end justify-between gap-4 p-6 sm:p-8">
+      <div className="flex flex-wrap items-end justify-between gap-4 p-4 sm:p-6">
         <div className="max-w-xl">
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Time</p>
-          <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">{title}</h1>
+          <h1 className="mt-1 font-serif text-2xl leading-tight sm:text-3xl">{title}</h1>
           <p className="mt-2 text-sm leading-relaxed text-[#d8d0c0] sm:text-base">{subtitle}</p>
         </div>
         <div className="flex flex-wrap gap-2">

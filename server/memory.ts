@@ -55,6 +55,16 @@ export interface EmployerInvite {
   invitedBy?: string
 }
 
+export interface TalentInvite {
+  id: string
+  employerId: string
+  candidateId: string
+  candidateName: string
+  jobId: string
+  jobTitle: string
+  createdAt: string
+}
+
 export interface AgentSettings {
   enabled: boolean
   runHour: number
@@ -75,6 +85,7 @@ const ledger: LedgerEntry[] = []
 const trackerSessions: TrackerSession[] = []
 const staffInvites: StaffInvite[] = []
 const employerInvites: EmployerInvite[] = []
+const talentInvites: TalentInvite[] = []
 
 export const memory = {
   getProfile(userId: string) {
@@ -83,6 +94,18 @@ export const memory = {
   setProfile(userId: string, profile: CandidateProfile) {
     profiles.set(userId, { ...profile, id: userId })
     return memory.getProfile(userId)
+  },
+  listProfiles() {
+    return [...profiles.values()]
+  },
+  addTalentInvite(row: TalentInvite) {
+    const next = [row, ...talentInvites.filter((item) => item.id !== row.id)]
+    talentInvites.length = 0
+    talentInvites.push(...next)
+    return row
+  },
+  listTalentInvites(employerId: string) {
+    return talentInvites.filter((row) => row.employerId === employerId)
   },
   setJobs(list: Job[]) {
     for (const job of list) jobs.set(job.id, job)

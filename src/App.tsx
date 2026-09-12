@@ -52,6 +52,7 @@ const EmployerApplicationPage = lazyNamed(() => import('@/pages/Employer'), 'Emp
 const EmployerCompanyPage = lazyNamed(() => import('@/pages/Employer'), 'EmployerCompanyPage')
 const EmployerContractsPage = lazyNamed(() => import('@/pages/EmployerContracts'), 'EmployerContractsPage')
 const EmployerDashboardPage = lazyNamed(() => import('@/pages/Employer'), 'EmployerDashboardPage')
+const EmployerCandidatesPage = lazyNamed(() => import('@/pages/Employer'), 'EmployerCandidatesPage')
 const EmployerInboxPage = lazyNamed(() => import('@/pages/Employer'), 'EmployerInboxPage')
 const EmployerJobsPage = lazyNamed(() => import('@/pages/Employer'), 'EmployerJobsPage')
 const EmployerPostJobPage = lazyNamed(() => import('@/pages/Employer'), 'EmployerPostJobPage')
@@ -126,6 +127,7 @@ export default function App() {
                   <Route path="jobs" element={<EmployerJobsPage />} />
                   <Route path="jobs/new" element={<EmployerPostJobPage />} />
                   <Route path="jobs/:id/edit" element={<EmployerPostJobPage />} />
+                  <Route path="candidates" element={<EmployerCandidatesPage />} />
                   <Route path="inbox" element={<EmployerInboxPage />} />
                   <Route path="inbox/:id" element={<EmployerApplicationPage />} />
                   <Route path="messages" element={<EmployerMessagesPage />} />

@@ -199,14 +199,53 @@ export function PostJobWizard() {
   const { id: editId } = useParams()
   const editing = Boolean(editId)
   const { profile } = useAuth()
-  const navigate = useNavigate()
-  const qc = useQueryClient()
   const seededCountry = profile.country?.trim() || 'Philippines'
   const seededCurrency = currencyForLocation(seededCountry, 'PHP') ?? 'PHP'
-  const [d, setD] = useState<Draft>(() =>
-    editing ? emptyDraft(seededCountry, seededCurrency) : loadDraft(emptyDraft(seededCountry, seededCurrency)),
+
+  const jobQ = useQuery({
+    queryKey: ['employer-job', editId],
+    queryFn: () => api<Job>(`/api/employer/jobs/${encodeURIComponent(editId!)}`),
+    enabled: editing && Boolean(editId),
+    retry: false,
+  })
+
+  if (editing && jobQ.isLoading) {
+    return <p className="text-sm text-muted-foreground">Loading this job…</p>
+  }
+  if (editing && jobQ.isError) {
+    return (
+      <div className="space-y-3">
+        <p className="font-serif text-2xl text-[var(--forest)]">Job not found</p>
+        <p className="text-sm text-muted-foreground">This listing is missing or belongs to another account.</p>
+        <Button className="rounded-xl bg-[#147a48] hover:bg-[#0f5e37]" asChild>
+          <Link to="/employer/jobs">Back to My Jobs</Link>
+        </Button>
+      </div>
+    )
+  }
+
+  const fallback = emptyDraft(seededCountry, seededCurrency)
+  const initial =
+    editing && jobQ.data ? draftFromJob(jobQ.data, fallback) : loadDraft(fallback)
+
+  return (
+    <PostJobWizardForm key={editId ?? 'new'} initial={initial} editing={editing} editId={editId} />
   )
-  const [loadedId, setLoadedId] = useState<string | null>(null)
+}
+
+function PostJobWizardForm({
+  initial,
+  editing,
+  editId,
+}: {
+  initial: Draft
+  editing: boolean
+  editId?: string
+}) {
+  const { profile } = useAuth()
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+  const [d, setD] = useState(initial)
   const [error, setError] = useState('')
   const [draftNote, setDraftNote] = useState('')
   const company = profile.companyName || 'Your company'
@@ -227,21 +266,6 @@ export function PostJobWizard() {
   const placeOk = Boolean(d.country.trim()) || d.remote
   const publishOk = titleOk && descOk && payOk && placeOk
   const tipCount = [titleOk, descOk, skillList.length > 0, payOk, placeOk].filter(Boolean).length
-
-  const jobs = useQuery({
-    queryKey: ['employer-jobs'],
-    queryFn: () => api<Job[]>('/api/employer/jobs'),
-    enabled: editing,
-  })
-
-  useEffect(() => {
-    if (!editId || loadedId === editId) return
-    const job = jobs.data?.find((row) => row.id === editId)
-    if (!job) return
-    setD(draftFromJob(job, emptyDraft(seededCountry, seededCurrency)))
-    setLoadedId(editId)
-    setError('')
-  }, [editId, jobs.data, loadedId, seededCountry, seededCurrency])
 
   function patch(next: Partial<Draft>) {
     setD((cur) => ({ ...cur, ...next }))
@@ -275,11 +299,15 @@ export function PostJobWizard() {
   const save = useMutation({
     mutationFn: () =>
       editing && editId
-        ? api<Job>(`/api/employer/jobs/${editId}`, { method: 'PATCH', body: JSON.stringify(payload()) })
+        ? api<Job>(`/api/employer/jobs/${encodeURIComponent(editId)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload()),
+          })
         : api<Job>('/api/employer/jobs', { method: 'POST', body: JSON.stringify(payload()) }),
     onSuccess: async () => {
       if (!editing) sessionStorage.removeItem(DRAFT_KEY)
       await qc.invalidateQueries({ queryKey: ['employer-jobs'] })
+      await qc.invalidateQueries({ queryKey: ['employer-job'] })
       navigate('/employer/jobs', { replace: true })
     },
     onError: (err) => setError(err instanceof Error ? err.message : editing ? 'Could not save the job.' : 'Could not post the job.'),
@@ -311,21 +339,6 @@ export function PostJobWizard() {
     [d.salaryMin, d.salaryMax, d.currency],
   )
 
-  if (editing && jobs.isLoading) {
-    return <p className="text-sm text-muted-foreground">Loading this job…</p>
-  }
-  if (editing && jobs.isSuccess && !jobs.data?.some((row) => row.id === editId)) {
-    return (
-      <div className="space-y-3">
-        <p className="font-serif text-2xl text-[var(--forest)]">Job not found</p>
-        <p className="text-sm text-muted-foreground">This listing is missing or belongs to another account.</p>
-        <Button className="rounded-xl bg-[#147a48] hover:bg-[#0f5e37]" asChild>
-          <Link to="/employer/jobs">Back to My Jobs</Link>
-        </Button>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
@@ -338,7 +351,7 @@ export function PostJobWizard() {
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="font-serif text-4xl leading-tight text-[var(--forest)] sm:text-[2.6rem]">
+          <h1 className="font-serif text-2xl leading-tight text-[var(--forest)] sm:text-3xl">
             {editing ? 'Edit job' : 'Post a Job'}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -347,7 +360,7 @@ export function PostJobWizard() {
               : 'Find the right talent by creating a clear and detailed job post.'}
           </p>
         </div>
-        <div className="flex max-w-md items-center gap-3 rounded-2xl border border-[#d7ddd8] bg-[#f3f7f4] px-4 py-3">
+        <div className="desk-hero-extra hidden max-w-md items-center gap-3 rounded-2xl border border-[#d7ddd8] bg-[#f3f7f4] px-4 py-3 sm:flex">
           <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-[var(--forest)] shadow-sm">
             <Briefcase className="size-5" />
           </span>
@@ -360,12 +373,12 @@ export function PostJobWizard() {
         </div>
       </div>
 
-      <ol className="grid gap-2 rounded-2xl border border-[#e4ebe6] bg-white p-3 sm:grid-cols-4">
+      <ol className="flex gap-2 overflow-x-auto rounded-2xl border border-[#e4ebe6] bg-white p-3 sm:grid sm:grid-cols-4">
         {STEPS.map((step) => {
           const on = d.step === step.n
           const done = d.step > step.n
           return (
-            <li key={step.n}>
+            <li key={step.n} className="min-w-[12.5rem] sm:min-w-0">
               <button
                 type="button"
                 onClick={() => go(step.n)}
