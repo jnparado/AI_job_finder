@@ -27,13 +27,13 @@ import { cn, initials } from '@/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 
 const PRIMARY: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
-  { to: '/app/jobs', label: 'Matches', icon: Search },
   { to: '/app', label: 'Home', icon: Home, end: true },
-  { to: '/app/applications', label: 'Packets', icon: FileText },
-  { to: '/app/messages', label: 'Inbox', icon: MessagesSquare },
-  { to: '/app/ateliar', label: 'Tracker', icon: Timer },
+  { to: '/app/jobs', label: 'Matches', icon: Search },
+  { to: '/app/applications', label: 'Applications', icon: FileText },
+  { to: '/app/messages', label: 'Messages', icon: MessagesSquare },
   { to: '/app/resume', label: 'Resume', icon: ScrollText },
-  { to: '/app/career', label: 'Coach', icon: LineChart },
+  { to: '/app/career', label: 'Career Coach', icon: LineChart },
+  { to: '/app/ateliar', label: 'Tracker', icon: Timer },
 ]
 
 const ACCOUNT_LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
