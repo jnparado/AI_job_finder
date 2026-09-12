@@ -1,44 +1,55 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bell,
+  BellRing,
+  Bookmark,
+  Briefcase,
+  Calendar,
+  ChevronDown,
   CircleHelp,
-  FileText,
+  Crown,
   Home,
   LineChart,
   LogOut,
+  Menu,
   MessageSquare,
   MessagesSquare,
   ScrollText,
   Search,
   Settings,
-  Timer,
+  Sparkles,
   User,
   Wallet,
+  X,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { prefetchRoute } from '@/lib/prefetch'
 import { isDrillPath } from '@/lib/nav'
 import { BrandMark } from '@/components/ui/feedback'
+import { localBrandPath } from '@/lib/brandAssets'
 import { displayName, isStaffRole } from '@shared/types'
 import { cn, initials } from '@/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 
-const PRIMARY: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
-  { to: '/app', label: 'Home', icon: Home, end: true },
+const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean; badge?: 'messages' }[] = [
+  { to: '/app', label: 'Dashboard', icon: Home, end: true },
   { to: '/app/jobs', label: 'Matches', icon: Search },
-  { to: '/app/applications', label: 'Applications', icon: FileText },
-  { to: '/app/messages', label: 'Messages', icon: MessagesSquare },
+  { to: '/app/applications', label: 'My Jobs', icon: Briefcase },
+  { to: '/app/messages', label: 'Messages', icon: MessagesSquare, badge: 'messages' },
   { to: '/app/resume', label: 'Resume', icon: ScrollText },
+  { to: '/app/profile', label: 'Skills & Assessments', icon: Sparkles },
+  { to: '/app/ateliar', label: 'Calendar', icon: Calendar },
   { to: '/app/career', label: 'Career Coach', icon: LineChart },
-  { to: '/app/ateliar', label: 'Tracker', icon: Timer },
+  { to: '/app/jobs', label: 'Saved Jobs', icon: Bookmark },
+  { to: '/app/settings', label: 'Job Alerts', icon: BellRing },
+  { to: '/app/settings', label: 'Profile Settings', icon: Settings },
 ]
 
 const ACCOUNT_LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: '/app/profile', label: 'Profile', icon: User },
-  { to: '/app', label: 'Your studio', icon: Home, end: true },
   { to: '/app/interview', label: 'Interview', icon: MessageSquare },
   { to: '/app/finances', label: 'Finances', icon: Wallet },
   { to: '/app/settings', label: 'Settings', icon: Settings },
@@ -50,25 +61,39 @@ interface Note {
   href?: string
 }
 
+interface ThreadRow {
+  unreadCount?: number
+}
+
 export function AppShell() {
   const { profile, signOut, destinationFor } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const hiringDesk = profile.role === 'employer' || isStaffRole(profile.role)
   const name = displayName(profile)
+  const [open, setOpen] = useState(false)
   const [bellOpen, setBellOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const toolsRef = useRef<HTMLDivElement>(null)
-  const settingsOn = location.pathname.startsWith('/app/settings')
+  const searchRef = useRef<HTMLInputElement>(null)
   const messenger = location.pathname.startsWith('/app/messages')
+
   const notes = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api<Note[]>('/api/notifications'),
     staleTime: 120_000,
     enabled: !hiringDesk,
   })
+  const threads = useQuery({
+    queryKey: ['messages'],
+    queryFn: () => api<ThreadRow[]>('/api/messages'),
+    staleTime: 30_000,
+    enabled: !hiringDesk,
+  })
   const noteCount = notes.data?.length ?? 0
+  const unread = (threads.data ?? []).reduce((n, t) => n + (t.unreadCount ?? 0), 0)
 
   function closeMenus() {
     setBellOpen(false)
@@ -76,14 +101,11 @@ export function AppShell() {
     setAccountOpen(false)
   }
 
-  function openSettings() {
-    closeMenus()
-    navigate('/app/settings', { replace: true })
-  }
-
-  function goAccount(to: string) {
-    closeMenus()
-    navigate(to, { replace: true })
+  function onSearch(e: FormEvent) {
+    e.preventDefault()
+    const q = query.trim()
+    navigate(q ? `/app/jobs?q=${encodeURIComponent(q)}` : '/app/jobs')
+    setOpen(false)
   }
 
   useEffect(() => {
@@ -92,6 +114,11 @@ export function AppShell() {
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') closeMenus()
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if ((e.key === 'k' || e.key === 'K' || e.key === '/') && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault()
+        searchRef.current?.focus()
+      }
     }
     document.addEventListener('mousedown', onDoc)
     document.addEventListener('keydown', onKey)
@@ -103,46 +130,116 @@ export function AppShell() {
 
   if (hiringDesk) return <Navigate to={destinationFor(profile)} replace />
 
-  return (
-    <div className={cn('atelier-app overflow-x-clip', messenger ? 'flex h-svh flex-col overflow-hidden' : 'min-h-svh')}>
-      <header className="sticky top-0 z-40 shrink-0 border-b border-[#c9c0ae22] bg-[var(--forest)] text-[var(--paper)]">
-        <div className="mx-auto flex max-w-[1400px] items-center gap-2 px-3 py-2 sm:gap-4 sm:px-5">
-          <Link to="/app" replace className="shrink-0" aria-label="Atelier home">
-            <BrandMark light compact />
+  function sidebar() {
+    return (
+      <>
+        <Link to="/app" replace onClick={() => setOpen(false)} className="shrink-0" aria-label="Atelier home">
+          <BrandMark light compact />
+        </Link>
+
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden">
+          {LINKS.map((l, i) => (
+            <NavLink
+              key={`${l.label}-${i}`}
+              to={l.to}
+              end={l.end}
+              replace={!isDrillPath(l.to)}
+              onMouseEnter={() => prefetchRoute(l.to)}
+              onFocus={() => prefetchRoute(l.to)}
+              onClick={() => setOpen(false)}
+              className={({ isActive }) =>
+                cn(
+                  'group relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors',
+                  isActive ? 'bg-[#147a48] text-white' : 'text-[#d8d0c0] hover:bg-[#1f3d32]/70',
+                )
+              }
+            >
+              <l.icon className="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
+              <span className="min-w-0 flex-1 truncate">{l.label}</span>
+              {l.badge === 'messages' && unread ? (
+                <span className="grid min-w-5 place-items-center rounded-full bg-[#e23d3d] px-1.5 text-[0.65rem] font-semibold leading-5 text-white">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              ) : null}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="rounded-2xl bg-gradient-to-br from-[#1a3d2e] to-[#0d1b16] p-4 ring-1 ring-[#c6a15b33]">
+          <div className="flex items-center gap-2 text-[#c6a15b]">
+            <Crown className="size-4" />
+            <p className="text-sm font-medium">Upgrade to Pro</p>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-[#c9c0ae]">
+            Stronger AI matching and coach notes from your real scores.
+          </p>
+          <Link
+            to="/app/resume"
+            replace
+            onClick={() => setOpen(false)}
+            className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-xl bg-white text-sm font-medium text-[var(--forest)] hover:bg-[#f4f0e8]"
+          >
+            Upgrade Now →
           </Link>
+        </div>
 
-          <nav className="hidden min-w-0 flex-1 items-stretch justify-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:flex [&::-webkit-scrollbar]:hidden">
-            {PRIMARY.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                replace
-                onMouseEnter={() => prefetchRoute(item.to)}
-                onFocus={() => prefetchRoute(item.to)}
-                className={({ isActive }) =>
-                  `flex min-w-[4.25rem] flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[0.7rem] transition-colors sm:min-w-[4.75rem] ${
-                    isActive ? 'text-[var(--paper)]' : 'text-[#c9c0ae] hover:text-[var(--paper)]'
-                  }`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <item.icon className="size-[1.15rem] stroke-[1.5]" />
-                    <span className="leading-none">{item.label}</span>
-                    <span className={`mt-0.5 h-0.5 w-7 rounded-full ${isActive ? 'bg-[#c6a15b]' : 'bg-transparent'}`} />
-                  </>
-                )}
-              </NavLink>
-            ))}
-          </nav>
+        <div className="relative mt-1 overflow-hidden rounded-2xl">
+          <img src={localBrandPath('candidate-window.jpg')} alt="" className="h-24 w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--forest)] via-[var(--forest)]/55 to-transparent" />
+          <p className="absolute inset-x-3 bottom-3 font-serif text-sm italic leading-snug text-white">
+            A brighter career starts here.
+          </p>
+        </div>
+      </>
+    )
+  }
 
-          <div ref={toolsRef} className="relative flex shrink-0 items-center gap-0.5 sm:gap-1">
+  return (
+    <div
+      className={cn(
+        'atelier-app bg-[#f4f7f5] lg:flex',
+        messenger ? 'h-svh overflow-hidden' : 'min-h-svh',
+      )}
+    >
+      {open ? (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close menu" onClick={() => setOpen(false)} />
+          <aside className="relative flex h-full w-[min(18.5rem,88vw)] flex-col gap-5 overflow-y-auto bg-[var(--sidebar)] p-5 text-[var(--sidebar-foreground)]">
+            <button type="button" className="absolute right-4 top-4" aria-label="Close" onClick={() => setOpen(false)}>
+              <X className="size-5" />
+            </button>
+            {sidebar()}
+          </aside>
+        </div>
+      ) : null}
+
+      <aside className="sticky top-0 z-20 hidden h-svh w-[16.25rem] shrink-0 flex-col gap-5 overflow-y-auto bg-[var(--sidebar)] px-4 py-5 text-[var(--sidebar-foreground)] lg:flex">
+        {sidebar()}
+      </aside>
+
+      <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', messenger && 'h-full min-h-0 lg:h-svh')}>
+        <header className="sticky top-0 z-30 flex min-w-0 shrink-0 items-center gap-2 border-b border-[#e4ebe6] bg-white px-3 py-3 sm:gap-3 sm:px-6">
+          <button type="button" className="grid size-10 place-items-center lg:hidden" aria-label="Open menu" onClick={() => setOpen(true)}>
+            <Menu className="size-5 text-[var(--forest)]" />
+          </button>
+          <form onSubmit={onSearch} className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search jobs, companies, or keywords…"
+              className="h-11 w-full rounded-full border border-[#e4ebe6] bg-[#f4f7f5] pl-10 pr-12 text-sm outline-none placeholder:text-muted-foreground/80 focus:border-[#147a48] focus:bg-white"
+            />
+            <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#d7ddd8] bg-white px-1.5 text-[0.65rem] font-medium text-muted-foreground sm:inline">
+              K
+            </kbd>
+          </form>
+          <div ref={toolsRef} className="relative flex shrink-0 items-center gap-1">
             <button
               type="button"
               aria-label="Notifications"
-              aria-expanded={bellOpen}
-              className="relative grid size-10 place-items-center text-white"
+              className="relative grid size-10 place-items-center rounded-full text-[var(--forest)] hover:bg-[#eef3f0]"
               onClick={() => {
                 setHelpOpen(false)
                 setAccountOpen(false)
@@ -151,17 +248,15 @@ export function AppShell() {
             >
               <Bell className="size-5 stroke-[1.5]" />
               {noteCount ? (
-                <span className="absolute right-1 top-1 grid min-w-4 place-items-center rounded-full bg-[var(--copper)] px-1 text-[0.6rem] font-semibold leading-4">
+                <span className="absolute right-1.5 top-1.5 grid min-w-4 place-items-center rounded-full bg-[#e23d3d] px-1 text-[0.6rem] font-semibold leading-4 text-white">
                   {noteCount > 9 ? '9+' : noteCount}
                 </span>
               ) : null}
             </button>
-
             <button
               type="button"
               aria-label="Help"
-              aria-expanded={helpOpen}
-              className={`grid size-10 place-items-center ${helpOpen ? 'text-white' : 'text-[#c9c0ae] hover:text-white'}`}
+              className="hidden size-10 place-items-center rounded-full text-[var(--forest)] hover:bg-[#eef3f0] sm:grid"
               onClick={() => {
                 setBellOpen(false)
                 setAccountOpen(false)
@@ -170,24 +265,10 @@ export function AppShell() {
             >
               <CircleHelp className="size-5 stroke-[1.5]" />
             </button>
-
-            <button
-              type="button"
-              aria-label="Settings"
-              aria-current={settingsOn ? 'page' : undefined}
-              className={`grid size-10 place-items-center ${
-                settingsOn ? 'text-white' : 'text-[#c9c0ae] hover:text-white'
-              }`}
-              onClick={openSettings}
-            >
-              <Settings className="size-5 stroke-[1.5]" />
-            </button>
-
             <button
               type="button"
               aria-label="Account menu"
-              aria-expanded={accountOpen}
-              className="flex max-w-[12rem] items-center gap-2 rounded-2xl border border-[#c9c0ae44] bg-[#1a332b] px-2 py-1.5 text-left sm:max-w-[14rem] sm:px-2.5"
+              className="flex max-w-[14rem] items-center gap-2 rounded-full py-1 pl-1 pr-2 text-left hover:bg-[#eef3f0] sm:pr-3"
               onClick={() => {
                 setBellOpen(false)
                 setHelpOpen(false)
@@ -195,35 +276,27 @@ export function AppShell() {
               }}
             >
               {profile.avatarUrl ? (
-                <img src={profile.avatarUrl} alt="" className="size-8 shrink-0 rounded-lg object-cover" />
+                <img src={profile.avatarUrl} alt="" className="size-9 shrink-0 rounded-full object-cover" />
               ) : (
-                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#244a3c] font-serif text-sm text-white">
-                  {initials(name).slice(0, 1)}
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--forest)] font-serif text-sm text-white">
+                  {initials(name)}
                 </span>
               )}
               <span className="hidden min-w-0 sm:block">
-                <span className="block truncate text-sm leading-tight text-white">{name}</span>
-                <span className="mt-0.5 block text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[#c6a15b]">
-                  Candidate
-                </span>
+                <span className="block truncate text-sm font-medium leading-tight text-[var(--forest)]">{name}</span>
+                <span className="block text-xs text-muted-foreground">Candidate</span>
               </span>
+              <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
             </button>
 
             {bellOpen ? (
-              <div className="absolute right-3 top-[calc(100%-0.25rem)] z-50 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-border bg-[var(--paper)] text-[var(--forest)] shadow-xl sm:right-5">
+              <div className="absolute right-0 top-[calc(100%+0.4rem)] z-50 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-border bg-white text-[var(--forest)] shadow-xl">
                 <p className="border-b border-border px-4 py-3 text-sm font-medium">Waiting for you</p>
-                {notes.isLoading ? (
-                  <p className="px-4 py-6 text-sm text-muted-foreground">Loading notices…</p>
-                ) : notes.data?.length ? (
+                {notes.data?.length ? (
                   <ul className="max-h-72 overflow-y-auto py-1">
                     {notes.data.slice(0, 8).map((n, i) => (
                       <li key={`${n.title}-${i}`}>
-                        <Link
-                          to={n.href || '/app'}
-                          replace={!isDrillPath(n.href || '/app')}
-                          className="block px-4 py-2.5 hover:bg-muted"
-                          onClick={closeMenus}
-                        >
+                        <Link to={n.href || '/app'} className="block px-4 py-2.5 hover:bg-muted" onClick={closeMenus}>
                           <p className="text-sm">{n.title}</p>
                           {n.body ? <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p> : null}
                         </Link>
@@ -237,90 +310,36 @@ export function AppShell() {
             ) : null}
 
             {helpOpen ? (
-              <div className="absolute right-3 top-[calc(100%-0.25rem)] z-50 w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl border border-border bg-[var(--paper)] p-4 text-[var(--forest)] shadow-xl sm:right-5">
+              <div className="absolute right-0 top-[calc(100%+0.4rem)] z-50 w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl border border-border bg-white p-4 text-[var(--forest)] shadow-xl">
                 <p className="text-sm font-medium">Candidate help</p>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   Packets leave only after you approve. We never auto-apply on LinkedIn, Indeed, or Upwork.
                 </p>
-                <div className="mt-3 grid gap-1">
-                  <button
-                    type="button"
-                    className="rounded-lg px-2 py-2 text-left text-sm hover:bg-muted"
-                    onClick={openSettings}
-                  >
-                    Open settings
-                  </button>
-                  <Link
-                    to="/app/interview"
-                    replace
-                    className="rounded-lg px-2 py-2 text-sm hover:bg-muted"
-                    onClick={closeMenus}
-                    onMouseEnter={() => prefetchRoute('/app/interview')}
-                  >
-                    Interview rehearsal
-                  </Link>
-                  <Link
-                    to="/app/ateliar"
-                    replace
-                    className="rounded-lg px-2 py-2 text-sm hover:bg-muted"
-                    onClick={closeMenus}
-                    onMouseEnter={() => prefetchRoute('/app/ateliar')}
-                  >
-                    Time tracker
-                  </Link>
-                  <Link
-                    to="/app/finances"
-                    replace
-                    className="rounded-lg px-2 py-2 text-sm hover:bg-muted"
-                    onClick={closeMenus}
-                    onMouseEnter={() => prefetchRoute('/app/finances')}
-                  >
-                    Finances
-                  </Link>
-                </div>
               </div>
             ) : null}
 
             {accountOpen ? (
-              <div className="absolute right-3 top-[calc(100%-0.25rem)] z-50 w-56 overflow-hidden rounded-2xl border border-border bg-[var(--paper)] text-[var(--forest)] shadow-xl sm:right-5">
-                <button
-                  type="button"
-                  className="block w-full border-b border-border px-4 py-3 text-left hover:bg-muted"
-                  onClick={() => goAccount('/app/profile')}
-                  onMouseEnter={() => prefetchRoute('/app/profile')}
-                >
+              <div className="absolute right-0 top-[calc(100%+0.4rem)] z-50 w-56 overflow-hidden rounded-2xl border border-border bg-white text-[var(--forest)] shadow-xl">
+                <div className="border-b border-border px-4 py-3">
                   <p className="truncate text-sm font-medium">{name}</p>
-                  <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[var(--copper)]">
-                    Candidate
-                  </p>
-                </button>
-                <div className="p-2">
-                  {ACCOUNT_LINKS.map((item) => {
-                    const on =
-                      item.end
-                        ? location.pathname === item.to
-                        : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
-                    return (
-                      <button
-                        key={item.label}
-                        type="button"
-                        className={cn(
-                          'flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm',
-                          on ? 'bg-[#eef3f0]' : 'hover:bg-muted',
-                        )}
-                        onMouseEnter={() => prefetchRoute(item.to)}
-                        onFocus={() => prefetchRoute(item.to)}
-                        onClick={() => goAccount(item.to)}
-                      >
-                        <item.icon className="size-4 opacity-70" />
-                        {item.label}
-                      </button>
-                    )
-                  })}
+                  <p className="text-xs text-muted-foreground">Candidate</p>
                 </div>
-                <p className="mx-3 mb-2 rounded-xl border border-[#c6a15b55] bg-[#f7f1e4] px-3 py-2 text-xs leading-relaxed">
-                  Packets leave only after you approve.
-                </p>
+                <div className="p-2">
+                  {ACCOUNT_LINKS.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-muted"
+                      onClick={() => {
+                        closeMenus()
+                        navigate(item.to, { replace: true })
+                      }}
+                    >
+                      <item.icon className="size-4 opacity-70" />
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 border-t border-border px-4 py-3 text-sm hover:bg-muted"
@@ -335,46 +354,19 @@ export function AppShell() {
               </div>
             ) : null}
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main
-        className={cn(
-          'mx-auto min-w-0 w-full',
-          messenger
-            ? 'flex min-h-0 flex-1 flex-col pb-[calc(4.35rem+env(safe-area-inset-bottom))] md:max-w-none md:pb-0 [&>*]:h-full [&>*]:min-h-0'
-            : 'max-w-[1280px] px-4 py-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-8 md:pb-8',
-        )}
-      >
-        <Outlet />
-      </main>
-
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[#c9c0ae22] bg-[var(--forest)] pb-[env(safe-area-inset-bottom)] text-[var(--paper)] md:hidden">
-        <div className="flex items-stretch justify-around px-1 py-1.5">
-          {PRIMARY.slice(0, 5).map((item) => (
-            <NavLink
-              key={`m-${item.to}`}
-              to={item.to}
-              end={item.end}
-              replace
-              className={({ isActive }) =>
-                `flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1 text-[0.65rem] ${
-                  isActive ? 'text-[var(--paper)]' : 'text-[#c9c0ae]'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon className="size-5 stroke-[1.5]" />
-                  <span className="truncate leading-none">{item.label}</span>
-                  <span className={`h-0.5 w-5 rounded-full ${isActive ? 'bg-[#c6a15b]' : 'bg-transparent'}`} />
-                </>
-              )}
-            </NavLink>
-          ))}
-        </div>
-      </nav>
+        <main
+          className={cn(
+            'min-w-0 flex-1',
+            messenger
+              ? 'flex min-h-0 flex-col [&>*]:h-full [&>*]:min-h-0'
+              : 'px-4 py-5 sm:px-6 sm:py-6',
+          )}
+        >
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }
-
