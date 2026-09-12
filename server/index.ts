@@ -1057,17 +1057,20 @@ async function scoreReadyJobsFresh(user: AuthUser): Promise<JobMatch[]> {
   return merged
 }
 
-async function runSearch(user: AuthUser, minMatch = 0, maxJobs = 40) {
+async function runSearch(user: AuthUser, minMatch = 0, maxJobs = 40, focusQuery = '') {
   const profile = await loadProfile(user)
   const fallback = [profile.desiredTitle || profile.currentTitle || profile.headline || 'software engineer', ...profile.skills.slice(0, 2)]
     .filter(Boolean)
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim()
-  const planned = await Promise.race([
-    planSearch(profile).catch(() => ({ query: fallback })),
-    new Promise<{ query: string }>((resolve) => setTimeout(() => resolve({ query: fallback }), 1200)),
-  ])
+  const focus = focusQuery.trim()
+  const planned = focus
+    ? { query: focus }
+    : await Promise.race([
+        planSearch(profile).catch(() => ({ query: fallback })),
+        new Promise<{ query: string }>((resolve) => setTimeout(() => resolve({ query: fallback }), 1200)),
+      ])
   const discovered = await discoverJobs(profile, { query: planned.query || fallback, deadlineMs: 7000 })
   const posted = memory.atelierJobs().filter(isOpenListing)
   const parsedJobs = [...posted, ...discovered.jobs]
@@ -1445,8 +1448,14 @@ app.post('/api/resume/parse-text', async (c) => {
 app.post('/api/agent/search', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
-  const body = (await c.req.json().catch(() => ({}))) as { minMatch?: number; maxJobs?: number }
-  const result = await runSearch(user, body.minMatch ?? 0, body.maxJobs ?? 50)
+  const body = (await c.req.json().catch(() => ({}))) as {
+    minMatch?: number
+    maxJobs?: number
+    query?: string
+    focus?: string
+  }
+  const focus = String(body.query ?? body.focus ?? '').trim()
+  const result = await runSearch(user, body.minMatch ?? 0, body.maxJobs ?? 50, focus)
   return c.json({
     discovered: result.discovery.discovered,
     normalized: result.jobs.length,

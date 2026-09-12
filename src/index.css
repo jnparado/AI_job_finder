@@ -59,11 +59,15 @@ body {
 }
 
 .atelier-app {
+  --forest: #002018;
+  --forest-2: #001510;
+  --paper: #f5f7f6;
+  --accent: #2f9a6f;
+  --accent-soft: #e7f6ef;
+  --sidebar: #002018;
+  --sidebar-foreground: #e8eeeb;
   overflow-x: clip;
-  background:
-    radial-gradient(ellipse 70% 36% at 100% -8%, rgba(198, 161, 91, 0.12), transparent 52%),
-    radial-gradient(ellipse 46% 28% at 0% 100%, rgba(184, 92, 56, 0.05), transparent 48%),
-    var(--paper);
+  background: #f1f3f2;
 }
 
 .hiring-portal {

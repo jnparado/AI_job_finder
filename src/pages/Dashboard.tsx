@@ -12,17 +12,19 @@ import {
   LineChart,
   Mail,
   MapPin,
+  MessageCircle,
   Pencil,
-  Search,
   Sparkles,
   TrendingUp,
   Users,
+  X,
 } from 'lucide-react'
-import type { JobMatch } from '@shared/types'
+import type { CareerInsights, JobMatch } from '@shared/types'
 import { displayName, isStaffRole } from '@shared/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { localBrandPath } from '@/lib/brandAssets'
+import { AiJobAssistant } from '@/components/candidate/AiJobAssistant'
 import { cn, initials, money, moneyBand, postedLabel, prettyStatus, profileCompleteness } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -74,6 +76,7 @@ export function DashboardPage() {
   const qc = useQueryClient()
   const candidateDesk = profile.role !== 'employer' && !isStaffRole(profile.role)
   const [saved, setSaved] = useState(readSaved)
+  const [assistantOpen, setAssistantOpen] = useState(false)
 
   const home = useQuery({
     queryKey: ['candidate-home'],
@@ -100,13 +103,11 @@ export function DashboardPage() {
     },
   })
 
-  const search = useMutation({
-    mutationFn: () => api('/api/agent/search', { method: 'POST', body: '{}' }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['candidate-home'] })
-      void qc.invalidateQueries({ queryKey: ['jobs'] })
-      navigate('/app/jobs', { replace: true })
-    },
+  const coach = useQuery({
+    queryKey: ['career'],
+    queryFn: () => api<CareerInsights>('/api/career'),
+    staleTime: 60_000,
+    enabled: candidateDesk,
   })
 
   const matches = home.data?.matches ?? []
@@ -127,8 +128,9 @@ export function DashboardPage() {
     () => [...matches].sort((a, b) => b.score - a.score).slice(0, 3),
     [matches],
   )
+  const topMatch = recommended[0] ?? null
 
-  const insights = useMemo(() => buildInsights(matches, profile.skills), [matches, profile.skills])
+  const insights = useMemo(() => buildInsights(matches, profile.skills, coach.data), [matches, profile.skills, coach.data])
   const activity = useMemo(() => buildActivity(packets, matches), [packets, matches])
   const upcoming = useMemo(
     () =>
@@ -156,48 +158,48 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto grid max-w-[1400px] gap-5 xl:grid-cols-[minmax(0,1fr)_17rem] xl:items-start">
+    <div className="relative mx-auto grid max-w-[1400px] gap-5 xl:grid-cols-[minmax(0,1fr)_17rem] xl:items-start">
       <div className="min-w-0 space-y-5">
         {/* Profile + hero */}
-        <section className="overflow-hidden rounded-2xl border border-[#e4ebe6] bg-white shadow-[0_10px_28px_rgba(19,38,31,0.04)]">
+        <section className="overflow-hidden rounded-2xl border border-[#e7ebe9] bg-white shadow-[0_10px_28px_rgba(0,32,24,0.05)]">
           <div className="grid lg:grid-cols-[minmax(0,1.05fr)_minmax(14rem,0.95fr)]">
             <div className="flex flex-wrap items-start gap-4 p-4 sm:p-5">
               <div className="relative shrink-0">
                 {profile.avatarUrl ? (
                   <img src={profile.avatarUrl} alt="" className="size-20 rounded-full object-cover sm:size-24" />
                 ) : (
-                  <span className="grid size-20 place-items-center rounded-full bg-[#e8f3ec] font-serif text-2xl text-[var(--forest)] sm:size-24">
+                  <span className="grid size-20 place-items-center rounded-full bg-[#e7f6ef] font-serif text-2xl text-[#002018] sm:size-24">
                     {initials(name)}
                   </span>
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <h1 className="flex flex-wrap items-center gap-1.5 font-serif text-2xl text-[var(--forest)] sm:text-[1.75rem]">
+                <h1 className="flex flex-wrap items-center gap-1.5 font-serif text-2xl text-[#111827] sm:text-[1.75rem]">
                   <span className="truncate">{name}</span>
-                  {profile.onboardingCompleted ? <BadgeCheck className="size-5 text-[#147a48]" /> : null}
+                  {profile.onboardingCompleted ? <BadgeCheck className="size-5 text-[#2f9a6f]" /> : null}
                 </h1>
-                <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[#6b7280]">
                   <span>{headline}</span>
-                  <Link to="/app/profile" className="inline-flex text-[#147a48] hover:underline" aria-label="Edit profile">
+                  <Link to="/app/profile" className="inline-flex text-[#2f9a6f] hover:underline" aria-label="Edit profile">
                     <Pencil className="size-3.5" />
                   </Link>
                 </p>
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-[#6b7280]">
                   {place ? (
                     <span className="inline-flex items-center gap-1.5">
-                      <MapPin className="size-3.5 text-[#147a48]" />
+                      <MapPin className="size-3.5 text-[#2f9a6f]" />
                       {place}
                     </span>
                   ) : null}
                   {profile.yearsExperience ? (
                     <span className="inline-flex items-center gap-1.5">
-                      <Briefcase className="size-3.5 text-[#147a48]" />
+                      <Briefcase className="size-3.5 text-[#2f9a6f]" />
                       {profile.yearsExperience}+ years
                     </span>
                   ) : null}
                   {profile.email ? (
                     <span className="inline-flex items-center gap-1.5">
-                      <Mail className="size-3.5 text-[#147a48]" />
+                      <Mail className="size-3.5 text-[#2f9a6f]" />
                       <span className="truncate">{profile.email}</span>
                     </span>
                   ) : null}
@@ -222,7 +224,7 @@ export function DashboardPage() {
                 alt=""
                 className="absolute inset-0 h-full w-full object-cover object-center"
               />
-              <div className="absolute inset-0 bg-gradient-to-r from-[var(--forest)]/80 via-[var(--forest)]/45 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-r from-[#002018]/85 via-[#002018]/45 to-transparent" />
               <div className="relative flex h-full flex-col justify-center gap-3 p-5 text-white sm:p-6">
                 <h2 className="max-w-[14rem] font-serif text-2xl leading-tight sm:text-[1.65rem]">
                   Better Skills, Brighter Opportunities.
@@ -231,12 +233,10 @@ export function DashboardPage() {
                   AI scores roles against your resume — packets leave only after you approve.
                 </p>
                 <Button
-                  className="h-10 w-fit rounded-full bg-[var(--forest)] !text-white ring-1 ring-white/30 hover:bg-[var(--forest-2)]"
-                  disabled={search.isPending}
-                  onClick={() => search.mutate()}
+                  className="h-10 w-fit rounded-full bg-[#002820] !text-white hover:bg-[#001510]"
+                  onClick={() => setAssistantOpen(true)}
                 >
-                  <Search className="size-4" />
-                  {search.isPending ? 'Matching…' : 'Find Jobs →'}
+                  Find Jobs →
                 </Button>
               </div>
             </div>
@@ -255,10 +255,10 @@ export function DashboardPage() {
         <section>
           <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div>
-              <h2 className="font-serif text-xl text-[var(--forest)]">Recommended Jobs for You</h2>
+              <h2 className="font-serif text-xl text-[#002018]">Recommended Jobs for You</h2>
               <p className="text-sm text-muted-foreground">Ranked by Atelier AI match against your profile.</p>
             </div>
-            <Link to="/app/jobs" className="text-sm font-medium text-[#147a48] hover:underline">
+            <Link to="/app/jobs" className="text-sm font-medium text-[#2f9a6f] hover:underline">
               View All →
             </Link>
           </div>
@@ -284,28 +284,21 @@ export function DashboardPage() {
               ))}
             </div>
           ) : (
-            <div className="rounded-2xl border border-[#e4ebe6] bg-white p-8 text-center">
-              <Sparkles className="mx-auto size-8 text-[#147a48]" />
-              <p className="mt-3 font-serif text-xl text-[var(--forest)]">No AI matches yet</p>
+            <div className="rounded-2xl border border-[#e7ebe9] bg-white p-8 text-center">
+              <Sparkles className="mx-auto size-8 text-[#2f9a6f]" />
+              <p className="mt-3 font-serif text-xl text-[#002018]">No AI matches yet</p>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                Run Find Jobs so Atelier can score authorized listings against your resume.
+                Use the AI Job Assistant above — Find matches scores authorized listings against your resume.
               </p>
-              <Button
-                className="mt-4 rounded-full bg-[var(--forest)] !text-white"
-                disabled={search.isPending}
-                onClick={() => search.mutate()}
-              >
-                {search.isPending ? 'Matching…' : 'Run AI match'}
-              </Button>
             </div>
           )}
         </section>
 
         {/* Application progress */}
-        <section className="rounded-2xl border border-[#e4ebe6] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)] sm:p-5">
+        <section className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)] sm:p-5">
           <div className="mb-4 flex items-center justify-between gap-2">
-            <h2 className="font-serif text-xl text-[var(--forest)]">Application Progress</h2>
-            <Link to="/app/applications" className="text-sm font-medium text-[#147a48] hover:underline">
+            <h2 className="font-serif text-xl text-[#002018]">Application Progress</h2>
+            <Link to="/app/applications" className="text-sm font-medium text-[#2f9a6f] hover:underline">
               Open pipeline
             </Link>
           </div>
@@ -324,7 +317,7 @@ export function DashboardPage() {
 
         {/* Career insights */}
         <section>
-          <h2 className="mb-3 font-serif text-xl text-[var(--forest)]">Career Insights</h2>
+          <h2 className="mb-3 font-serif text-xl text-[#002018]">Career Insights</h2>
           <div className="grid gap-3 md:grid-cols-3">
             <InsightCard
               icon={Sparkles}
@@ -353,20 +346,20 @@ export function DashboardPage() {
 
       {/* Right rail */}
       <aside className="space-y-4 xl:sticky xl:top-24">
-        <div className="rounded-2xl border border-[#e4ebe6] bg-white p-5 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
+        <div className="rounded-2xl border border-[#e7ebe9] bg-white p-5 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
           <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Profile Completeness
           </p>
-          <p className="mt-2 font-serif text-3xl tabular-nums text-[var(--forest)]">{ready}%</p>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#eef3f0]">
-            <div className="h-full rounded-full bg-[#147a48]" style={{ width: `${ready}%` }} />
+          <p className="mt-2 font-serif text-3xl tabular-nums text-[#002018]">{ready}%</p>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#eef2f0]">
+            <div className="h-full rounded-full bg-[#2f9a6f]" style={{ width: `${ready}%` }} />
           </div>
           <Button variant="outline" className="mt-4 h-9 w-full rounded-full" asChild>
             <Link to="/app/profile">Improve Profile</Link>
           </Button>
         </div>
 
-        <div className="rounded-2xl border border-[#e4ebe6] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
+        <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
           <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Upcoming Activities
           </p>
@@ -375,8 +368,8 @@ export function DashboardPage() {
               {upcoming.map((row) => (
                 <li key={row.id} className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 text-sm font-medium text-[var(--forest)]">
-                      <Calendar className="size-3.5 text-[#147a48]" />
+                    <p className="flex items-center gap-1.5 text-sm font-medium text-[#002018]">
+                      <Calendar className="size-3.5 text-[#2f9a6f]" />
                       {row.title}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">{row.detail}</p>
@@ -392,7 +385,7 @@ export function DashboardPage() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-[#e4ebe6] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
+        <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
           <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Recent Activity
           </p>
@@ -400,9 +393,9 @@ export function DashboardPage() {
             <ul className="mt-3 space-y-3">
               {activity.map((row) => (
                 <li key={row.id} className="flex gap-2.5 text-sm">
-                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#147a48]" />
+                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#2f9a6f]" />
                   <div className="min-w-0">
-                    <Link to={row.href} className="font-medium text-[var(--forest)] hover:text-[#147a48]">
+                    <Link to={row.href} className="font-medium text-[#002018] hover:text-[#2f9a6f]">
                       {row.title}
                     </Link>
                     <p className="text-xs text-muted-foreground">{row.detail}</p>
@@ -415,6 +408,45 @@ export function DashboardPage() {
           )}
         </div>
       </aside>
+
+      {/* AI Job Assistant FAB — matches screenshot */}
+      <button
+        type="button"
+        aria-label="Open AI Job Assistant"
+        onClick={() => setAssistantOpen(true)}
+        className="fixed bottom-6 right-6 z-40 grid size-14 place-items-center rounded-full bg-[#002018] text-white shadow-[0_12px_28px_rgba(0,32,24,0.35)] hover:bg-[#001510]"
+      >
+        <MessageCircle className="size-6" strokeWidth={1.75} />
+      </button>
+
+      {assistantOpen ? (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <button
+            type="button"
+            className="absolute inset-0 bg-[#002018]/40"
+            aria-label="Close assistant"
+            onClick={() => setAssistantOpen(false)}
+          />
+          <div className="relative flex h-full w-full max-w-lg flex-col overflow-y-auto bg-[#f1f3f2] p-4 shadow-2xl sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="font-medium text-[#002018]">AI Job Assistant</p>
+              <button
+                type="button"
+                className="grid size-9 place-items-center rounded-full text-[#002018] hover:bg-white"
+                aria-label="Close"
+                onClick={() => setAssistantOpen(false)}
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <AiJobAssistant
+              topMatch={topMatch}
+              matchCount={matches.length}
+              onMatchesUpdated={() => void home.refetch()}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -440,9 +472,9 @@ function RecommendedCard({
   const place = job.remote ? 'Remote' : job.location || 'Flexible'
 
   return (
-    <article className="flex flex-col rounded-2xl border border-[#e4ebe6] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
+    <article className="flex flex-col rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
       <div className="flex items-start gap-3">
-        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#e8f3ec] font-serif text-sm text-[var(--forest)]">
+        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#e7f6ef] font-serif text-sm text-[#002018]">
           {(job.company || 'A').slice(0, 1).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
@@ -455,7 +487,7 @@ function RecommendedCard({
             ) : null}
           </div>
           <Link to={`/app/jobs/${job.id}`} className="mt-0.5 block">
-            <h3 className="font-serif text-lg leading-snug text-[var(--forest)] hover:text-[#147a48]">{job.title}</h3>
+            <h3 className="font-serif text-lg leading-snug text-[#002018] hover:text-[#2f9a6f]">{job.title}</h3>
           </Link>
         </div>
       </div>
@@ -472,14 +504,14 @@ function RecommendedCard({
       {skills.length ? (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {skills.map((skill) => (
-            <span key={skill} className="rounded-full bg-[#eef3f0] px-2 py-0.5 text-[0.7rem] text-[var(--forest)]">
+            <span key={skill} className="rounded-full bg-[#eef2f0] px-2 py-0.5 text-[0.7rem] text-[#002018]">
               {skill}
             </span>
           ))}
         </div>
       ) : null}
 
-      <p className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-[#147a48]">
+      <p className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-[#2f9a6f]">
         <CheckCircle2 className="size-4" />
         Matched {match.score}%
       </p>
@@ -488,14 +520,14 @@ function RecommendedCard({
         <Button
           type="button"
           variant="outline"
-          className={cn('h-9 flex-1 rounded-full', saved && 'border-[#147a48] text-[#147a48]')}
+          className={cn('h-9 flex-1 rounded-full', saved && 'border-[#2f9a6f] text-[#2f9a6f]')}
           onClick={onSave}
         >
           <Bookmark className={cn('size-3.5', saved && 'fill-current')} />
           {saved ? 'Saved' : 'Save'}
         </Button>
         <Button
-          className="h-9 flex-1 rounded-full bg-[var(--forest)] !text-white hover:bg-[var(--forest-2)]"
+          className="h-9 flex-1 rounded-full bg-[#002018] !text-white hover:bg-[#001510]"
           disabled={applying}
           onClick={onApply}
         >
@@ -520,23 +552,23 @@ function StatCard({
   hint?: string
 }) {
   const tones = {
-    green: 'bg-[#e8f3ec] text-[#147a48]',
+    green: 'bg-[#e7f6ef] text-[#2f9a6f]',
     orange: 'bg-[#fff4e5] text-[#c47b12]',
     violet: 'bg-[#f1e8ff] text-[#7b5cb0]',
     blue: 'bg-[#eaf2ff] text-[#3b6fd8]',
   }
   const hints = {
-    green: 'text-[#147a48]',
+    green: 'text-[#2f9a6f]',
     orange: 'text-[#c47b12]',
-    violet: 'text-[#147a48]',
-    blue: 'text-[#147a48]',
+    violet: 'text-[#2f9a6f]',
+    blue: 'text-[#2f9a6f]',
   }
   return (
-    <div className="rounded-2xl border border-[#e4ebe6] bg-white p-4 shadow-[0_8px_20px_rgba(19,38,31,0.04)]">
+    <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_8px_20px_rgba(19,38,31,0.04)]">
       <span className={cn('grid size-9 place-items-center rounded-xl', tones[tone])}>
         <Icon className="size-4" />
       </span>
-      <p className="mt-3 font-serif text-3xl tabular-nums text-[var(--forest)]">{value}</p>
+      <p className="mt-3 font-serif text-3xl tabular-nums text-[#002018]">{value}</p>
       <p className="text-sm text-muted-foreground">{label}</p>
       {hint ? <p className={cn('mt-1 text-xs', hints[tone])}>{hint}</p> : null}
     </div>
@@ -545,7 +577,7 @@ function StatCard({
 
 function PipeNode({ n, label, tone }: { n: number; label: string; tone: 'green' | 'blue' | 'orange' | 'violet' | 'gray' }) {
   const tones = {
-    green: 'bg-[#147a48] text-white',
+    green: 'bg-[#2f9a6f] text-white',
     blue: 'bg-[#3b6fd8] text-white',
     orange: 'bg-[#c47b12] text-white',
     violet: 'bg-[#7b5cb0] text-white',
@@ -556,7 +588,7 @@ function PipeNode({ n, label, tone }: { n: number; label: string; tone: 'green' 
       <span className={cn('grid size-10 place-items-center rounded-full font-serif text-lg tabular-nums', tones[tone])}>
         {n}
       </span>
-      <span className="text-[0.7rem] font-medium text-[var(--forest)]">{label}</span>
+      <span className="text-[0.7rem] font-medium text-[#002018]">{label}</span>
     </div>
   )
 }
@@ -579,13 +611,13 @@ function InsightCard({
   link: string
 }) {
   return (
-    <div className="rounded-2xl border border-[#e4ebe6] bg-white p-4 shadow-[0_8px_20px_rgba(19,38,31,0.04)]">
-      <span className="grid size-9 place-items-center rounded-xl bg-[#e8f3ec] text-[#147a48]">
+    <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_8px_20px_rgba(19,38,31,0.04)]">
+      <span className="grid size-9 place-items-center rounded-xl bg-[#e7f6ef] text-[#2f9a6f]">
         <Icon className="size-4" />
       </span>
-      <h3 className="mt-3 font-medium text-[var(--forest)]">{title}</h3>
+      <h3 className="mt-3 font-medium text-[#002018]">{title}</h3>
       <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{body}</p>
-      <Link to={href} className="mt-3 inline-block text-sm font-medium text-[#147a48] hover:underline">
+      <Link to={href} className="mt-3 inline-block text-sm font-medium text-[#2f9a6f] hover:underline">
         {link}
       </Link>
     </div>
@@ -601,7 +633,7 @@ function monthHint(rows: AppRow[]) {
   return n ? `+${n} this month` : undefined
 }
 
-function buildInsights(matches: JobMatch[], profileSkills: string[]) {
+function buildInsights(matches: JobMatch[], profileSkills: string[], coach?: CareerInsights | null) {
   const skillCount = new Map<string, number>()
   for (const m of matches) {
     for (const s of m.matchedSkills ?? []) {
@@ -628,11 +660,16 @@ function buildInsights(matches: JobMatch[], profileSkills: string[]) {
   }
 
   const strong = matches.filter((m) => m.score >= 70).length
-  const trend = matches.length
-    ? `${strong} of ${matches.length} scored roles are 70%+ AI fits right now.`
-    : 'Run AI matching to see how your market is moving.'
+  const trend = coach?.strategy
+    || (matches.length
+      ? `${strong} of ${matches.length} scored roles are 70%+ AI fits right now.`
+      : 'Run the AI Job Assistant to see how your market is moving.')
 
-  return { skills, salary, trend }
+  return {
+    skills: coach?.gaps?.length ? coach.gaps.slice(0, 5) : skills,
+    salary: salary || (coach?.focusTitle ? `Focus title: ${coach.focusTitle}` : ''),
+    trend,
+  }
 }
 
 function buildActivity(packets: AppRow[], matches: JobMatch[]) {

@@ -3,7 +3,6 @@ import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react
 import { useQuery } from '@tanstack/react-query'
 import {
   Bell,
-  BellRing,
   Bookmark,
   Briefcase,
   Calendar,
@@ -19,7 +18,6 @@ import {
   ScrollText,
   Search,
   Settings,
-  Sparkles,
   User,
   Wallet,
   X,
@@ -40,12 +38,12 @@ const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean; badge
   { to: '/app/applications', label: 'My Jobs', icon: Briefcase },
   { to: '/app/messages', label: 'Messages', icon: MessagesSquare, badge: 'messages' },
   { to: '/app/resume', label: 'Resume', icon: ScrollText },
-  { to: '/app/profile', label: 'Skills & Assessments', icon: Sparkles },
+  { to: '/app/profile', label: 'Skills & Assessments', icon: User },
   { to: '/app/ateliar', label: 'Calendar', icon: Calendar },
   { to: '/app/career', label: 'Career Coach', icon: LineChart },
+  { to: '/app/interview', label: 'Interview Prep', icon: MessageSquare },
   { to: '/app/jobs', label: 'Saved Jobs', icon: Bookmark },
-  { to: '/app/settings', label: 'Job Alerts', icon: BellRing },
-  { to: '/app/settings', label: 'Profile Settings', icon: Settings },
+  { to: '/app/settings', label: 'Settings', icon: Settings },
 ]
 
 const ACCOUNT_LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
@@ -149,8 +147,10 @@ export function AppShell() {
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  'group relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors',
-                  isActive ? 'bg-[#147a48] text-white' : 'text-[#d8d0c0] hover:bg-[#1f3d32]/70',
+                  'group relative flex items-center gap-2.5 rounded-xl py-2.5 pl-3.5 pr-3 text-sm transition-colors',
+                  isActive
+                    ? 'bg-[#0d3a2e] font-medium text-white before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-full before:bg-[#5ecf8c]'
+                    : 'text-[#c5d0cb] hover:bg-white/5 hover:text-white',
                 )
               }
             >
@@ -165,19 +165,19 @@ export function AppShell() {
           ))}
         </nav>
 
-        <div className="rounded-2xl bg-gradient-to-br from-[#1a3d2e] to-[#0d1b16] p-4 ring-1 ring-[#c6a15b33]">
+        <div className="rounded-2xl bg-gradient-to-br from-[#0a3328] to-[#001510] p-4 ring-1 ring-[#c6a15b40]">
           <div className="flex items-center gap-2 text-[#c6a15b]">
             <Crown className="size-4" />
-            <p className="text-sm font-medium">Upgrade to Pro</p>
+            <p className="text-sm font-medium text-white">Upgrade to Pro</p>
           </div>
-          <p className="mt-2 text-xs leading-relaxed text-[#c9c0ae]">
+          <p className="mt-2 text-xs leading-relaxed text-[#a8b8b1]">
             Stronger AI matching and coach notes from your real scores.
           </p>
           <Link
             to="/app/resume"
             replace
             onClick={() => setOpen(false)}
-            className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-xl bg-white text-sm font-medium text-[var(--forest)] hover:bg-[#f4f0e8]"
+            className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-xl bg-white text-sm font-medium !text-black hover:bg-[#f4f0e8]"
           >
             Upgrade Now →
           </Link>
@@ -185,7 +185,7 @@ export function AppShell() {
 
         <div className="relative mt-1 overflow-hidden rounded-2xl">
           <img src={localBrandPath('candidate-window.jpg')} alt="" className="h-24 w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--forest)] via-[var(--forest)]/55 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#002018] via-[#002018]/60 to-transparent" />
           <p className="absolute inset-x-3 bottom-3 font-serif text-sm italic leading-snug text-white">
             A brighter career starts here.
           </p>
@@ -197,14 +197,14 @@ export function AppShell() {
   return (
     <div
       className={cn(
-        'atelier-app bg-[#f4f7f5] lg:flex',
+        'atelier-app bg-[#f1f3f2] lg:flex',
         messenger ? 'h-svh overflow-hidden' : 'min-h-svh',
       )}
     >
       {open ? (
         <div className="fixed inset-0 z-40 lg:hidden">
           <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <aside className="relative flex h-full w-[min(18.5rem,88vw)] flex-col gap-5 overflow-y-auto bg-[var(--sidebar)] p-5 text-[var(--sidebar-foreground)]">
+          <aside className="relative flex h-full w-[min(18.5rem,88vw)] flex-col gap-5 overflow-y-auto bg-[#002018] p-5 text-[#e8eeeb]">
             <button type="button" className="absolute right-4 top-4" aria-label="Close" onClick={() => setOpen(false)}>
               <X className="size-5" />
             </button>
@@ -213,25 +213,25 @@ export function AppShell() {
         </div>
       ) : null}
 
-      <aside className="sticky top-0 z-20 hidden h-svh w-[16.25rem] shrink-0 flex-col gap-5 overflow-y-auto bg-[var(--sidebar)] px-4 py-5 text-[var(--sidebar-foreground)] lg:flex">
+      <aside className="sticky top-0 z-20 hidden h-svh w-[16.25rem] shrink-0 flex-col gap-5 overflow-y-auto bg-[#002018] px-4 py-5 text-[#e8eeeb] lg:flex">
         {sidebar()}
       </aside>
 
       <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', messenger && 'h-full min-h-0 lg:h-svh')}>
-        <header className="sticky top-0 z-30 flex min-w-0 shrink-0 items-center gap-2 border-b border-[#e4ebe6] bg-white px-3 py-3 sm:gap-3 sm:px-6">
+        <header className="sticky top-0 z-30 flex min-w-0 shrink-0 items-center gap-2 border-b border-[#e7ebe9] bg-white px-3 py-3 sm:gap-3 sm:px-6">
           <button type="button" className="grid size-10 place-items-center lg:hidden" aria-label="Open menu" onClick={() => setOpen(true)}>
-            <Menu className="size-5 text-[var(--forest)]" />
+            <Menu className="size-5 text-[#002018]" />
           </button>
           <form onSubmit={onSearch} className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#8a9390]" />
             <input
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search jobs, companies, or keywords…"
-              className="h-11 w-full rounded-full border border-[#e4ebe6] bg-[#f4f7f5] pl-10 pr-12 text-sm outline-none placeholder:text-muted-foreground/80 focus:border-[#147a48] focus:bg-white"
+              className="h-11 w-full rounded-full border border-[#e7ebe9] bg-[#f3f5f4] pl-10 pr-12 text-sm outline-none placeholder:text-[#8a9390] focus:border-[#2f9a6f] focus:bg-white"
             />
-            <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#d7ddd8] bg-white px-1.5 text-[0.65rem] font-medium text-muted-foreground sm:inline">
+            <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#dde3e0] bg-white px-1.5 text-[0.65rem] font-medium text-[#8a9390] sm:inline">
               K
             </kbd>
           </form>
@@ -239,7 +239,7 @@ export function AppShell() {
             <button
               type="button"
               aria-label="Notifications"
-              className="relative grid size-10 place-items-center rounded-full text-[var(--forest)] hover:bg-[#eef3f0]"
+              className="relative grid size-10 place-items-center rounded-full text-[#002018] hover:bg-[#eef3f0]"
               onClick={() => {
                 setHelpOpen(false)
                 setAccountOpen(false)
@@ -256,7 +256,7 @@ export function AppShell() {
             <button
               type="button"
               aria-label="Help"
-              className="hidden size-10 place-items-center rounded-full text-[var(--forest)] hover:bg-[#eef3f0] sm:grid"
+              className="hidden size-10 place-items-center rounded-full text-[#002018] hover:bg-[#eef3f0] sm:grid"
               onClick={() => {
                 setBellOpen(false)
                 setAccountOpen(false)
@@ -278,15 +278,15 @@ export function AppShell() {
               {profile.avatarUrl ? (
                 <img src={profile.avatarUrl} alt="" className="size-9 shrink-0 rounded-full object-cover" />
               ) : (
-                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--forest)] font-serif text-sm text-white">
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#002018] font-serif text-sm text-white">
                   {initials(name)}
                 </span>
               )}
               <span className="hidden min-w-0 sm:block">
-                <span className="block truncate text-sm font-medium leading-tight text-[var(--forest)]">{name}</span>
-                <span className="block text-xs text-muted-foreground">Candidate</span>
+                <span className="block truncate text-sm font-medium leading-tight text-[#111827]">{name}</span>
+                <span className="block text-xs text-[#6b7280]">Candidate</span>
               </span>
-              <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
+              <ChevronDown className="hidden size-4 text-[#6b7280] sm:block" />
             </button>
 
             {bellOpen ? (
