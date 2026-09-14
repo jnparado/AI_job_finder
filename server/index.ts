@@ -1505,7 +1505,15 @@ app.get('/api/jobs/:id', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   const id = c.req.param('id')
   const profile = await loadProfile(user)
-  const match = findMatch(user.id, id, profile)
+  let match = findMatch(user.id, id, profile)
+  if (!match) {
+    await hydrateTalentInvitesForCandidate(user.id)
+    const invited = memory.listTalentInvitesForCandidate(user.id).some((row) => row.jobId === id)
+    if (invited) {
+      await ensureInvitedJobMatch(user.id, id)
+      match = findMatch(user.id, id, profile)
+    }
+  }
   if (!match) return c.json({ error: 'Not found' }, 404)
   return c.json(match)
 })
@@ -2139,9 +2147,103 @@ app.get('/api/employer/candidates', async (c) => {
 
   return c.json({
     people,
-    invites: memory.listTalentInvites(user.id),
+    invites: await loadTalentInvites(user.id),
   })
 })
+
+async function persistTalentInvite(invite: TalentInvite) {
+  memory.addTalentInvite(invite)
+  if (!supabaseAdmin) return
+  try {
+    const { error } = await supabaseAdmin.from('talent_invites').upsert({
+      id: invite.id,
+      employer_id: invite.employerId,
+      candidate_id: invite.candidateId,
+      candidate_name: invite.candidateName,
+      job_id: invite.jobId,
+      job_title: invite.jobTitle,
+      created_at: invite.createdAt,
+    })
+    if (error) console.warn('persistTalentInvite', error.message)
+  } catch (err) {
+    console.warn('persistTalentInvite', err)
+  }
+}
+
+async function loadTalentInvites(employerId: string) {
+  const local = memory.listTalentInvites(employerId)
+  if (local.length || !supabaseAdmin) return local
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('talent_invites')
+      .select('*')
+      .eq('employer_id', employerId)
+      .order('created_at', { ascending: false })
+    if (error) {
+      console.warn('loadTalentInvites', error.message)
+      return local
+    }
+    for (const row of data ?? []) {
+      memory.addTalentInvite({
+        id: String(row.id),
+        employerId: String(row.employer_id),
+        candidateId: String(row.candidate_id),
+        candidateName: String(row.candidate_name ?? 'Candidate'),
+        jobId: String(row.job_id),
+        jobTitle: String(row.job_title ?? 'Role'),
+        createdAt: String(row.created_at ?? new Date().toISOString()),
+      })
+    }
+  } catch (err) {
+    console.warn('loadTalentInvites', err)
+  }
+  return memory.listTalentInvites(employerId)
+}
+
+async function hydrateTalentInvitesForCandidate(candidateId: string) {
+  if (memory.listTalentInvitesForCandidate(candidateId).length || !supabaseAdmin) return
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('talent_invites')
+      .select('*')
+      .eq('candidate_id', candidateId)
+      .order('created_at', { ascending: false })
+    if (error) {
+      console.warn('hydrateTalentInvitesForCandidate', error.message)
+      return
+    }
+    for (const row of data ?? []) {
+      memory.addTalentInvite({
+        id: String(row.id),
+        employerId: String(row.employer_id),
+        candidateId: String(row.candidate_id),
+        candidateName: String(row.candidate_name ?? 'Candidate'),
+        jobId: String(row.job_id),
+        jobTitle: String(row.job_title ?? 'Role'),
+        createdAt: String(row.created_at ?? new Date().toISOString()),
+      })
+    }
+  } catch (err) {
+    console.warn('hydrateTalentInvitesForCandidate', err)
+  }
+}
+
+async function ensureInvitedJobMatch(candidateId: string, jobId: string) {
+  const people = await loadDirectoryProfiles()
+  const candidate =
+    people.find((row) => row.id === candidateId) ??
+    (() => {
+      const mem = memory.getProfile(candidateId)
+      return mem.id ? mem : undefined
+    })()
+  if (!candidate?.id) return
+  const job = await ensureJob(jobId)
+  if (!job) return
+  const scored = matchJobs([asJob(job)], candidate)[0]
+  if (!scored) return
+  const prior = memory.getMatches(candidateId)
+  await persistMatches(candidateId, [scored, ...prior.filter((row) => row.job.id !== jobId)].slice(0, 80))
+}
 
 app.post('/api/employer/candidates/:id/invite', async (c) => {
   const user = await auth(c)
@@ -2159,9 +2261,9 @@ app.post('/api/employer/candidates/:id/invite', async (c) => {
   const candidate = people.find((row) => row.id === candidateId)
   if (!candidate?.id) return c.json({ error: 'Candidate not found.' }, 404)
 
-  const already = memory
-    .listTalentInvites(user.id)
-    .find((row) => row.candidateId === candidateId && row.jobId === job.id)
+  await loadTalentInvites(user.id)
+  const already = memory.findTalentInvite(user.id, candidateId, job.id)
+  await ensureInvitedJobMatch(candidate.id, job.id)
   if (already) return c.json({ invite: already, already: true })
 
   const company = profile.companyName?.trim() || displayName(profile) || 'An employer'
@@ -2174,7 +2276,7 @@ app.post('/api/employer/candidates/:id/invite', async (c) => {
     jobTitle: job.title,
     createdAt: new Date().toISOString(),
   }
-  memory.addTalentInvite(invite)
+  await persistTalentInvite(invite)
   await notifyUser(
     candidate.id,
     `${company} invited you to apply`,

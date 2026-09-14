@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
+import { isOpenListing } from '@shared/engine/jobFields'
 import type { CareerLevel, Currency, Job } from '@shared/types'
 import { api } from '@/lib/api'
 import { cn, initials, money, textSnippet } from '@/lib/utils'
@@ -141,7 +142,7 @@ export function FindCandidatesDesk() {
 
   const people = desk.data?.people ?? []
   const invites = desk.data?.invites ?? []
-  const openJobs = (jobs.data ?? []).filter((job) => job.listingStatus !== 'closed')
+  const openJobs = (jobs.data ?? []).filter(isOpenListing)
 
   const skillCounts = useMemo(() => {
     const list = desk.data?.people ?? []
@@ -265,9 +266,18 @@ export function FindCandidatesDesk() {
 
   function startInvite(person: TalentCard) {
     setInviteFor(person)
-    setInviteJobId(openJobs[0]?.id ?? '')
+    const nextJob =
+      openJobs.find((job) => !invites.some((row) => row.candidateId === person.id && row.jobId === job.id)) ??
+      openJobs[0]
+    setInviteJobId(nextJob?.id ?? '')
     setInviteNote('')
   }
+
+  const alreadyInvited = Boolean(
+    inviteFor &&
+      inviteJobId &&
+      invites.some((row) => row.candidateId === inviteFor.id && row.jobId === inviteJobId),
+  )
 
   const filteredSkillCounts = useMemo(() => {
     const q = skillSearch.trim().toLowerCase()
@@ -597,7 +607,10 @@ export function FindCandidatesDesk() {
                 <select
                   className="h-10 w-full rounded-lg border border-[#e4ebe6] bg-white px-3 text-sm"
                   value={inviteJobId}
-                  onChange={(e) => setInviteJobId(e.target.value)}
+                  onChange={(e) => {
+                    setInviteJobId(e.target.value)
+                    setInviteNote('')
+                  }}
                 >
                   {openJobs.map((job) => (
                     <option key={job.id} value={job.id}>
@@ -609,16 +622,28 @@ export function FindCandidatesDesk() {
             ) : (
               <p className="mt-4 text-sm text-[#8f4326]">Post an open job first, then invite people to it.</p>
             )}
-            {inviteNote ? <p className="mt-3 text-sm text-[#147a48]">{inviteNote}</p> : null}
+            {alreadyInvited || inviteNote ? (
+              <p className="mt-3 text-sm text-[#147a48]">
+                {alreadyInvited ? 'Already invited to this role.' : inviteNote}
+              </p>
+            ) : null}
             <div className="mt-5 flex justify-end gap-2">
-              <Button type="button" variant="outline" className="rounded-xl" onClick={() => setInviteFor(null)}>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => {
+                  setInviteFor(null)
+                  setInviteNote('')
+                }}
+              >
                 Close
               </Button>
               {openJobs.length ? (
                 <Button
                   type="button"
                   className="rounded-xl bg-[#147a48] hover:bg-[#0f5e37]"
-                  disabled={invite.isPending || !inviteJobId}
+                  disabled={invite.isPending || !inviteJobId || alreadyInvited}
                   onClick={() => invite.mutate({ id: inviteFor.id, jobId: inviteJobId })}
                 >
                   {invite.isPending ? 'Sending…' : 'Send invite'}

@@ -197,6 +197,17 @@ create table if not exists public.notifications (
   created_at timestamptz default now()
 );
 
+create table if not exists public.talent_invites (
+  id uuid primary key default gen_random_uuid(),
+  employer_id uuid not null references public.profiles (id) on delete cascade,
+  candidate_id uuid not null references public.profiles (id) on delete cascade,
+  job_id uuid not null references public.jobs (id) on delete cascade,
+  candidate_name text not null,
+  job_title text not null,
+  created_at timestamptz default now(),
+  unique (employer_id, candidate_id, job_id)
+);
+
 create table if not exists public.agent_settings (
   user_id uuid primary key references public.profiles (id) on delete cascade,
   enabled boolean default false,

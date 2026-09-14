@@ -107,6 +107,14 @@ export const memory = {
   listTalentInvites(employerId: string) {
     return talentInvites.filter((row) => row.employerId === employerId)
   },
+  listTalentInvitesForCandidate(candidateId: string) {
+    return talentInvites.filter((row) => row.candidateId === candidateId)
+  },
+  findTalentInvite(employerId: string, candidateId: string, jobId: string) {
+    return talentInvites.find(
+      (row) => row.employerId === employerId && row.candidateId === candidateId && row.jobId === jobId,
+    )
+  },
   setJobs(list: Job[]) {
     for (const job of list) jobs.set(job.id, job)
   },
