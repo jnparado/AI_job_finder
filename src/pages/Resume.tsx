@@ -390,18 +390,28 @@ export function ResumePage() {
   )
 
   return (
-    <div className="mx-auto grid max-w-[1400px] gap-4 pb-6 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_17rem] xl:items-start">
+    <div className="mx-auto grid max-w-[1400px] gap-4 pb-8 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_17.5rem] xl:items-start xl:pb-6">
       <div className="min-w-0 space-y-4 sm:space-y-5">
         <ResumeDeskHeader onDownload={downloadResume} canDownload={Boolean(pdfOpen || shownText)} />
         <ResumeTabs tab={tab} onTab={setTab} />
 
         {tab === 'edit' ? (
           <div className="space-y-4">
+            <div className="xl:hidden">
+              <ResumeStrengthPanel checks={checks} strength={strength} />
+            </div>
             <ResumeProfileCard profile={profile} />
             <ResumeSectionList profile={profile} parsed={parsed} checks={checks} />
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-              <ResumePreviewBanner onPreview={() => setTab('preview')} />
-              <ResumeAiTips />
+            <ResumePreviewBanner onPreview={() => setTab('preview')} />
+            <ResumeAiTips />
+            <div className="space-y-4 xl:hidden">
+              <ResumeAiPanel onImprove={() => setTab('ai')} />
+              <ResumeTemplatesPanel
+                selected={template}
+                onSelect={pickTemplate}
+                compact
+                onSeeAll={() => setTab('templates')}
+              />
             </div>
           </div>
         ) : null}
@@ -603,17 +613,15 @@ export function ResumePage() {
         />
       </div>
 
-      <aside className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:sticky xl:top-24 xl:grid-cols-1">
+      <aside className="hidden min-w-0 space-y-4 xl:sticky xl:top-24 xl:block">
         <ResumeStrengthPanel checks={checks} strength={strength} />
         <ResumeAiPanel onImprove={() => setTab('ai')} />
-        <div className="sm:col-span-2 xl:col-span-1">
-          <ResumeTemplatesPanel
-            selected={template}
-            onSelect={pickTemplate}
-            compact
-            onSeeAll={() => setTab('templates')}
-          />
-        </div>
+        <ResumeTemplatesPanel
+          selected={template}
+          onSelect={pickTemplate}
+          compact
+          onSeeAll={() => setTab('templates')}
+        />
       </aside>
     </div>
   )

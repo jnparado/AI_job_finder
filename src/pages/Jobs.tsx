@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, CircleAlert, ExternalLink, MapPin, Search, Wallet } from 'lucide-react'
 import type { DiscoverySummary, JobMatch, MatchCategory } from '@shared/types'
 import { categoryLabel, sourceLabel } from '@shared/types'
@@ -23,6 +23,33 @@ const FILTERS: { id: MatchCategory | 'all' | '70'; label: string }[] = [
   { id: 'good', label: 'Good' },
   { id: 'all', label: 'All' },
 ]
+
+const BOARD_REFRESH_KEY = 'atelier-jobs-board-refresh'
+const BOARD_REFRESH_MS = 10 * 60 * 1000
+
+function boardRefreshDue() {
+  try {
+    const at = Number(sessionStorage.getItem(BOARD_REFRESH_KEY) ?? 0)
+    return !at || Date.now() - at > BOARD_REFRESH_MS
+  } catch {
+    return true
+  }
+}
+
+function markBoardRefreshed() {
+  try {
+    sessionStorage.setItem(BOARD_REFRESH_KEY, String(Date.now()))
+  } catch {
+    /* ignore */
+  }
+}
+
+function readCachedMatches(qc: QueryClient): JobMatch[] | undefined {
+  const cached = qc.getQueryData<JobMatch[]>(['jobs'])
+  if (cached?.length) return cached
+  const home = qc.getQueryData<{ matches: JobMatch[] }>(['candidate-home'])
+  return home?.matches?.length ? home.matches : cached
+}
 
 function jobMatchesQuery(match: JobMatch, raw: string) {
   const q = raw.trim().toLowerCase()
@@ -52,13 +79,14 @@ export function JobsPage() {
   const jobs = useQuery({
     queryKey: ['jobs'],
     queryFn: () => api<JobMatch[]>('/api/jobs'),
-    staleTime: 30_000,
+    staleTime: 60_000,
+    placeholderData: () => readCachedMatches(qc),
   })
   const discovery = useQuery({
     queryKey: ['discovery'],
     queryFn: () => api<DiscoverySummary | null>('/api/agent/discovery'),
-    enabled: jobs.isSuccess,
-    staleTime: 30_000,
+    staleTime: 120_000,
+    placeholderData: () => qc.getQueryData<DiscoverySummary | null>(['discovery']) ?? null,
   })
   const search = useMutation({
     mutationFn: async (focus?: string) => {
@@ -83,6 +111,7 @@ export function JobsPage() {
       }
     },
     onSuccess: (res) => {
+      markBoardRefreshed()
       if (res.matches?.length) qc.setQueryData(['jobs'], res.matches)
       void jobs.refetch()
       void discovery.refetch()
@@ -100,16 +129,31 @@ export function JobsPage() {
   })
   const lastFocus = useRef<string | null>(null)
   useEffect(() => {
-    if (!jobs.isSuccess) return
-    if (lastFocus.current === textQuery) return
-    lastFocus.current = textQuery
-    const timer = window.setTimeout(() => {
-      search.mutate(textQuery || undefined)
-    }, textQuery ? 300 : 700)
+    if (!jobs.isSuccess && !jobs.data?.length) return
+
+    const focusKey = textQuery || '__all__'
+    if (lastFocus.current === focusKey) return
+
+    const hasMatches = (jobs.data?.length ?? 0) > 0
+
+    if (textQuery) {
+      lastFocus.current = focusKey
+      const timer = window.setTimeout(() => search.mutate(textQuery), 300)
+      return () => window.clearTimeout(timer)
+    }
+
+    if (hasMatches && !boardRefreshDue()) {
+      lastFocus.current = focusKey
+      return
+    }
+
+    lastFocus.current = focusKey
+    const delay = hasMatches ? 2500 : 400
+    const timer = window.setTimeout(() => search.mutate(undefined), delay)
     return () => window.clearTimeout(timer)
-    // Refresh live boards after catalog scores paint, or when the header search focus changes.
+    // Board crawl runs only when empty or stale — scored listings paint from cache first.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobs.isSuccess, textQuery])
+  }, [jobs.isSuccess, jobs.data?.length, textQuery])
   const report = discovery.data
   const all = jobs.data ?? []
   const sources = [...new Set(all.map((m) => m.job.source))]
@@ -127,6 +171,32 @@ export function JobsPage() {
   if (source !== 'all') list = list.filter((m) => m.job.source === source)
   if (textQuery) list = list.filter((m) => jobMatchesQuery(m, textQuery))
   const live = report?.providers?.filter((p) => p.status === 'ok') ?? []
+  const bootstrapping = jobs.isLoading && !all.length
+  const boardRefreshing = search.isPending
+
+  function statusLine() {
+    if (textQuery) {
+      if (boardRefreshing) return `Searching authorized boards for “${textQuery}”…`
+      if (list.length) return `${list.length} role${list.length === 1 ? '' : 's'} match “${textQuery}”.`
+      return `No scored roles match “${textQuery}” yet.`
+    }
+    if (bootstrapping) return 'Loading scored listings…'
+    if (search.isError) {
+      return search.error instanceof Error
+        ? search.error.message
+        : 'Live boards did not refresh. Scored listings below are still current.'
+    }
+    if (recommended) {
+      const tail = boardRefreshing ? ' Live board check running in the background.' : ''
+      return `${recommended} role${recommended === 1 ? '' : 's'} clear your 70% bar.${tail}`
+    }
+    if (all.length) {
+      const tail = boardRefreshing ? ' Checking live boards in the background.' : ''
+      return `${all.length} role${all.length === 1 ? '' : 's'} scored. None clear 70% yet — showing all matches.${tail}`
+    }
+    if (boardRefreshing) return 'Searching authorized boards and scoring listings against you…'
+    return 'Search authorized boards and we will score every listing against you.'
+  }
 
   function clearSearch() {
     setSearchParams({}, { replace: true })
@@ -139,31 +209,18 @@ export function JobsPage() {
           <div>
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Matches</p>
             <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">Jobs scored for you</h1>
-            <p className="mt-2 max-w-xl text-sm text-[#d8d0c0]">
-              {textQuery
-                ? search.isPending
-                  ? `Searching authorized boards for “${textQuery}”…`
-                  : list.length
-                    ? `${list.length} role${list.length === 1 ? '' : 's'} match “${textQuery}”.`
-                    : `No scored roles match “${textQuery}” yet.`
-                : jobs.isLoading
-                  ? 'Loading scored listings…'
-                  : search.isPending
-                    ? 'Refreshing authorized boards in the background…'
-                    : search.isError
-                      ? search.error instanceof Error
-                        ? search.error.message
-                        : 'Live boards did not refresh. Scored listings below are still current.'
-                      : recommended
-                        ? `${recommended} roles clear your 70% bar.`
-                        : all.length
-                          ? `${all.length} roles scored. None clear 70% yet — showing all matches.`
-                          : 'Search authorized boards and we will score every listing against you.'}
-            </p>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#d8d0c0]">{statusLine()}</p>
           </div>
-          <Button variant="copper" onClick={() => search.mutate(textQuery || undefined)} disabled={search.isPending}>
+          <Button
+            variant="copper"
+            onClick={() => {
+              lastFocus.current = null
+              search.mutate(textQuery || undefined)
+            }}
+            disabled={boardRefreshing}
+          >
             <Search className="size-4" />
-            {search.isPending ? 'Searching…' : textQuery ? 'Search again' : 'Search platforms'}
+            {boardRefreshing ? 'Searching…' : textQuery ? 'Search again' : 'Search platforms'}
           </Button>
         </div>
         <div className="grid grid-cols-2 gap-px bg-[#c9c0ae22] sm:grid-cols-4">
@@ -259,7 +316,7 @@ export function JobsPage() {
           actionLabel="Retry"
           onClick={() => void jobs.refetch()}
         />
-      ) : jobs.isLoading ? (
+      ) : bootstrapping ? (
         <div className="space-y-3">
           <Card className="h-28 animate-pulse bg-muted/60" />
           <Card className="h-28 animate-pulse bg-muted/60" />

@@ -49,8 +49,24 @@ export function warmCandidateDesk(qc: QueryClient) {
   prefetchRoute('/app/applications')
   void qc.prefetchQuery({
     queryKey: ['candidate-home'],
-    queryFn: () => api('/api/candidate/home'),
-    staleTime: 30_000,
+    queryFn: async () => {
+      const data = await api<{ matches: unknown[] }>('/api/candidate/home')
+      if (Array.isArray(data.matches) && data.matches.length) {
+        qc.setQueryData(['jobs'], data.matches)
+      }
+      return data
+    },
+    staleTime: 60_000,
+  })
+  void qc.prefetchQuery({
+    queryKey: ['jobs'],
+    queryFn: () => api('/api/jobs'),
+    staleTime: 60_000,
+  })
+  void qc.prefetchQuery({
+    queryKey: ['discovery'],
+    queryFn: () => api('/api/agent/discovery'),
+    staleTime: 120_000,
   })
 }
 

@@ -35,11 +35,11 @@ export interface ResumeChecks {
   education: boolean
 }
 
-const TABS: { id: ResumeTab; label: string }[] = [
-  { id: 'edit', label: 'Edit Resume' },
-  { id: 'preview', label: 'Preview' },
-  { id: 'templates', label: 'Templates' },
-  { id: 'ai', label: 'AI Suggestions' },
+const TABS: { id: ResumeTab; label: string; short: string }[] = [
+  { id: 'edit', label: 'Edit Resume', short: 'Edit' },
+  { id: 'preview', label: 'Preview', short: 'Preview' },
+  { id: 'templates', label: 'Templates', short: 'Templates' },
+  { id: 'ai', label: 'AI Suggestions', short: 'AI' },
 ]
 
 const TEMPLATES = [
@@ -91,28 +91,28 @@ export function ResumeDeskHeader({
   canDownload: boolean
 }) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-      <div>
-        <h1 className="font-serif text-2xl text-[#002018] sm:text-3xl">My Resume</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+    <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="min-w-0">
+        <h1 className="font-serif text-[1.65rem] leading-tight text-[#002018] sm:text-3xl">My Resume</h1>
+        <p className="mt-1.5 text-base leading-relaxed text-muted-foreground sm:text-sm">
           Create a standout resume and get hired faster with Atelier.
         </p>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex sm:flex-wrap sm:items-center">
         <Button
-          className="h-10 rounded-full bg-[#002018] !text-white hover:bg-[#001510]"
+          className="col-span-2 h-11 rounded-full bg-[#002018] !text-white hover:bg-[#001510] sm:col-span-1 sm:h-10"
           disabled={!canDownload}
           onClick={onDownload}
         >
           <Download className="size-4" />
           Download PDF
         </Button>
-        <Button variant="outline" className="h-10 rounded-full" asChild>
+        <Button variant="outline" className="h-11 rounded-full sm:h-10" asChild>
           <Link to="/app/settings">More</Link>
         </Button>
         <button
           type="button"
-          className="grid size-10 place-items-center rounded-full border border-[#e7ebe9] text-[#002018] hover:bg-[#f3f5f4]"
+          className="hidden size-10 place-items-center rounded-full border border-[#e7ebe9] text-[#002018] hover:bg-[#f3f5f4] sm:grid"
           aria-label="More options"
         >
           <MoreHorizontal className="size-4" />
@@ -124,20 +124,21 @@ export function ResumeDeskHeader({
 
 export function ResumeTabs({ tab, onTab }: { tab: ResumeTab; onTab: (t: ResumeTab) => void }) {
   return (
-    <div className="flex gap-1 overflow-x-auto border-b border-[#e7ebe9]">
+    <div className="-mx-1 flex gap-0.5 overflow-x-auto border-b border-[#e7ebe9] px-1 pb-px [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {TABS.map((t) => (
         <button
           key={t.id}
           type="button"
           onClick={() => onTab(t.id)}
           className={cn(
-            'shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
+            'shrink-0 border-b-2 px-3 py-3 text-base font-medium transition-colors sm:px-4 sm:py-2.5 sm:text-sm',
             tab === t.id
               ? 'border-[#002018] text-[#002018]'
               : 'border-transparent text-muted-foreground hover:text-[#002018]',
           )}
         >
-          {t.label}
+          <span className="sm:hidden">{t.short}</span>
+          <span className="hidden sm:inline">{t.label}</span>
         </button>
       ))}
     </div>
@@ -154,39 +155,39 @@ export function ResumeProfileCard({ profile }: { profile: CandidateProfile }) {
 
   return (
     <section className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_8px_20px_rgba(19,38,31,0.04)] sm:p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
+      <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
           {profile.avatarUrl ? (
-            <img src={profile.avatarUrl} alt="" className="size-16 shrink-0 rounded-full object-cover sm:size-20" />
+            <img src={profile.avatarUrl} alt="" className="size-14 shrink-0 rounded-full object-cover sm:size-20" />
           ) : (
-            <span className="grid size-16 shrink-0 place-items-center rounded-full bg-[#e7f6ef] font-serif text-xl text-[#002018] sm:size-20 sm:text-2xl">
+            <span className="grid size-14 shrink-0 place-items-center rounded-full bg-[#e7f6ef] font-serif text-lg text-[#002018] sm:size-20 sm:text-2xl">
               {initials(name)}
             </span>
           )}
-          <div className="min-w-0">
-            <h2 className="flex flex-wrap items-center gap-1.5 font-serif text-xl text-[#002018] sm:text-2xl">
+          <div className="min-w-0 flex-1">
+            <h2 className="flex flex-wrap items-center gap-1.5 font-serif text-lg leading-snug text-[#002018] sm:text-2xl">
               <span className="break-words">{name}</span>
               <Link to="/app/profile" className="text-[#2f9a6f] hover:opacity-80" aria-label="Edit name">
-                <Pencil className="size-3.5" />
+                <Pencil className="size-4" />
               </Link>
             </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">{headline}</p>
-            <div className="mt-3 flex flex-col gap-1.5 text-sm text-[#6b7280]">
+            <p className="mt-1 text-base leading-relaxed text-muted-foreground sm:text-sm">{headline}</p>
+            <div className="mt-3 flex flex-col gap-2 text-base text-[#6b7280] sm:text-sm">
               {place ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <MapPin className="size-3.5 shrink-0 text-[#2f9a6f]" />
-                  {place}
+                <span className="inline-flex items-start gap-2">
+                  <MapPin className="mt-0.5 size-4 shrink-0 text-[#2f9a6f]" />
+                  <span className="break-words">{place}</span>
                 </span>
               ) : null}
               {profile.email ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <Mail className="size-3.5 shrink-0 text-[#2f9a6f]" />
-                  <span className="truncate">{profile.email}</span>
+                <span className="inline-flex items-start gap-2">
+                  <Mail className="mt-0.5 size-4 shrink-0 text-[#2f9a6f]" />
+                  <span className="break-all">{profile.email}</span>
                 </span>
               ) : null}
             </div>
             {(linkedin || github || portfolio) ? (
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-base sm:text-sm">
                 {linkedin ? (
                   <a href={linkedin.startsWith('http') ? linkedin : `https://${linkedin}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#2f6fed] hover:underline">
                     <Link2 className="size-3.5" />
@@ -209,7 +210,7 @@ export function ResumeProfileCard({ profile }: { profile: CandidateProfile }) {
             ) : null}
           </div>
         </div>
-        <Button variant="outline" className="h-9 shrink-0 rounded-full" asChild>
+        <Button variant="outline" className="h-11 w-full rounded-full sm:h-9 sm:w-auto sm:self-start" asChild>
           <Link to="/app/profile">Edit Profile</Link>
         </Button>
       </div>
@@ -219,19 +220,23 @@ export function ResumeProfileCard({ profile }: { profile: CandidateProfile }) {
 
 function SectionCard({ row }: { row: SectionRow }) {
   return (
-    <article className="flex items-start gap-3 rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_6px_16px_rgba(19,38,31,0.03)] sm:items-center sm:gap-4">
-      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#eef2f0] text-[#2f9a6f]">
-        <row.icon className="size-4" strokeWidth={1.75} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <h3 className="font-medium text-[#002018]">{row.title}</h3>
-        {row.preview ? (
-          <div className="mt-1">{row.preview}</div>
-        ) : (
-          <p className="mt-0.5 text-sm text-muted-foreground">{row.hint}</p>
-        )}
+    <article className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_6px_16px_rgba(19,38,31,0.03)] sm:p-4">
+      <div className="flex items-start gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#eef2f0] text-[#2f9a6f] sm:size-10">
+          <row.icon className="size-[1.125rem] sm:size-4" strokeWidth={1.75} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-base font-semibold leading-snug text-[#002018] sm:text-[0.9375rem] sm:font-medium">
+            {row.title}
+          </h3>
+          {row.preview ? (
+            <div className="mt-2">{row.preview}</div>
+          ) : (
+            <p className="mt-1.5 text-base leading-relaxed text-muted-foreground sm:mt-0.5 sm:text-sm">{row.hint}</p>
+          )}
+        </div>
       </div>
-      <Button variant="outline" size="sm" className="h-8 shrink-0 rounded-full" asChild>
+      <Button variant="outline" className="mt-4 h-11 w-full rounded-full sm:mt-3 sm:ml-14 sm:h-9 sm:w-auto" asChild>
         <Link to={row.editHref}>Edit</Link>
       </Button>
     </article>
@@ -262,7 +267,7 @@ export function ResumeSectionList({
       done: checks.summary,
       editHref: '/app/profile',
       preview: summaryText ? (
-        <p className="line-clamp-2 text-sm text-muted-foreground">{summaryText}</p>
+        <p className="text-base leading-relaxed text-muted-foreground sm:text-sm">{summaryText}</p>
       ) : undefined,
     },
     {
@@ -273,7 +278,7 @@ export function ResumeSectionList({
       done: checks.experience,
       editHref: '/app/profile',
       preview: expCount ? (
-        <p className="text-sm text-muted-foreground">{expCount} role{expCount === 1 ? '' : 's'} on file</p>
+        <p className="text-base text-muted-foreground sm:text-sm">{expCount} role{expCount === 1 ? '' : 's'} on file</p>
       ) : undefined,
     },
     {
@@ -294,12 +299,12 @@ export function ResumeSectionList({
       preview: shownSkills.length ? (
         <div className="flex flex-wrap gap-1.5">
           {shownSkills.map((s) => (
-            <span key={s} className="rounded-full bg-[#eef2f0] px-2.5 py-0.5 text-xs text-[#002018]">
+            <span key={s} className="rounded-full bg-[#eef2f0] px-3 py-1 text-sm text-[#002018] sm:px-2.5 sm:py-0.5 sm:text-xs">
               {s}
             </span>
           ))}
           {extraSkills > 0 ? (
-            <span className="rounded-full bg-[#eef2f0] px-2.5 py-0.5 text-xs text-muted-foreground">
+            <span className="rounded-full bg-[#eef2f0] px-3 py-1 text-sm text-muted-foreground sm:px-2.5 sm:py-0.5 sm:text-xs">
               +{extraSkills}
             </span>
           ) : null}
@@ -343,17 +348,19 @@ export function ResumeSectionList({
 
 export function ResumePreviewBanner({ onPreview }: { onPreview: () => void }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-[#e7ebe9] bg-[#f7faf8] p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-4 rounded-2xl border border-[#e7ebe9] bg-[#f7faf8] p-4">
+      <div className="flex items-start gap-3">
         <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-white text-[#2f9a6f] shadow-sm">
           <FileText className="size-5" />
         </span>
-        <div>
-          <p className="font-medium text-[#002018]">Preview Your Resume</p>
-          <p className="text-sm text-muted-foreground">See how employers will read your resume.</p>
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-[#002018] sm:font-medium">Preview Your Resume</p>
+          <p className="mt-1 text-base leading-relaxed text-muted-foreground sm:text-sm">
+            See how employers will read your resume.
+          </p>
         </div>
       </div>
-      <Button variant="outline" className="h-9 rounded-full" onClick={onPreview}>
+      <Button variant="outline" className="h-11 w-full rounded-full sm:h-9 sm:w-auto sm:self-start" onClick={onPreview}>
         View Preview →
       </Button>
     </div>
@@ -363,11 +370,11 @@ export function ResumePreviewBanner({ onPreview }: { onPreview: () => void }) {
 export function ResumeAiTips() {
   return (
     <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_6px_16px_rgba(19,38,31,0.03)]">
-      <p className="flex items-center gap-1.5 text-sm font-medium text-[#002018]">
-        <Sparkles className="size-4 text-[#2f9a6f]" />
+      <p className="flex items-center gap-2 text-base font-semibold text-[#002018] sm:text-sm sm:font-medium">
+        <Sparkles className="size-4 shrink-0 text-[#2f9a6f]" />
         AI Tips
       </p>
-      <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+      <ul className="mt-3 space-y-2.5 text-base leading-relaxed text-muted-foreground sm:space-y-2 sm:text-sm">
         {AI_TIPS.map((tip) => (
           <li key={tip} className="flex gap-2">
             <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#2f9a6f]" />
@@ -417,23 +424,23 @@ export function ResumeStrengthPanel({ checks, strength }: { checks: ResumeChecks
   ]
 
   return (
-    <div className="rounded-2xl border border-[#e7ebe9] bg-white p-5 shadow-[0_8px_20px_rgba(19,38,31,0.04)]">
-      <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+    <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_8px_20px_rgba(19,38,31,0.04)] sm:p-5">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:text-[0.65rem]">
         Resume Strength
       </p>
       <div className="mt-4">
         <StrengthRing value={strength} />
       </div>
-      <p className="mt-3 text-center text-sm text-muted-foreground">
+      <p className="mt-3 text-center text-base leading-relaxed text-muted-foreground sm:text-sm">
         {strength >= 80
           ? 'Great job! Your resume is looking strong.'
           : strength >= 50
             ? 'Good start — fill a few more sections.'
             : 'Upload or complete sections to strengthen your resume.'}
       </p>
-      <ul className="mt-4 space-y-2">
+      <ul className="mt-4 space-y-2.5">
         {items.map((item) => (
-          <li key={item.key} className="flex items-center gap-2 text-sm">
+          <li key={item.key} className="flex items-center gap-2.5 text-base sm:text-sm">
             {item.done ? (
               <CheckCircle2 className="size-4 shrink-0 text-[#2f9a6f]" />
             ) : (
@@ -449,15 +456,15 @@ export function ResumeStrengthPanel({ checks, strength }: { checks: ResumeChecks
 
 export function ResumeAiPanel({ onImprove }: { onImprove: () => void }) {
   return (
-    <div className="rounded-2xl border border-[#d7eadc] bg-gradient-to-br from-[#e8f6ee] to-white p-5 shadow-[0_8px_20px_rgba(19,38,31,0.04)]">
-      <p className="flex items-center gap-1.5 text-sm font-medium text-[#002018]">
-        <Sparkles className="size-4 text-[#2f9a6f]" />
+    <div className="rounded-2xl border border-[#d7eadc] bg-gradient-to-br from-[#e8f6ee] to-white p-4 shadow-[0_8px_20px_rgba(19,38,31,0.04)] sm:p-5">
+      <p className="flex items-center gap-2 text-base font-semibold text-[#002018] sm:text-sm sm:font-medium">
+        <Sparkles className="size-4 shrink-0 text-[#2f9a6f]" />
         Get AI-Powered Suggestions
       </p>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+      <p className="mt-2 text-base leading-relaxed text-muted-foreground sm:text-sm">
         Upload or refresh your resume and Atelier will suggest improvements from your real profile data.
       </p>
-      <Button className="mt-4 h-10 w-full rounded-full bg-[#002018] !text-white hover:bg-[#001510]" onClick={onImprove}>
+      <Button className="mt-4 h-11 w-full rounded-full bg-[#002018] !text-white hover:bg-[#001510] sm:h-10" onClick={onImprove}>
         Improve with AI →
       </Button>
     </div>
@@ -478,16 +485,16 @@ export function ResumeTemplatesPanel({
   return (
     <div className={cn('rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_8px_20px_rgba(19,38,31,0.04)]', compact && 'p-4')}>
       <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:text-[0.65rem]">
           Resume Templates
         </p>
         {compact && onSeeAll ? (
-          <button type="button" className="text-xs font-medium text-[#2f9a6f] hover:underline" onClick={onSeeAll}>
+          <button type="button" className="text-sm font-medium text-[#2f9a6f] hover:underline sm:text-xs" onClick={onSeeAll}>
             See all
           </button>
         ) : null}
       </div>
-      <div className={cn('grid gap-2', compact ? 'grid-cols-3' : 'sm:grid-cols-3')}>
+      <div className={cn('grid gap-3', compact ? 'grid-cols-1 min-[420px]:grid-cols-3' : 'grid-cols-1 sm:grid-cols-3')}>
         {TEMPLATES.map((t) => (
           <button
             key={t.id}
@@ -506,7 +513,7 @@ export function ResumeTemplatesPanel({
                 <div className="h-1 w-3/5 rounded bg-[#002018]/10" />
               </div>
             </div>
-            <p className="mt-2 text-center text-xs font-medium text-[#002018]">{t.label}</p>
+            <p className="mt-2 text-center text-sm font-medium text-[#002018] sm:text-xs">{t.label}</p>
             {selected === t.id ? (
               <span className="absolute right-2 top-2 grid size-5 place-items-center rounded-full bg-[#2f9a6f] text-white">
                 <Check className="size-3" />

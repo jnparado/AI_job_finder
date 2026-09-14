@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -164,41 +164,41 @@ export function DashboardPage() {
             <div className="flex items-start gap-3 p-4 sm:gap-4 sm:p-5">
               <div className="relative shrink-0">
                 {profile.avatarUrl ? (
-                  <img src={profile.avatarUrl} alt="" className="size-20 rounded-full object-cover sm:size-24" />
+                  <img src={profile.avatarUrl} alt="" className="size-16 rounded-full object-cover sm:size-24" />
                 ) : (
-                  <span className="grid size-20 place-items-center rounded-full bg-[#e7f6ef] font-serif text-2xl text-[#002018] sm:size-24">
+                  <span className="grid size-16 place-items-center rounded-full bg-[#e7f6ef] font-serif text-xl text-[#002018] sm:size-24 sm:text-2xl">
                     {initials(name)}
                   </span>
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <h1 className="flex flex-wrap items-center gap-1.5 font-serif text-xl text-[#111827] sm:text-2xl lg:text-[1.75rem]">
+                <h1 className="flex flex-wrap items-center gap-1.5 font-serif text-[1.35rem] leading-tight text-[#111827] sm:text-2xl lg:text-[1.75rem]">
                   <span className="break-words">{name}</span>
                   {profile.onboardingCompleted ? <BadgeCheck className="size-5 shrink-0 text-[#2f9a6f]" /> : null}
                 </h1>
-                <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[#6b7280]">
+                <p className="mt-1.5 flex flex-wrap items-center gap-2 text-base leading-relaxed text-[#6b7280] sm:text-sm">
                   <span className="break-words">{headline}</span>
                   <Link to="/app/profile" className="inline-flex text-[#2f9a6f] hover:underline" aria-label="Edit profile">
-                    <Pencil className="size-3.5" />
+                    <Pencil className="size-4" />
                   </Link>
                 </p>
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-[#6b7280]">
+                <div className="mt-3 flex flex-col gap-2 text-base text-[#6b7280] sm:flex-row sm:flex-wrap sm:gap-x-4 sm:gap-y-1.5 sm:text-sm">
                   {place ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <MapPin className="size-3.5 text-[#2f9a6f]" />
-                      {place}
+                    <span className="inline-flex items-start gap-2">
+                      <MapPin className="mt-0.5 size-4 shrink-0 text-[#2f9a6f]" />
+                      <span className="break-words">{place}</span>
                     </span>
                   ) : null}
                   {profile.yearsExperience ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <Briefcase className="size-3.5 text-[#2f9a6f]" />
+                    <span className="inline-flex items-center gap-2">
+                      <Briefcase className="size-4 shrink-0 text-[#2f9a6f]" />
                       {profile.yearsExperience}+ years
                     </span>
                   ) : null}
                   {profile.email ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <Mail className="size-3.5 text-[#2f9a6f]" />
-                      <span className="truncate">{profile.email}</span>
+                    <span className="inline-flex items-start gap-2">
+                      <Mail className="mt-0.5 size-4 shrink-0 text-[#2f9a6f]" />
+                      <span className="break-all">{profile.email}</span>
                     </span>
                   ) : null}
                   {portfolio ? (
@@ -206,9 +206,9 @@ export function DashboardPage() {
                       href={portfolio.startsWith('http') ? portfolio : `https://${portfolio}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 text-[#2f6fed] hover:underline"
+                      className="inline-flex items-center gap-2 text-[#2f6fed] hover:underline"
                     >
-                      <Globe className="size-3.5" />
+                      <Globe className="size-4 shrink-0" />
                       Portfolio
                     </a>
                   ) : null}
@@ -223,15 +223,15 @@ export function DashboardPage() {
                 className="absolute inset-0 h-full w-full object-cover object-center"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#002018]/90 via-[#002018]/55 to-[#002018]/25 lg:bg-gradient-to-r lg:from-[#002018]/85 lg:via-[#002018]/45 lg:to-transparent" />
-              <div className="relative flex h-full min-h-[10rem] flex-col justify-end gap-2.5 p-4 text-white sm:min-h-[11rem] sm:gap-3 sm:p-6 lg:justify-center">
-                <h2 className="max-w-xs font-serif text-xl leading-tight sm:text-2xl lg:max-w-[14rem] lg:text-[1.65rem]">
+              <div className="relative flex h-full min-h-[10rem] flex-col justify-end gap-3 p-4 text-white sm:min-h-[11rem] sm:p-6 lg:justify-center">
+                <h2 className="max-w-sm font-serif text-[1.35rem] leading-tight sm:text-2xl lg:max-w-[14rem] lg:text-[1.65rem]">
                   Better Skills, Brighter Opportunities.
                 </h2>
-                <p className="max-w-sm text-sm text-white/85 lg:max-w-[16rem]">
+                <p className="max-w-md text-base leading-relaxed text-white/90 sm:max-w-sm sm:text-sm lg:max-w-[16rem]">
                   AI scores roles against your resume — packets leave only after you approve.
                 </p>
                 <Button
-                  className="h-10 w-fit rounded-full bg-[#002820] !text-white hover:bg-[#001510]"
+                  className="h-11 w-full rounded-full bg-[#002820] !text-white hover:bg-[#001510] sm:h-10 sm:w-fit"
                   onClick={() => setAssistantOpen(true)}
                 >
                   Find Jobs →
@@ -241,8 +241,22 @@ export function DashboardPage() {
           </div>
         </section>
 
+        {/* Profile completeness — mobile only (sidebar on desktop) */}
+        <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)] xl:hidden">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Profile Completeness
+          </p>
+          <p className="mt-2 font-serif text-3xl tabular-nums text-[#002018]">{ready}%</p>
+          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[#eef2f0]">
+            <div className="h-full rounded-full bg-[#2f9a6f]" style={{ width: `${ready}%` }} />
+          </div>
+          <Button variant="outline" className="mt-4 h-11 w-full rounded-full sm:h-9" asChild>
+            <Link to="/app/profile">Improve Profile</Link>
+          </Button>
+        </div>
+
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-4">
           <StatCard icon={Briefcase} label="Jobs Applied" value={applied.length} tone="green" hint={monthHint(applied)} />
           <StatCard icon={Users} label="Interviews" value={interviews.length} tone="orange" hint={monthHint(interviews)} />
           <StatCard icon={FileText} label="Offers" value={offers.length} tone="violet" hint={monthHint(offers)} />
@@ -251,12 +265,12 @@ export function DashboardPage() {
 
         {/* Recommended */}
         <section>
-          <div className="mb-3 flex flex-wrap items-start justify-between gap-x-3 gap-y-1 sm:items-end">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-x-3 gap-y-2 sm:items-end">
             <div className="min-w-0 flex-1">
-              <h2 className="font-serif text-lg text-[#002018] sm:text-xl">Recommended Jobs for You</h2>
-              <p className="text-xs text-muted-foreground sm:text-sm">Ranked by Atelier AI match against your profile.</p>
+              <h2 className="font-serif text-[1.25rem] leading-tight text-[#002018] sm:text-xl">Recommended Jobs for You</h2>
+              <p className="mt-1 text-base leading-relaxed text-muted-foreground sm:text-sm">Ranked by Atelier AI match against your profile.</p>
             </div>
-            <Link to="/app/jobs" className="shrink-0 text-sm font-medium text-[#2f9a6f] hover:underline">
+            <Link to="/app/jobs" className="shrink-0 text-base font-medium text-[#2f9a6f] hover:underline sm:text-sm">
               View All →
             </Link>
           </div>
@@ -294,8 +308,8 @@ export function DashboardPage() {
 
         {/* Career insights */}
         <section>
-          <h2 className="mb-3 font-serif text-lg text-[#002018] sm:text-xl">Career Insights</h2>
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+          <h2 className="mb-3 font-serif text-[1.25rem] text-[#002018] sm:text-xl">Career Insights</h2>
+          <div className="grid gap-3 md:grid-cols-3">
             <InsightCard
               icon={Sparkles}
               title="In-Demand Skills"
@@ -319,11 +333,53 @@ export function DashboardPage() {
             />
           </div>
         </section>
+
+        {/* Mobile rail */}
+        <div className="space-y-4 xl:hidden">
+          <DashboardRailCard title="Upcoming Activities" empty="No interviews or offers scheduled yet.">
+            {upcoming.length ? (
+              <ul className="mt-3 space-y-4">
+                {upcoming.map((row) => (
+                  <li key={row.id} className="flex flex-col gap-2">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 text-base font-medium text-[#002018]">
+                        <Calendar className="size-4 shrink-0 text-[#2f9a6f]" />
+                        {row.title}
+                      </p>
+                      <p className="mt-0.5 break-words text-base text-muted-foreground">{row.detail}</p>
+                    </div>
+                    <Button variant="outline" className="h-11 w-full rounded-lg" asChild>
+                      <Link to={row.href}>{row.action}</Link>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </DashboardRailCard>
+
+          <DashboardRailCard title="Recent Activity" empty="Activity shows up as you apply and match.">
+            {activity.length ? (
+              <ul className="mt-3 space-y-3">
+                {activity.map((row) => (
+                  <li key={row.id} className="flex gap-2.5 text-base">
+                    <span className="mt-2 size-1.5 shrink-0 rounded-full bg-[#2f9a6f]" />
+                    <div className="min-w-0">
+                      <Link to={row.href} className="font-medium leading-snug text-[#002018] hover:text-[#2f9a6f]">
+                        {row.title}
+                      </Link>
+                      <p className="mt-0.5 break-words text-base text-muted-foreground">{row.detail}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </DashboardRailCard>
+        </div>
       </div>
 
-      {/* Right rail */}
-      <aside className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:sticky xl:top-24 xl:grid-cols-1">
-        <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)] sm:p-5 sm:col-span-2 xl:col-span-1">
+      {/* Right rail — desktop only */}
+      <aside className="hidden space-y-4 xl:sticky xl:top-24 xl:block">
+        <div className="rounded-2xl border border-[#e7ebe9] bg-white p-5 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
           <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Profile Completeness
           </p>
@@ -336,54 +392,44 @@ export function DashboardPage() {
           </Button>
         </div>
 
-        <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
-          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Upcoming Activities
-          </p>
+        <DashboardRailCard title="Upcoming Activities" empty="No interviews or offers scheduled yet.">
           {upcoming.length ? (
             <ul className="mt-3 space-y-3">
               {upcoming.map((row) => (
-                <li key={row.id} className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <li key={row.id} className="flex flex-col gap-2">
                   <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 text-sm font-medium text-[#002018]">
-                      <Calendar className="size-3.5 shrink-0 text-[#2f9a6f]" />
+                    <p className="flex items-center gap-2 text-base font-medium text-[#002018] sm:text-sm">
+                      <Calendar className="size-4 shrink-0 text-[#2f9a6f] sm:size-3.5" />
                       {row.title}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground">{row.detail}</p>
+                    <p className="mt-0.5 break-words text-base text-muted-foreground sm:text-xs">{row.detail}</p>
                   </div>
-                  <Button size="sm" variant="outline" className="h-8 w-full shrink-0 rounded-lg sm:w-auto" asChild>
+                  <Button variant="outline" className="h-11 w-full rounded-lg sm:h-8 sm:w-auto" asChild>
                     <Link to={row.href}>{row.action}</Link>
                   </Button>
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="mt-3 text-sm text-muted-foreground">No interviews or offers scheduled yet.</p>
-          )}
-        </div>
+          ) : null}
+        </DashboardRailCard>
 
-        <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
-          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Recent Activity
-          </p>
+        <DashboardRailCard title="Recent Activity" empty="Activity shows up as you apply and match.">
           {activity.length ? (
             <ul className="mt-3 space-y-3">
               {activity.map((row) => (
-                <li key={row.id} className="flex gap-2.5 text-sm">
-                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#2f9a6f]" />
+                <li key={row.id} className="flex gap-2.5 text-base sm:text-sm">
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-[#2f9a6f] sm:mt-1.5" />
                   <div className="min-w-0">
-                    <Link to={row.href} className="font-medium text-[#002018] hover:text-[#2f9a6f]">
+                    <Link to={row.href} className="font-medium leading-snug text-[#002018] hover:text-[#2f9a6f]">
                       {row.title}
                     </Link>
-                    <p className="text-xs text-muted-foreground">{row.detail}</p>
+                    <p className="mt-0.5 break-words text-base text-muted-foreground sm:text-xs">{row.detail}</p>
                   </div>
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="mt-3 text-sm text-muted-foreground">Activity shows up as you apply and match.</p>
-          )}
-        </div>
+          ) : null}
+        </DashboardRailCard>
       </aside>
 
       {/* AI Job Assistant FAB — matches screenshot */}
@@ -449,47 +495,49 @@ function RecommendedCard({
   const place = job.remote ? 'Remote' : job.location || 'Flexible'
 
   return (
-    <article className="flex flex-col rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
+    <article className="flex flex-col rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)] sm:p-4">
       <div className="flex items-start gap-3">
-        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#e7f6ef] font-serif text-sm text-[#002018]">
+        <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#e7f6ef] font-serif text-base text-[#002018] sm:size-10 sm:text-sm">
           {(job.company || 'A').slice(0, 1).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate text-sm text-muted-foreground">{job.company}</p>
+            <p className="text-base text-muted-foreground sm:text-sm">{job.company}</p>
             {featured ? (
-              <span className="rounded-full bg-[#fff4e5] px-2 py-0.5 text-[0.65rem] font-semibold text-[#c47b12]">
+              <span className="rounded-full bg-[#fff4e5] px-2.5 py-0.5 text-xs font-semibold text-[#c47b12] sm:text-[0.65rem]">
                 Featured
               </span>
             ) : null}
           </div>
-          <Link to={`/app/jobs/${job.id}`} className="mt-0.5 block">
-            <h3 className="font-serif text-lg leading-snug text-[#002018] hover:text-[#2f9a6f]">{job.title}</h3>
+          <Link to={`/app/jobs/${job.id}`} className="mt-1 block">
+            <h3 className="font-serif text-[1.05rem] leading-snug text-[#002018] hover:text-[#2f9a6f] sm:text-lg">
+              {job.title}
+            </h3>
           </Link>
         </div>
       </div>
 
-      <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1">
-          <MapPin className="size-3" />
+      <div className="mt-3 flex flex-col gap-1.5 text-base text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-x-3 sm:gap-y-1 sm:text-xs">
+        <span className="inline-flex items-center gap-1.5">
+          <MapPin className="size-3.5 shrink-0 sm:size-3" />
           {place}
         </span>
         <span>{moneyBand(job.salaryMin, job.salaryMax, job.currency)}</span>
         <span>{postedLabel(job.postedAt)}</span>
-      </p>
+      </div>
 
       {skills.length ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="mt-3 flex flex-wrap gap-2 sm:gap-1.5">
           {skills.map((skill) => (
-            <span key={skill} className="rounded-full bg-[#eef2f0] px-2 py-0.5 text-[0.7rem] text-[#002018]">
+            <span key={skill} className="rounded-full bg-[#eef2f0] px-3 py-1 text-sm text-[#002018] sm:px-2 sm:py-0.5 sm:text-[0.7rem]">
               {skill}
             </span>
           ))}
         </div>
       ) : null}
 
-      <p className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-[#2f9a6f]">
-        <CheckCircle2 className="size-4" />
+      <p className="mt-3 inline-flex items-center gap-2 text-base font-semibold text-[#2f9a6f] sm:text-sm">
+        <CheckCircle2 className="size-4 shrink-0" />
         Matched {match.score}%
       </p>
 
@@ -541,13 +589,13 @@ function StatCard({
     blue: 'text-[#2f9a6f]',
   }
   return (
-    <div className="rounded-2xl border border-[#e7ebe9] bg-white p-3 shadow-[0_8px_20px_rgba(19,38,31,0.04)] sm:p-4">
-      <span className={cn('grid size-8 place-items-center rounded-xl sm:size-9', tones[tone])}>
-        <Icon className="size-3.5 sm:size-4" />
+    <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_8px_20px_rgba(19,38,31,0.04)] sm:p-4">
+      <span className={cn('grid size-10 place-items-center rounded-xl sm:size-9', tones[tone])}>
+        <Icon className="size-4" />
       </span>
-      <p className="mt-2 font-serif text-2xl tabular-nums text-[#002018] sm:mt-3 sm:text-3xl">{value}</p>
-      <p className="text-xs text-muted-foreground sm:text-sm">{label}</p>
-      {hint ? <p className={cn('mt-1 text-xs', hints[tone])}>{hint}</p> : null}
+      <p className="mt-3 font-serif text-3xl tabular-nums text-[#002018] sm:text-3xl">{value}</p>
+      <p className="text-base font-medium text-[#002018] sm:text-sm sm:font-normal sm:text-muted-foreground">{label}</p>
+      {hint ? <p className={cn('mt-1 text-sm sm:text-xs', hints[tone])}>{hint}</p> : null}
     </div>
   )
 }
@@ -567,14 +615,33 @@ function InsightCard({
 }) {
   return (
     <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_8px_20px_rgba(19,38,31,0.04)]">
-      <span className="grid size-9 place-items-center rounded-xl bg-[#e7f6ef] text-[#2f9a6f]">
+      <span className="grid size-10 place-items-center rounded-xl bg-[#e7f6ef] text-[#2f9a6f] sm:size-9">
         <Icon className="size-4" />
       </span>
-      <h3 className="mt-3 font-medium text-[#002018]">{title}</h3>
-      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{body}</p>
-      <Link to={href} className="mt-3 inline-block text-sm font-medium text-[#2f9a6f] hover:underline">
+      <h3 className="mt-3 text-base font-semibold text-[#002018] sm:text-[0.9375rem] sm:font-medium">{title}</h3>
+      <p className="mt-2 text-base leading-relaxed text-muted-foreground sm:mt-1 sm:text-sm">{body}</p>
+      <Link to={href} className="mt-3 inline-block text-base font-medium text-[#2f9a6f] hover:underline sm:text-sm">
         {link}
       </Link>
+    </div>
+  )
+}
+
+function DashboardRailCard({
+  title,
+  empty,
+  children,
+}: {
+  title: string
+  empty: string
+  children?: ReactNode
+}) {
+  return (
+    <div className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_10px_24px_rgba(19,38,31,0.04)]">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:text-[0.65rem]">
+        {title}
+      </p>
+      {children ?? <p className="mt-3 text-base leading-relaxed text-muted-foreground sm:text-sm">{empty}</p>}
     </div>
   )
 }
