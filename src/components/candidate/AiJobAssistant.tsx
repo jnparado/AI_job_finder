@@ -181,13 +181,13 @@ export function AiJobAssistant({ topMatch, matchCount, onMatchesUpdated }: Assis
   return (
     <section className="overflow-hidden rounded-2xl border border-[#d7eadc] bg-white shadow-[0_12px_32px_rgba(19,38,31,0.06)]">
       <div className="border-b border-[#eef3f0] bg-gradient-to-r from-[#e8f6ee] via-white to-[#f7f1e4] px-4 py-4 sm:px-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <p className="inline-flex items-center gap-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#2f9a6f]">
               <Sparkles className="size-3.5" />
               AI Job Assistant
             </p>
-            <h2 className="mt-1 font-serif text-2xl text-[#002018] sm:text-[1.75rem]">
+            <h2 className="mt-1 font-serif text-xl text-[#002018] sm:text-2xl lg:text-[1.75rem]">
               Ask Atelier to match, coach, and prepare packets
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
@@ -195,7 +195,7 @@ export function AiJobAssistant({ topMatch, matchCount, onMatchesUpdated }: Assis
               Indeed, or Upwork.
             </p>
           </div>
-          <div className="rounded-xl bg-white/80 px-3 py-2 text-right text-xs text-muted-foreground ring-1 ring-[#e4ebe6]">
+          <div className="w-full shrink-0 rounded-xl bg-white/80 px-3 py-2 text-left text-xs text-muted-foreground ring-1 ring-[#e4ebe6] sm:w-auto sm:text-right">
             <p className="font-medium text-[#002018]">{matchCount} scored roles</p>
             <p>{topMatch ? `Best fit ${topMatch.score}%` : 'Run a search to score roles'}</p>
           </div>
@@ -214,7 +214,7 @@ export function AiJobAssistant({ topMatch, matchCount, onMatchesUpdated }: Assis
           </div>
           <Button
             type="submit"
-            className="h-12 rounded-full bg-[#002018] px-6 !text-white hover:bg-[#001510]"
+            className="h-12 w-full rounded-full bg-[#002018] px-6 !text-white hover:bg-[#001510] sm:w-auto"
             disabled={busy}
           >
             {busy ? 'Working…' : 'Run assistant'}
@@ -307,7 +307,7 @@ export function AiJobAssistant({ topMatch, matchCount, onMatchesUpdated }: Assis
               {preview.map((m) => (
                 <div
                   key={m.job.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e7ebe9] bg-white px-3 py-3"
+                  className="flex flex-col gap-3 rounded-xl border border-[#e7ebe9] bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium text-[#002018]">{m.job.title}</p>
@@ -315,14 +315,14 @@ export function AiJobAssistant({ topMatch, matchCount, onMatchesUpdated }: Assis
                       {m.job.company} · {moneyBand(m.job.salaryMin, m.job.salaryMax, m.job.currency)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[#e7f6ef] px-2.5 py-1 text-xs font-semibold text-[#2f9a6f]">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <span className="inline-flex w-fit items-center gap-1 rounded-full bg-[#e7f6ef] px-2.5 py-1 text-xs font-semibold text-[#2f9a6f]">
                       <CheckCircle2 className="size-3.5" />
                       {m.score}%
                     </span>
                     <Button
                       size="sm"
-                      className="rounded-full bg-[#002018] !text-white"
+                      className="w-full rounded-full bg-[#002018] !text-white sm:w-auto"
                       disabled={apply.isPending}
                       onClick={() => apply.mutate(m.job.id)}
                     >

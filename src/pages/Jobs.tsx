@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, CircleAlert, ExternalLink, MapPin, Search, Wallet } from 'lucide-react'
 import type { DiscoverySummary, JobMatch, MatchCategory } from '@shared/types'
 import { categoryLabel, sourceLabel } from '@shared/types'
@@ -24,8 +24,28 @@ const FILTERS: { id: MatchCategory | 'all' | '70'; label: string }[] = [
   { id: 'all', label: 'All' },
 ]
 
+function jobMatchesQuery(match: JobMatch, raw: string) {
+  const q = raw.trim().toLowerCase()
+  if (!q) return true
+  const hay = [
+    match.job.title,
+    match.job.company,
+    match.job.location,
+    match.job.description,
+    ...(match.job.skills ?? []),
+    ...(match.matchedSkills ?? []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  return q.split(/\s+/).every((term) => hay.includes(term))
+}
+
 export function JobsPage() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const textQuery = (searchParams.get('q') ?? '').trim()
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['id']>('70')
   const [source, setSource] = useState('all')
   const [applyingId, setApplyingId] = useState<string | null>(null)
@@ -41,13 +61,16 @@ export function JobsPage() {
     staleTime: 30_000,
   })
   const search = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (focus?: string) => {
       const ctrl = new AbortController()
       const timer = window.setTimeout(() => ctrl.abort(), 20_000)
       try {
-        return await api<{ discovery: DiscoverySummary }>('/api/agent/search', {
+        return await api<{
+          discovery: DiscoverySummary
+          matches: JobMatch[]
+        }>('/api/agent/search', {
           method: 'POST',
-          body: '{}',
+          body: JSON.stringify(focus?.trim() ? { query: focus.trim() } : {}),
           signal: ctrl.signal,
         })
       } catch (err) {
@@ -59,9 +82,11 @@ export function JobsPage() {
         window.clearTimeout(timer)
       }
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (res.matches?.length) qc.setQueryData(['jobs'], res.matches)
       void jobs.refetch()
       void discovery.refetch()
+      void qc.invalidateQueries({ queryKey: ['candidate-home'] })
     },
   })
   const apply = useMutation({
@@ -73,29 +98,39 @@ export function JobsPage() {
     onSuccess: (row) => navigate(`/app/applications/${row.id}`),
     onSettled: () => setApplyingId(null),
   })
-  const liveOnce = useRef(false)
+  const lastFocus = useRef<string | null>(null)
   useEffect(() => {
-    if (!jobs.isSuccess || liveOnce.current) return
-    liveOnce.current = true
+    if (!jobs.isSuccess) return
+    if (lastFocus.current === textQuery) return
+    lastFocus.current = textQuery
     const timer = window.setTimeout(() => {
-      search.mutate()
-    }, 700)
+      search.mutate(textQuery || undefined)
+    }, textQuery ? 300 : 700)
     return () => window.clearTimeout(timer)
-    // Refresh live boards once after the fast catalog scores paint.
+    // Refresh live boards after catalog scores paint, or when the header search focus changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobs.isSuccess])
+  }, [jobs.isSuccess, textQuery])
   const report = discovery.data
   const all = jobs.data ?? []
   const sources = [...new Set(all.map((m) => m.job.source))]
   const recommended = all.filter((m) => m.score >= 70).length
   const excellent = all.filter((m) => m.category === 'excellent').length
   const strong = all.filter((m) => m.category === 'strong').length
-  const effectiveFilter = filter === '70' && !jobs.isLoading && recommended === 0 && all.length > 0 ? 'all' : filter
+  const effectiveFilter = textQuery
+    ? 'all'
+    : filter === '70' && !jobs.isLoading && recommended === 0 && all.length > 0
+      ? 'all'
+      : filter
   let list = all
   if (effectiveFilter === '70') list = list.filter((m) => m.score >= 70)
   else if (effectiveFilter !== 'all') list = list.filter((m) => m.category === effectiveFilter)
   if (source !== 'all') list = list.filter((m) => m.job.source === source)
+  if (textQuery) list = list.filter((m) => jobMatchesQuery(m, textQuery))
   const live = report?.providers?.filter((p) => p.status === 'ok') ?? []
+
+  function clearSearch() {
+    setSearchParams({}, { replace: true })
+  }
 
   return (
     <div className="space-y-6">
@@ -105,24 +140,30 @@ export function JobsPage() {
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[#c6a15b]">Matches</p>
             <h1 className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">Jobs scored for you</h1>
             <p className="mt-2 max-w-xl text-sm text-[#d8d0c0]">
-              {jobs.isLoading
-                ? 'Loading scored listings…'
-                : search.isPending
-                  ? 'Refreshing authorized boards in the background…'
-                  : search.isError
-                    ? search.error instanceof Error
-                      ? search.error.message
-                      : 'Live boards did not refresh. Scored listings below are still current.'
-                    : recommended
-                      ? `${recommended} roles clear your 70% bar.`
-                      : all.length
-                        ? `${all.length} roles scored. None clear 70% yet — showing all matches.`
-                        : 'Search authorized boards and we will score every listing against you.'}
+              {textQuery
+                ? search.isPending
+                  ? `Searching authorized boards for “${textQuery}”…`
+                  : list.length
+                    ? `${list.length} role${list.length === 1 ? '' : 's'} match “${textQuery}”.`
+                    : `No scored roles match “${textQuery}” yet.`
+                : jobs.isLoading
+                  ? 'Loading scored listings…'
+                  : search.isPending
+                    ? 'Refreshing authorized boards in the background…'
+                    : search.isError
+                      ? search.error instanceof Error
+                        ? search.error.message
+                        : 'Live boards did not refresh. Scored listings below are still current.'
+                      : recommended
+                        ? `${recommended} roles clear your 70% bar.`
+                        : all.length
+                          ? `${all.length} roles scored. None clear 70% yet — showing all matches.`
+                          : 'Search authorized boards and we will score every listing against you.'}
             </p>
           </div>
-          <Button variant="copper" onClick={() => search.mutate()} disabled={search.isPending}>
+          <Button variant="copper" onClick={() => search.mutate(textQuery || undefined)} disabled={search.isPending}>
             <Search className="size-4" />
-            {search.isPending ? 'Searching…' : 'Search platforms'}
+            {search.isPending ? 'Searching…' : textQuery ? 'Search again' : 'Search platforms'}
           </Button>
         </div>
         <div className="grid grid-cols-2 gap-px bg-[#c9c0ae22] sm:grid-cols-4">
@@ -159,6 +200,21 @@ export function JobsPage() {
           </div>
         ) : null}
       </section>
+
+      {textQuery ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-sm">
+          <span className="text-muted-foreground">
+            Filtered by <span className="font-medium text-foreground">“{textQuery}”</span>
+          </span>
+          <button
+            type="button"
+            onClick={clearSearch}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+          >
+            Clear search
+          </button>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-1.5 rounded-2xl border border-border bg-card p-1 sm:rounded-full">
@@ -210,10 +266,14 @@ export function JobsPage() {
         </div>
       ) : list.length === 0 ? (
         <EmptyState
-          title="Nothing in this view"
-          body="Try All, or search again to refresh live listings."
-          actionLabel="Search platforms"
-          onClick={() => search.mutate()}
+          title={textQuery ? 'No matches for this search' : 'Nothing in this view'}
+          body={
+            textQuery
+              ? 'Try different keywords, clear the search, or run a fresh board search.'
+              : 'Try All, or search again to refresh live listings.'
+          }
+          actionLabel={textQuery ? 'Clear search' : 'Search platforms'}
+          onClick={() => (textQuery ? clearSearch() : search.mutate(undefined))}
         />
       ) : (
         <div className="space-y-3">

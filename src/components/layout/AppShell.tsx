@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bell,
@@ -71,6 +71,7 @@ export function AppShell() {
   const { profile, signOut, destinationFor } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const hiringDesk = profile.role === 'employer' || isStaffRole(profile.role)
   const name = displayName(profile)
   const [open, setOpen] = useState(false)
@@ -125,9 +126,14 @@ export function AppShell() {
   function onSearch(e: FormEvent) {
     e.preventDefault()
     const q = query.trim()
-    navigate(q ? `/app/jobs?q=${encodeURIComponent(q)}` : '/app/jobs')
+    navigate(q ? `/app/jobs?q=${encodeURIComponent(q)}` : '/app/jobs', { replace: location.pathname.startsWith('/app/jobs') })
     setOpen(false)
   }
+
+  useEffect(() => {
+    if (!location.pathname.startsWith('/app/jobs')) return
+    setQuery(searchParams.get('q') ?? '')
+  }, [location.pathname, searchParams])
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -305,25 +311,26 @@ export function AppShell() {
         {sidebar(mini, toggleMini)}
       </aside>
 
-      <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', messenger && 'h-full min-h-0 lg:h-svh')}>
-        <header className="sticky top-0 z-30 flex min-w-0 shrink-0 items-center gap-2 border-b border-[#e7ebe9] bg-white px-3 py-3 sm:gap-3 sm:px-6">
-          <button type="button" className="grid size-10 place-items-center lg:hidden" aria-label="Open menu" onClick={() => setOpen(true)}>
+      <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden', messenger && 'h-full min-h-0 lg:h-svh')}>
+        <header className="sticky top-0 z-30 flex min-w-0 shrink-0 items-center gap-1.5 border-b border-[#e7ebe9] bg-white px-2.5 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
+          <button type="button" className="grid size-10 shrink-0 place-items-center lg:hidden" aria-label="Open menu" onClick={() => setOpen(true)}>
             <Menu className="size-5 text-[#002018]" />
           </button>
           <form onSubmit={onSearch} className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#8a9390]" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8a9390] sm:left-3.5" />
             <input
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search jobs, companies, or keywords…"
-              className="h-11 w-full rounded-full border border-[#e7ebe9] bg-[#f3f5f4] pl-10 pr-12 text-sm outline-none placeholder:text-[#8a9390] focus:border-[#2f9a6f] focus:bg-white"
+              placeholder="Search jobs…"
+              title="Search jobs, companies, or keywords"
+              className="h-10 w-full rounded-full border border-[#e7ebe9] bg-[#f3f5f4] pl-9 pr-3 text-sm outline-none placeholder:text-[#8a9390] focus:border-[#2f9a6f] focus:bg-white sm:h-11 sm:pl-10 sm:pr-12"
             />
-            <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#dde3e0] bg-white px-1.5 text-[0.65rem] font-medium text-[#8a9390] sm:inline">
+            <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#dde3e0] bg-white px-1.5 text-[0.65rem] font-medium text-[#8a9390] md:inline">
               K
             </kbd>
           </form>
-          <div ref={toolsRef} className="relative flex shrink-0 items-center gap-1">
+          <div ref={toolsRef} className="relative flex shrink-0 items-center gap-0.5 sm:gap-1">
             <button
               type="button"
               aria-label="Notifications"
@@ -446,10 +453,10 @@ export function AppShell() {
 
         <main
           className={cn(
-            'min-w-0 flex-1',
+            'min-w-0 flex-1 overflow-x-hidden',
             messenger
               ? 'flex min-h-0 flex-col [&>*]:h-full [&>*]:min-h-0'
-              : 'px-4 py-5 sm:px-6 sm:py-6',
+              : 'px-3 py-4 sm:px-6 sm:py-6',
           )}
         >
           <Outlet />
