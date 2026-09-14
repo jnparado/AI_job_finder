@@ -359,7 +359,7 @@ export function EmployerShell() {
               placeholder={
                 location.pathname.startsWith('/employer/inbox')
                   ? 'Search applicants…'
-                  : 'Search candidates…'
+                  : 'Search candidates, skills, or keywords…'
               }
               className="h-11 w-full rounded-full border border-[#e4ebe6] bg-[#f4f7f5] pl-10 pr-12 text-sm outline-none placeholder:text-muted-foreground/80 focus:border-[#147a48] focus:bg-white"
             />

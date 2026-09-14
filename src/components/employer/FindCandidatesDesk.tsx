@@ -3,22 +3,16 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BadgeCheck,
-  Bookmark,
-  BookmarkCheck,
   Briefcase,
-  Globe,
-  Grid2x2,
-  LayoutList,
+  Clock,
+  Heart,
   MapPin,
   Search,
-  ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
   X,
 } from 'lucide-react'
 import type { CareerLevel, Currency, Job } from '@shared/types'
 import { api } from '@/lib/api'
-import { localBrandPath } from '@/lib/brandAssets'
 import { cn, initials, money, textSnippet } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,14 +20,10 @@ import { Input } from '@/components/ui/input'
 const SAVED_KEY = 'atelier-employer-saved-candidates'
 const PAGE = 9
 
-const CATEGORIES = ['Software', 'Design', 'Marketing', 'Finance', 'People & culture', 'Sales'] as const
-
-type DeskTab = 'search' | 'recommended' | 'saved' | 'invites'
+type DeskTab = 'search' | 'recommended' | 'saved'
 type ExperienceFilter = 'all' | 'entry' | 'intermediate' | 'expert'
-type AvailabilityFilter = 'all' | 'now' | 'open'
 type LocationFilter = 'all' | 'philippines' | 'remote'
 type SortKey = 'match' | 'recent' | 'pay'
-type ViewMode = 'grid' | 'list'
 
 interface TalentCard {
   id: string
@@ -97,17 +87,6 @@ function experienceBucket(person: TalentCard): Exclude<ExperienceFilter, 'all'> 
   return 'intermediate'
 }
 
-function categoryOf(person: TalentCard) {
-  const hay = `${person.industry} ${person.title} ${person.headline} ${person.skills.join(' ')}`.toLowerCase()
-  if (/design|figma|ui|ux|brand/.test(hay)) return 'Design'
-  if (/market|content|growth|social/.test(hay)) return 'Marketing'
-  if (/finance|account|fp&a/.test(hay)) return 'Finance'
-  if (/recruit|people|hr|learning/.test(hay)) return 'People & culture'
-  if (/sales|sdr|success/.test(hay)) return 'Sales'
-  if (CATEGORIES.includes(person.industry as (typeof CATEGORIES)[number])) return person.industry
-  return 'Software'
-}
-
 function levelLabel(person: TalentCard) {
   if (person.careerLevel === 'junior') return 'Entry'
   if (person.careerLevel === 'mid') return 'Intermediate'
@@ -118,25 +97,31 @@ function levelLabel(person: TalentCard) {
 }
 
 function availabilityLabel(value: TalentCard['availability']) {
-  return value === 'now' ? 'Available Now' : 'Open to Opportunities'
+  return value === 'now' ? 'Available now' : 'Open to opportunities'
+}
+
+function hourlyLabel(person: TalentCard) {
+  const pay = person.salaryDesired || person.salaryMin
+  if (!pay) return null
+  const hourly = Math.max(1, Math.round(pay / 2080))
+  return `${money(hourly, person.currency)}/hr`
 }
 
 export function FindCandidatesDesk() {
   const qc = useQueryClient()
   const [params, setParams] = useSearchParams()
-  const tab = (['search', 'recommended', 'saved', 'invites'].includes(params.get('tab') ?? '')
+  const tab = (['search', 'recommended', 'saved'].includes(params.get('tab') ?? '')
     ? params.get('tab')
     : 'search') as DeskTab
   const selectedId = params.get('id') ?? ''
   const query = params.get('q') ?? ''
-  const [category, setCategory] = useState('all')
   const [experience, setExperience] = useState<ExperienceFilter>('all')
   const [place, setPlace] = useState<LocationFilter>('all')
-  const [availability, setAvailability] = useState<AvailabilityFilter>('all')
   const [skillFilter, setSkillFilter] = useState('')
-  const [payMin, setPayMin] = useState(0)
+  const [skillSearch, setSkillSearch] = useState('')
+  const [locationSearch, setLocationSearch] = useState('')
+  const [hourlyMin, setHourlyMin] = useState(0)
   const [sort, setSort] = useState<SortKey>('match')
-  const [view, setView] = useState<ViewMode>('grid')
   const [page, setPage] = useState(0)
   const [saved, setSaved] = useState<string[]>(readSaved)
   const [inviteFor, setInviteFor] = useState<TalentCard | null>(null)
@@ -186,21 +171,6 @@ export function FindCandidatesDesk() {
     }
   }, [desk.data])
 
-  const availabilityCounts = useMemo(() => {
-    const list = desk.data?.people ?? []
-    return {
-      now: list.filter((row) => row.availability === 'now').length,
-      open: list.filter((row) => row.availability === 'open').length,
-    }
-  }, [desk.data])
-
-  const payBounds = useMemo(() => {
-    const list = desk.data?.people ?? []
-    const rates = list.map((row) => row.salaryDesired || row.salaryMin).filter((n) => n > 0)
-    if (!rates.length) return { min: 0, max: 150000 }
-    return { min: Math.min(...rates), max: Math.max(...rates) }
-  }, [desk.data])
-
   const filtered = useMemo(() => {
     const list = desk.data?.people ?? []
     const q = query.trim().toLowerCase()
@@ -210,13 +180,19 @@ export function FindCandidatesDesk() {
         const hay = [row.name, row.headline, row.title, row.location, row.bio, ...row.skills].join(' ').toLowerCase()
         if (!hay.includes(q)) return false
       }
-      if (category !== 'all' && categoryOf(row) !== category) return false
       if (experience !== 'all' && experienceBucket(row) !== experience) return false
       if (place === 'philippines' && !/philippines|manila|cebu|davao/i.test(`${row.city} ${row.country}`)) return false
       if (place === 'remote' && !(row.remoteWorldwide || row.workModes.includes('remote'))) return false
-      if (availability !== 'all' && row.availability !== availability) return false
       if (skill && !row.skills.some((item) => item.toLowerCase().includes(skill))) return false
-      if (payMin > 0 && (row.salaryDesired || row.salaryMin) < payMin) return false
+      if (locationSearch.trim()) {
+        const loc = locationSearch.trim().toLowerCase()
+        if (!`${row.city} ${row.country} ${row.location}`.toLowerCase().includes(loc)) return false
+      }
+      if (hourlyMin > 0) {
+        const pay = row.salaryDesired || row.salaryMin
+        const hourly = pay > 0 ? Math.round(pay / 2080) : 0
+        if (hourly < hourlyMin) return false
+      }
       return true
     })
     if (tab === 'recommended') rows = rows.filter((row) => (row.matchScore ?? 0) >= 70)
@@ -227,7 +203,7 @@ export function FindCandidatesDesk() {
       return (b.matchScore ?? 0) - (a.matchScore ?? 0) || a.name.localeCompare(b.name)
     })
     return rows
-  }, [desk.data, query, category, experience, place, availability, skillFilter, payMin, tab, saved, sort])
+  }, [desk.data, query, experience, place, skillFilter, locationSearch, hourlyMin, tab, saved, sort])
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE))
   const slice = filtered.slice(page * PAGE, page * PAGE + PAGE)
@@ -247,14 +223,6 @@ export function FindCandidatesDesk() {
       setInviteNote(err instanceof Error ? err.message : 'Could not send the invite.')
     },
   })
-
-  function setSearch(value: string) {
-    const cur = new URLSearchParams(params)
-    if (value.trim()) cur.set('q', value)
-    else cur.delete('q')
-    setParams(cur, { replace: true })
-    setPage(0)
-  }
 
   function setTab(next: DeskTab) {
     const cur = new URLSearchParams(params)
@@ -286,13 +254,12 @@ export function FindCandidatesDesk() {
   }
 
   function clearFilters() {
-    setSearch('')
-    setCategory('all')
     setExperience('all')
     setPlace('all')
-    setAvailability('all')
     setSkillFilter('')
-    setPayMin(0)
+    setSkillSearch('')
+    setLocationSearch('')
+    setHourlyMin(0)
     setPage(0)
   }
 
@@ -302,307 +269,102 @@ export function FindCandidatesDesk() {
     setInviteNote('')
   }
 
-  const visibleSkills = skillsOpen ? skillCounts : skillCounts.slice(0, 6)
+  const filteredSkillCounts = useMemo(() => {
+    const q = skillSearch.trim().toLowerCase()
+    if (!q) return skillCounts
+    return skillCounts.filter(([skill]) => skill.toLowerCase().includes(q))
+  }, [skillCounts, skillSearch])
+
+  const visibleSkills = skillsOpen ? filteredSkillCounts : filteredSkillCounts.slice(0, 6)
 
   return (
     <>
       <div className="space-y-4">
-        {tab === 'invites' ? (
-          <InviteHistory invites={invites} people={people} onOpen={openPerson} />
-        ) : (
-          <>
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-[1.65rem] font-semibold leading-tight text-[var(--forest)] sm:text-[1.85rem]">
               Find Candidates
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              Search, filter, and connect with skilled professionals. Find the right candidates and build your dream
+              team faster.
             </p>
-            <section className="grid items-center gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(16rem,20rem)]">
-              <div>
-                <h1 className="font-serif text-[1.85rem] leading-[1.12] text-[var(--forest)] sm:text-[2.15rem]">
-                  Discover great talent for your team
-                </h1>
-                <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#4d5a54]">
-                  Search, filter, and connect with skilled professionals. Find the right candidates and build your dream
-                  team faster.
-                </p>
-                <ul className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 text-sm text-[var(--forest)] sm:grid-cols-4">
-                  <HeroPoint icon={ShieldCheck} label="Verified Profiles" hint="Real people, real skills" />
-                  <HeroPoint icon={Search} label="Advanced Search" hint="Find the perfect match" />
-                  <HeroPoint icon={Globe} label="Global Talent" hint="Hire anywhere" />
-                  <HeroPoint icon={Sparkles} label="AI Recommendations" hint="Get AI-powered suggestions" />
-                </ul>
-                <Button className="mt-4 h-9 rounded-full bg-[#13261f] !text-white hover:bg-[#0d1b16] lg:hidden" asChild>
-                  <Link to="/employer/jobs/new">Post a Job</Link>
-                </Button>
-              </div>
-              <div className="relative hidden h-[14rem] overflow-hidden rounded-2xl sm:block lg:h-[15.5rem]">
-                <img
-                  src={localBrandPath('employer-hero.jpg', 'employer')}
-                  alt=""
-                  className="h-full w-full object-cover object-[center_18%]"
-                />
-                <p className="pointer-events-none absolute left-3 top-[38%] max-w-[8.25rem] font-serif text-[1.05rem] italic leading-tight text-[var(--forest)] drop-shadow-[0_1px_8px_rgba(255,255,255,0.9)]">
-                  Great hiring builds great teams.
-                </p>
-                <div className="absolute bottom-3 right-3 w-[12rem] rounded-2xl bg-white p-3 shadow-[0_12px_28px_rgba(19,38,31,0.14)]">
-                  <p className="text-xs leading-relaxed text-[var(--forest)]">
-                    Post a job or hire directly from top candidates.
-                  </p>
-                  <Button className="mt-2 h-8 w-full rounded-full bg-[#13261f] !text-white text-xs hover:bg-[#0d1b16]" asChild>
-                    <Link to="/employer/jobs/new">Post a Job</Link>
-                  </Button>
-                </div>
-              </div>
-            </section>
+          </div>
+          <Button
+            className="h-10 shrink-0 rounded-lg bg-[#13261f] px-5 !text-white hover:bg-[#0d1b16]"
+            asChild
+          >
+            <Link to="/employer/jobs/new">Post a Job</Link>
+          </Button>
+        </div>
 
-            <div className="-mx-1 flex gap-1 overflow-x-auto border-b border-[#e4ebe6] px-1">
-              {(
-                [
-                  ['search', 'Talent Search'],
-                  ['recommended', 'Recommended (AI)'],
-                  ['saved', 'Saved Candidates'],
-                  ['invites', 'Invite History'],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setTab(id)}
-                  className={cn(
-                    'shrink-0 border-b-2 px-3 py-2.5 text-sm',
-                    tab === id
-                      ? 'border-[#147a48] font-medium text-[var(--forest)]'
-                      : 'border-transparent text-muted-foreground hover:text-[var(--forest)]',
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+        <div className="-mx-1 flex gap-1 overflow-x-auto border-b border-[#e4ebe6] px-1">
+          {(
+            [
+              ['search', 'Search'],
+              ['recommended', 'AI Match'],
+              ['saved', 'Saved Candidates'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={cn(
+                'shrink-0 border-b-2 px-4 py-2.5 text-sm transition-colors',
+                tab === id
+                  ? 'border-[#147a48] font-medium text-[var(--forest)]'
+                  : 'border-transparent text-muted-foreground hover:text-[var(--forest)]',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
-              <div className="min-w-0 space-y-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="relative min-w-[14rem] flex-1">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={query}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search by name, skill, or keyword"
-                      className="h-10 rounded-full border-[#e4ebe6] bg-white pl-9"
-                    />
-                  </label>
-                  <div className="hidden flex-wrap gap-2 lg:flex">
-                    <FilterSelect
-                      value={category}
-                      onChange={(value) => {
-                        setCategory(value)
-                        setPage(0)
-                      }}
-                      options={[['all', 'All Categories'], ...CATEGORIES.map((item) => [item, item] as const)]}
-                    />
-                    <FilterSelect
-                      value={experience}
-                      onChange={(value) => {
-                        setExperience(value as ExperienceFilter)
-                        setPage(0)
-                      }}
-                      options={[
-                        ['all', 'Experience Level'],
-                        ['entry', 'Entry'],
-                        ['intermediate', 'Intermediate'],
-                        ['expert', 'Expert'],
-                      ]}
-                    />
-                    <FilterSelect
-                      value={place}
-                      onChange={(value) => {
-                        setPlace(value as LocationFilter)
-                        setPage(0)
-                      }}
-                      options={[
-                        ['all', 'Location'],
-                        ['philippines', 'Philippines'],
-                        ['remote', 'Remote'],
-                      ]}
-                    />
-                    <FilterSelect
-                      value={availability}
-                      onChange={(value) => {
-                        setAvailability(value as AvailabilityFilter)
-                        setPage(0)
-                      }}
-                      options={[
-                        ['all', 'Availability'],
-                        ['now', 'Available Now'],
-                        ['open', 'Open to Opportunities'],
-                      ]}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="inline-flex h-10 items-center gap-1.5 px-2 text-sm text-[var(--forest)] xl:hidden"
-                    onClick={() => setFiltersOpen((v) => !v)}
-                  >
-                    <SlidersHorizontal className="size-4" />
-                    More Filters
-                  </button>
-                  <button
-                    type="button"
-                    className="hidden h-10 items-center gap-1.5 px-2 text-sm text-[var(--forest)] xl:inline-flex"
-                    onClick={() =>
-                      document.getElementById('candidate-filters')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                    }
-                  >
-                    <SlidersHorizontal className="size-4" />
-                    More Filters
-                  </button>
-                </div>
+        <button
+          type="button"
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#e4ebe6] bg-white px-3 text-sm text-[var(--forest)] lg:hidden"
+          onClick={() => setFiltersOpen((v) => !v)}
+        >
+          <SlidersHorizontal className="size-4" />
+          {filtersOpen ? 'Hide filters' : 'Show filters'}
+        </button>
 
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-medium text-[var(--forest)]">{filtered.length.toLocaleString()}</span>{' '}
-                    candidates found
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                      Sort by:
-                      <select
-                        className="h-9 rounded-lg border border-[#e4ebe6] bg-white px-2 text-sm text-[var(--forest)]"
-                        value={sort}
-                        onChange={(e) => setSort(e.target.value as SortKey)}
-                      >
-                        <option value="match">Best Match</option>
-                        <option value="recent">Experience</option>
-                        <option value="pay">Expected pay</option>
-                      </select>
-                    </label>
-                    <div className="flex rounded-lg border border-[#e4ebe6] p-0.5">
-                      <button
-                        type="button"
-                        aria-label="Grid view"
-                        className={cn('grid size-8 place-items-center rounded-md', view === 'grid' && 'bg-[#e8f3ec] text-[#147a48]')}
-                        onClick={() => setView('grid')}
-                      >
-                        <Grid2x2 className="size-4" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="List view"
-                        className={cn('grid size-8 place-items-center rounded-md', view === 'list' && 'bg-[#e8f3ec] text-[#147a48]')}
-                        onClick={() => setView('list')}
-                      >
-                        <LayoutList className="size-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {desk.isLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading candidates…</p>
-                ) : slice.length ? (
-                  <ul className={cn(view === 'grid' ? 'grid gap-4 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3')}>
-                    {slice.map((person) => (
-                      <li key={person.id}>
-                        <CandidateCard
-                          person={person}
-                          saved={saved.includes(person.id)}
-                          compact={view === 'list'}
-                          onOpen={() => openPerson(person.id)}
-                          onSave={() => toggleSaved(person.id)}
-                          onInvite={() => startInvite(person)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-[#d7ddd8] bg-white px-6 py-16 text-center">
-                    <p className="font-serif text-2xl text-[var(--forest)]">
-                      {tab === 'saved'
-                        ? 'No saved candidates yet'
-                        : tab === 'recommended'
-                          ? 'No AI matches yet'
-                          : 'No candidates found'}
-                    </p>
-                    <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-                      {tab === 'recommended'
-                        ? 'Post an open role so we can rank people against the skills you need.'
-                        : tab === 'saved'
-                          ? 'Bookmark someone from Talent Search to keep them here.'
-                          : 'Try another filter, or post a job so more people can be matched to you.'}
-                    </p>
-                    {tab !== 'saved' ? (
-                      <Button className="mt-4 rounded-xl bg-[#147a48] !text-white hover:bg-[#0f5e37]" asChild>
-                        <Link to="/employer/jobs/new">Post a Job</Link>
-                      </Button>
-                    ) : null}
-                  </div>
-                )}
-
-                {pages > 1 ? (
-                  <div className="flex justify-center gap-2">
-                    {Array.from({ length: pages }, (_, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        className={cn(
-                          'grid size-9 place-items-center rounded-full text-sm',
-                          i === page ? 'bg-[#147a48] text-white' : 'border border-[#e4ebe6] text-[var(--forest)]',
-                        )}
-                        onClick={() => setPage(i)}
-                      >
-                        {i + 1}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
-              <aside
-                id="candidate-filters"
-                className={cn(
-                  'space-y-4 rounded-2xl border border-[#e4ebe6] bg-white p-4 shadow-[0_10px_28px_rgba(19,38,31,0.04)] xl:sticky xl:top-24',
-                  filtersOpen ? 'block' : 'hidden xl:block',
-                )}
-              >
+        <div className="grid items-start gap-5 lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)]">
+          <aside
+            id="candidate-filters"
+            className={cn(
+              'space-y-5 rounded-xl border border-[#e4ebe6] bg-white p-4 shadow-[0_8px_24px_rgba(19,38,31,0.04)] lg:sticky lg:top-24',
+              filtersOpen ? 'block' : 'hidden lg:block',
+            )}
+          >
             <div className="flex items-center justify-between">
               <p className="font-medium text-[var(--forest)]">Filters</p>
               <button type="button" className="text-sm text-[#147a48] hover:underline" onClick={clearFilters}>
-                Clear All
+                Clear all
               </button>
             </div>
-            <label className="block space-y-1.5">
-              <span className="text-sm text-[var(--forest)]">Keyword</span>
+
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                value={query}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search skills, keywords"
+                value={skillSearch}
+                onChange={(e) => setSkillSearch(e.target.value)}
+                placeholder="Search skills..."
+                className="h-9 border-[#e4ebe6] pl-9 text-sm"
               />
             </label>
-            <label className="block space-y-1.5">
-              <span className="text-sm text-[var(--forest)]">Category</span>
-              <select
-                className="h-10 w-full rounded-lg border border-[#e4ebe6] bg-white px-3 text-sm"
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value)
-                  setPage(0)
-                }}
-              >
-                <option value="all">All Categories</option>
-                {CATEGORIES.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <fieldset className="space-y-2">
-              <legend className="text-sm text-[var(--forest)]">Skills</legend>
+
+            <fieldset className="space-y-2.5">
+              <legend className="mb-1 text-sm font-medium text-[var(--forest)]">Skills</legend>
               {visibleSkills.length ? (
                 <>
                   {visibleSkills.map(([skill, count]) => (
-                    <label key={skill} className="flex items-center gap-2 text-sm">
+                    <label key={skill} className="flex cursor-pointer items-center gap-2.5 text-sm">
                       <input
                         type="checkbox"
+                        className="size-4 rounded border-[#d7ddd8] accent-[#147a48]"
                         checked={skillFilter.toLowerCase() === skill.toLowerCase()}
                         onChange={() => {
                           setSkillFilter((cur) => (cur.toLowerCase() === skill.toLowerCase() ? '' : skill))
@@ -613,13 +375,13 @@ export function FindCandidatesDesk() {
                       <span className="text-xs text-muted-foreground">({count})</span>
                     </label>
                   ))}
-                  {skillCounts.length > 6 ? (
+                  {filteredSkillCounts.length > 6 ? (
                     <button
                       type="button"
                       className="text-sm text-[#147a48] hover:underline"
                       onClick={() => setSkillsOpen((v) => !v)}
                     >
-                      {skillsOpen ? 'see less' : 'see more'}
+                      {skillsOpen ? 'Show less' : 'Show more'}
                     </button>
                   ) : null}
                 </>
@@ -627,22 +389,23 @@ export function FindCandidatesDesk() {
                 <p className="text-xs text-muted-foreground">Skills appear as candidates join.</p>
               )}
             </fieldset>
-            <fieldset className="space-y-2">
-              <legend className="text-sm text-[var(--forest)]">Experience Level</legend>
+
+            <fieldset className="space-y-2.5">
+              <legend className="mb-1 text-sm font-medium text-[var(--forest)]">Experience Level</legend>
               {(
                 [
-                  ['entry', 'Entry', experienceCounts.entry],
+                  ['entry', 'Entry Level', experienceCounts.entry],
                   ['intermediate', 'Intermediate', experienceCounts.intermediate],
                   ['expert', 'Expert', experienceCounts.expert],
                 ] as const
               ).map(([id, label, count]) => (
-                <label key={id} className="flex items-center gap-2 text-sm">
+                <label key={id} className="flex cursor-pointer items-center gap-2.5 text-sm">
                   <input
-                    type="radio"
-                    name="exp"
+                    type="checkbox"
+                    className="size-4 rounded border-[#d7ddd8] accent-[#147a48]"
                     checked={experience === id}
                     onChange={() => {
-                      setExperience(id)
+                      setExperience((cur) => (cur === id ? 'all' : id))
                       setPage(0)
                     }}
                   />
@@ -651,37 +414,31 @@ export function FindCandidatesDesk() {
                 </label>
               ))}
             </fieldset>
-            <label className="block space-y-2">
-              <span className="flex items-center justify-between text-sm text-[var(--forest)]">
-                Expected pay
-                <span className="text-xs text-muted-foreground">
-                  {payMin ? `${money(payMin)}+` : `${money(payBounds.min)}–${money(payBounds.max)}`}
-                </span>
-              </span>
-              <input
-                type="range"
-                min={payBounds.min}
-                max={payBounds.max}
-                step={1000}
-                value={payMin || payBounds.min}
-                onChange={(e) => {
-                  setPayMin(Number(e.target.value))
-                  setPage(0)
-                }}
-                className="w-full accent-[#147a48]"
-              />
-            </label>
-            <fieldset className="space-y-2">
-              <legend className="text-sm text-[var(--forest)]">Location</legend>
+
+            <fieldset className="space-y-2.5">
+              <legend className="mb-1 text-sm font-medium text-[var(--forest)]">Location</legend>
+              <label className="relative block">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={locationSearch}
+                  onChange={(e) => {
+                    setLocationSearch(e.target.value)
+                    setPage(0)
+                  }}
+                  placeholder="Search location..."
+                  className="h-9 border-[#e4ebe6] pl-9 text-sm"
+                />
+              </label>
               {(
                 [
                   ['philippines', 'Philippines', locationCounts.philippines],
                   ['remote', 'Remote Only', locationCounts.remote],
                 ] as const
               ).map(([id, label, count]) => (
-                <label key={id} className="flex items-center gap-2 text-sm">
+                <label key={id} className="flex cursor-pointer items-center gap-2.5 text-sm">
                   <input
                     type="checkbox"
+                    className="size-4 rounded border-[#d7ddd8] accent-[#147a48]"
                     checked={place === id}
                     onChange={() => {
                       setPlace((cur) => (cur === id ? 'all' : id))
@@ -693,39 +450,119 @@ export function FindCandidatesDesk() {
                 </label>
               ))}
             </fieldset>
-            <fieldset className="space-y-2">
-              <legend className="text-sm text-[var(--forest)]">Availability</legend>
-              {(
-                [
-                  ['now', 'Available Now', availabilityCounts.now],
-                  ['open', 'Open to Opportunities', availabilityCounts.open],
-                ] as const
-              ).map(([id, label, count]) => (
-                <label key={id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={availability === id}
-                    onChange={() => {
-                      setAvailability((cur) => (cur === id ? 'all' : id))
-                      setPage(0)
-                    }}
-                  />
-                  <span className="flex-1 text-[var(--forest)]">{label}</span>
-                  <span className="text-xs text-muted-foreground">({count})</span>
-                </label>
-              ))}
-            </fieldset>
-            <Button
-              type="button"
-              className="w-full rounded-full bg-[#13261f] hover:bg-[#0d1b16]"
-              onClick={() => setPage(0)}
-            >
-              Apply Filters
-            </Button>
-              </aside>
+
+            <label className="block space-y-2">
+              <span className="flex items-center justify-between text-sm font-medium text-[var(--forest)]">
+                Hourly Rate
+                <span className="text-xs font-normal text-muted-foreground">
+                  {hourlyMin > 0 ? `$${hourlyMin}+/hr` : '$0 – $200+/hr'}
+                </span>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={200}
+                step={5}
+                value={hourlyMin}
+                onChange={(e) => {
+                  setHourlyMin(Number(e.target.value))
+                  setPage(0)
+                }}
+                className="w-full accent-[#147a48]"
+              />
+              <div className="flex justify-between text-[0.65rem] text-muted-foreground">
+                <span>$0</span>
+                <span>$200+</span>
+              </div>
+            </label>
+          </aside>
+
+          <div className="min-w-0 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-semibold text-[var(--forest)]">{filtered.length.toLocaleString()}</span> candidates
+                found
+              </p>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                Sort by:
+                <select
+                  className="h-9 rounded-lg border border-[#e4ebe6] bg-white px-3 text-sm text-[var(--forest)]"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as SortKey)}
+                >
+                  <option value="match">Best Match</option>
+                  <option value="recent">Experience</option>
+                  <option value="pay">Expected pay</option>
+                </select>
+              </label>
             </div>
-          </>
-        )}
+
+            {desk.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading candidates…</p>
+            ) : slice.length ? (
+              <ul className="space-y-3">
+                {slice.map((person) => (
+                  <li key={person.id}>
+                    <CandidateCard
+                      person={person}
+                      saved={saved.includes(person.id)}
+                      onOpen={() => openPerson(person.id)}
+                      onSave={() => toggleSaved(person.id)}
+                      onInvite={() => startInvite(person)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="rounded-xl border border-dashed border-[#d7ddd8] bg-white px-6 py-16 text-center">
+                <p className="text-xl font-semibold text-[var(--forest)] sm:text-2xl">
+                  {tab === 'saved'
+                    ? 'No saved candidates yet'
+                    : tab === 'recommended'
+                      ? 'No AI matches yet'
+                      : 'No candidates found'}
+                </p>
+                <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                  {tab === 'recommended'
+                    ? 'Post an open role so we can rank people against the skills you need.'
+                    : tab === 'saved'
+                      ? 'Save someone from Search to keep them here.'
+                      : 'Try another filter, or post a job so more people can be matched to you.'}
+                </p>
+                {tab !== 'saved' ? (
+                  <Button className="mt-4 rounded-lg bg-[#147a48] !text-white hover:bg-[#0f5e37]" asChild>
+                    <Link to="/employer/jobs/new">Post a Job</Link>
+                  </Button>
+                ) : null}
+              </div>
+            )}
+
+            {pages > 1 ? (
+              <div className="flex justify-center gap-2 pt-2">
+                {Array.from({ length: pages }, (_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={cn(
+                      'grid size-9 place-items-center rounded-full text-sm',
+                      i === page ? 'bg-[#147a48] text-white' : 'border border-[#e4ebe6] text-[var(--forest)]',
+                    )}
+                    onClick={() => setPage(i)}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {invites.length ? (
+              <section className="pt-2">
+                <h2 className="mb-3 text-sm font-medium text-[var(--forest)]">Recent invites</h2>
+                <InviteHistory invites={invites.slice(0, 5)} people={people} onOpen={openPerson} />
+              </section>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {selected ? (
@@ -749,7 +586,7 @@ export function FindCandidatesDesk() {
             role="dialog"
             aria-modal="true"
           >
-            <h2 className="font-serif text-2xl text-[var(--forest)]">Invite to apply</h2>
+            <h2 className="font-serif text-2xl text-[var(--forest)]">Invite to Job</h2>
             <p className="mt-2 text-sm text-muted-foreground">
               {inviteFor.name} will get a notice to review the role. Nothing is sent as an application until they
               approve.
@@ -799,121 +636,111 @@ export function FindCandidatesDesk() {
   )
 }
 
-function HeroPoint({ icon: Icon, label, hint }: { icon: typeof Search; label: string; hint: string }) {
-  return (
-    <li className="flex items-start gap-2">
-      <Icon className="mt-0.5 size-4 shrink-0 text-[#147a48]" />
-      <span>
-        <span className="block font-medium leading-tight">{label}</span>
-        <span className="mt-0.5 block text-xs text-muted-foreground">{hint}</span>
-      </span>
-    </li>
-  )
-}
-
-function FilterSelect({
-  value,
-  onChange,
-  options,
-}: {
-  value: string
-  onChange: (value: string) => void
-  options: readonly (readonly [string, string])[]
-}) {
-  return (
-    <select
-      className="h-10 rounded-full border border-[#e4ebe6] bg-white px-3 text-sm text-[var(--forest)]"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {options.map(([id, label]) => (
-        <option key={id} value={id}>
-          {label}
-        </option>
-      ))}
-    </select>
-  )
-}
-
 function CandidateCard({
   person,
   saved,
-  compact,
   onOpen,
   onSave,
   onInvite,
 }: {
   person: TalentCard
   saved: boolean
-  compact?: boolean
   onOpen: () => void
   onSave: () => void
   onInvite: () => void
 }) {
-  const pay = person.salaryDesired || person.salaryMin
+  const hourly = hourlyLabel(person)
+  const experienceText = person.yearsExperience > 0 ? `${person.yearsExperience}+ years` : null
+
   return (
-    <article
-      className={cn(
-        'relative rounded-2xl border border-[#e4ebe6] bg-white p-4 pt-5 shadow-[0_8px_20px_rgba(19,38,31,0.04)]',
-        compact && 'flex flex-wrap items-start gap-4',
-      )}
-    >
-      <div className="absolute right-3 top-3 flex items-center gap-1">
-        <span
-          className={cn(
-            'rounded-full px-2.5 py-0.5 text-[0.7rem] font-medium',
-            person.availability === 'now' ? 'bg-[#e8f3ec] text-[#147a48]' : 'bg-[#eef3f0] text-muted-foreground',
-          )}
-        >
-          {availabilityLabel(person.availability)}
-        </span>
-        <button
-          type="button"
-          aria-label={saved ? 'Unsave' : 'Save'}
-          className="grid size-8 place-items-center rounded-full text-[#147a48] hover:bg-[#e8f3ec]"
-          onClick={onSave}
-        >
-          {saved ? <BookmarkCheck className="size-4" /> : <Bookmark className="size-4" />}
-        </button>
-      </div>
-      <div className={cn('flex items-start gap-3', compact && 'min-w-0 flex-1')}>
+    <article className="rounded-xl border border-[#e4ebe6] bg-white p-4 shadow-[0_4px_16px_rgba(19,38,31,0.04)] sm:p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         <Avatar person={person} />
+
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1 pr-28 font-medium text-[var(--forest)]">
-            <span className="truncate">{person.name}</span>
-            {person.verified ? <BadgeCheck className="size-4 shrink-0 text-[#2f6fed]" /> : null}
-          </p>
-          <p className="truncate text-sm text-muted-foreground">{person.title}</p>
-          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-            <MapPin className="size-3.5" />
-            {person.location || 'Location not set'}
-          </p>
-          <div className="mt-2 flex items-center justify-between gap-2 text-sm">
-            {person.matchScore != null ? (
-              <span className="text-xs text-[#3b6fd8]">{person.matchScore}% match</span>
-            ) : (
-              <span />
-            )}
-            {pay > 0 ? <span className="font-medium text-[var(--forest)]">{money(pay, person.currency)}</span> : null}
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-base font-semibold text-[var(--forest)]">
+                <span className="truncate">{person.name}</span>
+                {person.verified ? <BadgeCheck className="size-4 shrink-0 text-[#147a48]" /> : null}
+              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                {person.matchScore != null ? (
+                  <span className="font-medium text-[#147a48]">{person.matchScore}% match</span>
+                ) : null}
+                {hourly ? <span>{hourly}</span> : null}
+                {experienceText ? <span>{experienceText}</span> : null}
+              </div>
+            </div>
+            <button
+              type="button"
+              aria-label={saved ? 'Unsave candidate' : 'Save candidate'}
+              className={cn(
+                'grid size-9 shrink-0 place-items-center rounded-full border border-[#e4ebe6] transition-colors',
+                saved ? 'bg-[#e8f3ec] text-[#147a48]' : 'text-muted-foreground hover:bg-[#eef3f0] hover:text-[#147a48]',
+              )}
+              onClick={onSave}
+            >
+              <Heart className={cn('size-4', saved && 'fill-current')} />
+            </button>
           </div>
-        </div>
-      </div>
-      <div className={cn('mt-3', compact && 'mt-0 w-full')}>
-        <div className="flex flex-wrap gap-1.5">
-          {person.skills.slice(0, 4).map((skill) => (
-            <span key={skill} className="rounded-full bg-[#eef3f0] px-2 py-0.5 text-xs text-[var(--forest)]">
-              {skill}
+
+          <p className="mt-2 text-sm font-medium text-[var(--forest)]">{person.title}</p>
+
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            {person.location ? (
+              <span className="inline-flex items-center gap-1">
+                <MapPin className="size-3.5 shrink-0" />
+                {person.location}
+              </span>
+            ) : null}
+            <span
+              className={cn(
+                'inline-flex items-center gap-1',
+                person.availability === 'now' ? 'text-[#147a48]' : 'text-muted-foreground',
+              )}
+            >
+              <Clock className="size-3.5 shrink-0" />
+              {availabilityLabel(person.availability)}
             </span>
-          ))}
-        </div>
-        {person.bio ? <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{textSnippet(person.bio, 120)}</p> : null}
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <Button type="button" variant="outline" className="h-9 flex-1 rounded-full" onClick={onOpen}>
-            View Profile
-          </Button>
-          <Button type="button" className="h-9 flex-1 rounded-full bg-[#13261f] hover:bg-[#0d1b16]" onClick={onInvite}>
-            Invite to Apply
-          </Button>
+          </div>
+
+          {person.skills.length ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {person.skills.slice(0, 6).map((skill) => (
+                <span
+                  key={skill}
+                  className="rounded-md bg-[#eef3f0] px-2.5 py-1 text-xs text-[var(--forest)]"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {person.bio ? (
+            <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+              {textSnippet(person.bio, 160)}
+            </p>
+          ) : null}
+
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 rounded-lg border-[#d7ddd8] px-5 sm:min-w-[8.5rem]"
+              onClick={onOpen}
+            >
+              View Profile
+            </Button>
+            <Button
+              type="button"
+              className="h-10 rounded-lg bg-[#13261f] px-5 hover:bg-[#0d1b16] sm:min-w-[8.5rem]"
+              onClick={onInvite}
+            >
+              Invite to Job
+            </Button>
+          </div>
         </div>
       </div>
     </article>
@@ -1012,7 +839,7 @@ function ProfileDrawer({
             {saved ? 'Saved' : 'Save'}
           </Button>
           <Button type="button" className="flex-1 rounded-full bg-[#13261f] hover:bg-[#0d1b16]" onClick={onInvite}>
-            Invite to Apply
+            Invite to Job
           </Button>
         </div>
       </aside>
