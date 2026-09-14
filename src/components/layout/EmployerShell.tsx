@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Bell,
   Briefcase,
   Building2,
   ChevronDown,
@@ -26,6 +25,7 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { prefetchRoute } from '@/lib/prefetch'
 import { isDrillPath } from '@/lib/nav'
+import { NotificationMenu } from '@/components/layout/NotificationMenu'
 import { BrandMark } from '@/components/ui/feedback'
 import { displayName } from '@shared/types'
 import { cn, initials } from '@/lib/utils'
@@ -43,12 +43,6 @@ const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean; badge
   { to: '/employer/company', label: 'Company Profile', icon: Building2 },
   { to: '/employer/settings', label: 'Settings', icon: Settings },
 ]
-
-interface Note {
-  title: string
-  body?: string
-  href?: string
-}
 
 interface ThreadRow {
   unreadCount?: number
@@ -88,11 +82,6 @@ export function EmployerShell() {
   const person = displayName(profile)
   const company = profile.companyName?.trim() || cachedCompanyName(profile.id) || 'Your company'
 
-  const notes = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => api<Note[]>('/api/notifications'),
-    staleTime: 120_000,
-  })
   const inbox = useQuery({
     queryKey: ['employer-inbox'],
     queryFn: () => api<{ status: string }[]>('/api/employer/applications'),
@@ -106,8 +95,6 @@ export function EmployerShell() {
 
   const waiting = (inbox.data ?? []).filter((a) => a.status === 'submitted' || a.status === 'under_review').length
   const unread = (threads.data ?? []).reduce((n, t) => n + (t.unreadCount ?? 0), 0)
-  const noteCount = notes.data?.length ?? 0
-
   function closeMenus() {
     setBellOpen(false)
     setHelpOpen(false)
@@ -368,23 +355,19 @@ export function EmployerShell() {
             </kbd>
           </form>
           <div ref={toolsRef} className="relative flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="relative grid size-10 place-items-center rounded-full text-[var(--forest)] hover:bg-[#eef3f0]"
-              onClick={() => {
-                setHelpOpen(false)
-                setAccountOpen(false)
-                setBellOpen((v) => !v)
+            <NotificationMenu
+              open={bellOpen}
+              onOpenChange={(open) => {
+                if (open) {
+                  setHelpOpen(false)
+                  setAccountOpen(false)
+                }
+                setBellOpen(open)
               }}
-            >
-              <Bell className="size-5 stroke-[1.5]" />
-              {noteCount ? (
-                <span className="absolute right-1.5 top-1.5 grid min-w-4 place-items-center rounded-full bg-[#e23d3d] px-1 text-[0.6rem] font-semibold leading-4 text-white">
-                  {noteCount > 9 ? '9+' : noteCount}
-                </span>
-              ) : null}
-            </button>
+              fallbackHref="/employer"
+              emptyLabel="No new notifications."
+              variant="employer"
+            />
             <button
               type="button"
               aria-label="Help"
@@ -420,26 +403,6 @@ export function EmployerShell() {
               </span>
               <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
             </button>
-
-            {bellOpen ? (
-              <div className="absolute right-0 top-[calc(100%+0.4rem)] z-50 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-border bg-white text-[var(--forest)] shadow-xl">
-                <p className="border-b border-border px-4 py-3 text-sm font-medium">Waiting for you</p>
-                {notes.data?.length ? (
-                  <ul className="max-h-72 overflow-y-auto py-1">
-                    {notes.data.slice(0, 8).map((n, i) => (
-                      <li key={`${n.title}-${i}`}>
-                        <Link to={n.href || '/employer'} className="block px-4 py-2.5 hover:bg-muted" onClick={closeMenus}>
-                          <p className="text-sm">{n.title}</p>
-                          {n.body ? <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p> : null}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="px-4 py-6 text-sm text-muted-foreground">No new packets waiting.</p>
-                )}
-              </div>
-            ) : null}
 
             {helpOpen ? (
               <div className="absolute right-0 top-[calc(100%+0.4rem)] z-50 w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl border border-border bg-white p-4 text-[var(--forest)] shadow-xl">

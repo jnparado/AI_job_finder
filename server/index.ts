@@ -24,7 +24,16 @@ import type {
 import { displayName, emptyProfile, isStaffRole, parseAccountRole, type AccountRole, type SocialIdentity } from '../shared/types'
 import { isAtelierJob } from '../shared/applyBoards'
 import { JOB_CATALOG } from '../shared/jobs'
-import { DEMO_EMPLOYER, DEMO_USER, memory, type EmployerInvite, type StaffInvite, type StoredApplication, type TalentInvite } from './memory'
+import {
+  DEMO_EMPLOYER,
+  DEMO_USER,
+  memory,
+  type EmployerInvite,
+  type StaffInvite,
+  type StoredApplication,
+  type StoredNotification,
+  type TalentInvite,
+} from './memory'
 import { extractFileText, parseResumeSmart } from './resume'
 import { confirmUserEmail, ensureProfileRow, registerUser } from './authUsers'
 import { supabaseAdmin } from './supabase'
@@ -244,7 +253,27 @@ function msgFromRow(row: Record<string, unknown>): ThreadMessage {
   }
 }
 
+function notificationKey(title: string, body: string, href?: string) {
+  return `${title.trim().toLowerCase()}::${(href ?? body).trim().toLowerCase()}`
+}
+
+function uniqueNotifications(rows: StoredNotification[]) {
+  const byKey = new Map<string, StoredNotification>()
+  for (const row of rows) {
+    const key = notificationKey(row.title, row.body, row.href)
+    const prev = byKey.get(key)
+    if (!prev || row.createdAt.localeCompare(prev.createdAt) > 0) byKey.set(key, row)
+  }
+  return [...byKey.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
 async function notifyUser(userId: string, title: string, body: string, href?: string) {
+  const key = notificationKey(title, body, href)
+  const duplicate = memory.getNotifications(userId).find(
+    (row) => !row.read && notificationKey(row.title, row.body, row.href) === key,
+  )
+  if (duplicate) return
+
   const n = {
     id: crypto.randomUUID(),
     userId,
@@ -1775,7 +1804,30 @@ app.get('/api/notifications', async (c) => {
       }
     }
   }
-  return c.json(memory.getNotifications(user.id))
+  return c.json(uniqueNotifications(memory.getNotifications(user.id)))
+})
+
+app.patch('/api/notifications/:id/read', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const id = c.req.param('id')
+  memory.markNotificationRead(user.id, id)
+  if (supabaseAdmin) {
+    const { error } = await supabaseAdmin.from('notifications').update({ read: true }).eq('id', id).eq('user_id', user.id)
+    if (error) console.warn('markNotificationRead', error.message)
+  }
+  return c.json({ ok: true, notifications: uniqueNotifications(memory.getNotifications(user.id)) })
+})
+
+app.post('/api/notifications/read-all', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  memory.markAllNotificationsRead(user.id)
+  if (supabaseAdmin) {
+    const { error } = await supabaseAdmin.from('notifications').update({ read: true }).eq('user_id', user.id).eq('read', false)
+    if (error) console.warn('markAllNotificationsRead', error.message)
+  }
+  return c.json({ ok: true, notifications: uniqueNotifications(memory.getNotifications(user.id)) })
 })
 
 app.get('/api/agent/settings', async (c) => {

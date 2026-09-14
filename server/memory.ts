@@ -192,6 +192,20 @@ export const memory = {
   getNotifications(userId: string) {
     return notifications.get(userId) ?? []
   },
+  markNotificationRead(userId: string, id: string) {
+    const list = notifications.get(userId) ?? []
+    notifications.set(
+      userId,
+      list.map((row) => (row.id === id ? { ...row, read: true } : row)),
+    )
+  },
+  markAllNotificationsRead(userId: string) {
+    const list = notifications.get(userId) ?? []
+    notifications.set(
+      userId,
+      list.map((row) => (row.read ? row : { ...row, read: true })),
+    )
+  },
   getSettings(userId: string): AgentSettings {
     return (
       settings.get(userId) ?? {

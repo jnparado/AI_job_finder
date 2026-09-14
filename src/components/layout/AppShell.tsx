@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Bell,
   Bookmark,
   Briefcase,
   Calendar,
@@ -28,6 +27,7 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { prefetchRoute } from '@/lib/prefetch'
 import { isDrillPath } from '@/lib/nav'
+import { NotificationMenu } from '@/components/layout/NotificationMenu'
 import { BrandMark } from '@/components/ui/feedback'
 import { localBrandPath } from '@/lib/brandAssets'
 import { displayName, isStaffRole } from '@shared/types'
@@ -54,12 +54,6 @@ const ACCOUNT_LINKS: { to: string; label: string; icon: LucideIcon; end?: boolea
   { to: '/app/finances', label: 'Finances', icon: Wallet },
   { to: '/app/settings', label: 'Settings', icon: Settings },
 ]
-
-interface Note {
-  title: string
-  body?: string
-  href?: string
-}
 
 interface ThreadRow {
   unreadCount?: number
@@ -90,19 +84,12 @@ export function AppShell() {
   const searchRef = useRef<HTMLInputElement>(null)
   const messenger = location.pathname.startsWith('/app/messages')
 
-  const notes = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => api<Note[]>('/api/notifications'),
-    staleTime: 120_000,
-    enabled: !hiringDesk,
-  })
   const threads = useQuery({
     queryKey: ['messages'],
     queryFn: () => api<ThreadRow[]>('/api/messages'),
     staleTime: 30_000,
     enabled: !hiringDesk,
   })
-  const noteCount = notes.data?.length ?? 0
   const unread = (threads.data ?? []).reduce((n, t) => n + (t.unreadCount ?? 0), 0)
 
   function closeMenus() {
@@ -331,23 +318,19 @@ export function AppShell() {
             </kbd>
           </form>
           <div ref={toolsRef} className="relative flex shrink-0 items-center gap-0.5 sm:gap-1">
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="relative grid size-10 place-items-center rounded-full text-[#002018] hover:bg-[#eef3f0]"
-              onClick={() => {
-                setHelpOpen(false)
-                setAccountOpen(false)
-                setBellOpen((v) => !v)
+            <NotificationMenu
+              open={bellOpen}
+              onOpenChange={(open) => {
+                if (open) {
+                  setHelpOpen(false)
+                  setAccountOpen(false)
+                }
+                setBellOpen(open)
               }}
-            >
-              <Bell className="size-5 stroke-[1.5]" />
-              {noteCount ? (
-                <span className="absolute right-1.5 top-1.5 grid min-w-4 place-items-center rounded-full bg-[#e23d3d] px-1 text-[0.6rem] font-semibold leading-4 text-white">
-                  {noteCount > 9 ? '9+' : noteCount}
-                </span>
-              ) : null}
-            </button>
+              fallbackHref="/app"
+              emptyLabel="No new notifications."
+              variant="candidate"
+            />
             <button
               type="button"
               aria-label="Help"
@@ -383,26 +366,6 @@ export function AppShell() {
               </span>
               <ChevronDown className="hidden size-4 text-[#6b7280] sm:block" />
             </button>
-
-            {bellOpen ? (
-              <div className="absolute right-0 top-[calc(100%+0.4rem)] z-50 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-border bg-white text-[var(--forest)] shadow-xl">
-                <p className="border-b border-border px-4 py-3 text-sm font-medium">Waiting for you</p>
-                {notes.data?.length ? (
-                  <ul className="max-h-72 overflow-y-auto py-1">
-                    {notes.data.slice(0, 8).map((n, i) => (
-                      <li key={`${n.title}-${i}`}>
-                        <Link to={n.href || '/app'} className="block px-4 py-2.5 hover:bg-muted" onClick={closeMenus}>
-                          <p className="text-sm">{n.title}</p>
-                          {n.body ? <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p> : null}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="px-4 py-6 text-sm text-muted-foreground">No new matches waiting.</p>
-                )}
-              </div>
-            ) : null}
 
             {helpOpen ? (
               <div className="absolute right-0 top-[calc(100%+0.4rem)] z-50 w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl border border-border bg-white p-4 text-[var(--forest)] shadow-xl">
