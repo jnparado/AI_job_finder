@@ -1509,6 +1509,46 @@ app.get('/api/jobs', async (c) => {
   return c.json(list.filter((m) => m.score >= min).slice(0, 80).map(slimMatch))
 })
 
+app.get('/api/candidate/invites', async (c) => {
+  const user = await auth(c)
+  if (!user) return c.json({ error: 'Unauthorized' }, 401)
+  const profile = await loadProfile(user)
+  if (profile.role === 'employer') return c.json({ error: 'Candidate account required' }, 403)
+
+  await hydrateTalentInvitesForCandidate(user.id)
+  await hydrateApplications({ userId: user.id })
+
+  const rows = []
+  for (const invite of memory.listTalentInvitesForCandidate(user.id)) {
+    const job = await ensureJob(invite.jobId)
+    if (!job) continue
+    await ensureInvitedJobMatch(user.id, invite.jobId)
+    const match = findMatch(user.id, invite.jobId, profile)
+    const app = memory
+      .getApplications(user.id)
+      .find((row) => row.jobId === invite.jobId && row.status !== 'withdrawn' && row.status !== 'rejected')
+    const employer = memory.getProfile(invite.employerId)
+    rows.push({
+      id: invite.id,
+      jobId: invite.jobId,
+      jobTitle: invite.jobTitle || job.title,
+      company: job.company || employer.companyName?.trim() || displayName(employer) || 'An employer',
+      employerId: invite.employerId,
+      createdAt: invite.createdAt,
+      matchScore: match?.score,
+      matchCategory: match?.category,
+      location: job.remote ? 'Remote' : job.location,
+      salaryMin: job.salaryMin,
+      salaryMax: job.salaryMax,
+      currency: job.currency,
+      applicationId: app?.id,
+      applicationStatus: app?.status,
+    })
+  }
+  rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return c.json(rows)
+})
+
 app.get('/api/candidate/home', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)

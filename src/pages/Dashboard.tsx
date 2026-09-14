@@ -26,6 +26,8 @@ import { useAuth } from '@/lib/auth'
 import { localBrandPath } from '@/lib/brandAssets'
 import { AiJobAssistant } from '@/components/candidate/AiJobAssistant'
 import { cn, initials, money, moneyBand, postedLabel, prettyStatus, profileCompleteness } from '@/lib/utils'
+import { pendingInviteCount } from '@/lib/candidateInvites'
+import type { CandidateInvite } from '@/lib/candidateInvites'
 import { Button } from '@/components/ui/button'
 
 interface AppRow {
@@ -110,6 +112,14 @@ export function DashboardPage() {
     enabled: candidateDesk,
   })
 
+  const invites = useQuery({
+    queryKey: ['candidate-invites'],
+    queryFn: () => api<CandidateInvite[]>('/api/candidate/invites'),
+    staleTime: 60_000,
+    enabled: candidateDesk,
+  })
+  const pendingInvites = pendingInviteCount(invites.data ?? [])
+
   const matches = home.data?.matches ?? []
   const packets = home.data?.applications ?? []
   const name = displayName(profile)
@@ -158,6 +168,28 @@ export function DashboardPage() {
   return (
     <div className="relative mx-auto grid max-w-[1400px] gap-4 pb-24 sm:gap-5 sm:pb-28 xl:grid-cols-[minmax(0,1fr)_17rem] xl:items-start xl:pb-0">
       <div className="min-w-0 space-y-4 sm:space-y-5">
+        {pendingInvites ? (
+          <Link
+            to="/app/invites"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#cfe8d9] bg-[#f3faf6] px-4 py-3 sm:px-5"
+          >
+            <div className="flex items-start gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-white text-[#2f9a6f]">
+                <Mail className="size-5" />
+              </span>
+              <div>
+                <p className="font-medium text-[#002018]">
+                  {pendingInvites} employer invite{pendingInvites === 1 ? '' : 's'} waiting
+                </p>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Review the role and send a packet only if you want to apply.
+                </p>
+              </div>
+            </div>
+            <span className="text-sm font-medium text-[#2f9a6f]">View invites →</span>
+          </Link>
+        ) : null}
+
         {/* Profile + hero */}
         <section className="overflow-hidden rounded-2xl border border-[#e7ebe9] bg-white shadow-[0_10px_28px_rgba(0,32,24,0.05)]">
           <div className="grid lg:grid-cols-[minmax(0,1.05fr)_minmax(14rem,0.95fr)]">

@@ -34,6 +34,7 @@ const VerifyPage = lazyNamed(() => import('@/pages/Auth'), 'VerifyPage')
 const OnboardingPage = lazyNamed(() => import('@/pages/Onboarding'), 'OnboardingPage')
 const DashboardPage = lazyNamed(() => import('@/pages/Dashboard'), 'DashboardPage')
 const JobsPage = lazyNamed(() => import('@/pages/Jobs'), 'JobsPage')
+const InvitesPage = lazyNamed(() => import('@/pages/Invites'), 'InvitesPage')
 const JobDetailsPage = lazyNamed(() => import('@/pages/Jobs'), 'JobDetailsPage')
 const ApplicationsPage = lazyNamed(() => import('@/pages/Applications'), 'ApplicationsPage')
 const ApplicationDetailsPage = lazyNamed(() => import('@/pages/Applications'), 'ApplicationDetailsPage')
@@ -109,6 +110,7 @@ export default function App() {
                   <Route index element={<DashboardPage />} />
                   <Route path="jobs" element={<JobsPage />} />
                   <Route path="jobs/:id" element={<JobDetailsPage />} />
+                  <Route path="invites" element={<InvitesPage />} />
                   <Route path="applications" element={<ApplicationsPage />} />
                   <Route path="applications/:id" element={<ApplicationDetailsPage />} />
                   <Route path="messages" element={<CandidateMessagesPage />} />

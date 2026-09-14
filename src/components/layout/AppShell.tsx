@@ -13,6 +13,7 @@ import {
   Home,
   LineChart,
   LogOut,
+  Mail,
   Menu,
   MessageSquare,
   MessagesSquare,
@@ -28,15 +29,17 @@ import { api } from '@/lib/api'
 import { prefetchRoute } from '@/lib/prefetch'
 import { isDrillPath } from '@/lib/nav'
 import { NotificationMenu } from '@/components/layout/NotificationMenu'
+import { pendingInviteCount, type CandidateInvite } from '@/lib/candidateInvites'
 import { BrandMark } from '@/components/ui/feedback'
 import { localBrandPath } from '@/lib/brandAssets'
 import { displayName, isStaffRole } from '@shared/types'
 import { cn, initials } from '@/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 
-const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean; badge?: 'messages' }[] = [
+const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean; badge?: 'messages' | 'invites' }[] = [
   { to: '/app', label: 'Dashboard', icon: Home, end: true },
   { to: '/app/jobs', label: 'Matches', icon: Search },
+  { to: '/app/invites', label: 'Invites', icon: Mail, badge: 'invites' },
   { to: '/app/applications', label: 'My Jobs', icon: Briefcase },
   { to: '/app/messages', label: 'Messages', icon: MessagesSquare, badge: 'messages' },
   { to: '/app/resume', label: 'Resume', icon: ScrollText },
@@ -90,7 +93,14 @@ export function AppShell() {
     staleTime: 30_000,
     enabled: !hiringDesk,
   })
+  const inviteDesk = useQuery({
+    queryKey: ['candidate-invites'],
+    queryFn: () => api<CandidateInvite[]>('/api/candidate/invites'),
+    staleTime: 60_000,
+    enabled: !hiringDesk,
+  })
   const unread = (threads.data ?? []).reduce((n, t) => n + (t.unreadCount ?? 0), 0)
+  const inviteCount = pendingInviteCount(inviteDesk.data ?? [])
 
   function closeMenus() {
     setBellOpen(false)
@@ -216,6 +226,16 @@ export function AppShell() {
                   )}
                 >
                   {unread > 99 ? '99+' : unread}
+                </span>
+              ) : null}
+              {l.badge === 'invites' && inviteCount ? (
+                <span
+                  className={cn(
+                    'grid min-w-5 place-items-center rounded-full bg-[#2f9a6f] px-1.5 text-[0.65rem] font-semibold leading-5 text-white',
+                    collapsed && 'absolute right-1 top-1 min-w-4 px-1',
+                  )}
+                >
+                  {inviteCount > 99 ? '99+' : inviteCount}
                 </span>
               ) : null}
             </NavLink>
