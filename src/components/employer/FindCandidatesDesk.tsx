@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   BadgeCheck,
   Briefcase,
+  Check,
   Clock,
   Heart,
   MapPin,
@@ -487,17 +488,25 @@ export function FindCandidatesDesk() {
               <p className="text-sm text-muted-foreground">Loading candidates…</p>
             ) : slice.length ? (
               <ul className="space-y-3">
-                {slice.map((person) => (
-                  <li key={person.id}>
-                    <CandidateCard
-                      person={person}
-                      saved={saved.includes(person.id)}
-                      onOpen={() => openPerson(person.id)}
-                      onSave={() => toggleSaved(person.id)}
-                      onInvite={() => startInvite(person)}
-                    />
-                  </li>
-                ))}
+                {slice.map((person) => {
+                  const personInvites = invites.filter((row) => row.candidateId === person.id)
+                  const allJobsInvited =
+                    openJobs.length > 0 &&
+                    openJobs.every((job) => personInvites.some((row) => row.jobId === job.id))
+                  return (
+                    <li key={person.id}>
+                      <CandidateCard
+                        person={person}
+                        saved={saved.includes(person.id)}
+                        invites={personInvites}
+                        allJobsInvited={allJobsInvited}
+                        onOpen={() => openPerson(person.id)}
+                        onSave={() => toggleSaved(person.id)}
+                        onInvite={() => startInvite(person)}
+                      />
+                    </li>
+                  )
+                })}
               </ul>
             ) : (
               <div className="rounded-xl border border-dashed border-[#d7ddd8] bg-white px-6 py-16 text-center">
@@ -555,6 +564,13 @@ export function FindCandidatesDesk() {
         <ProfileDrawer
           person={selected}
           saved={saved.includes(selected.id)}
+          invites={invites.filter((row) => row.candidateId === selected.id)}
+          allJobsInvited={
+            openJobs.length > 0 &&
+            openJobs.every((job) =>
+              invites.some((row) => row.candidateId === selected.id && row.jobId === job.id),
+            )
+          }
           onClose={closePerson}
           onSave={() => toggleSaved(selected.id)}
           onInvite={() => startInvite(selected)}
@@ -575,18 +591,24 @@ export function FindCandidatesDesk() {
 function CandidateCard({
   person,
   saved,
+  invites,
+  allJobsInvited,
   onOpen,
   onSave,
   onInvite,
 }: {
   person: TalentCard
   saved: boolean
+  invites: TalentInvite[]
+  allJobsInvited: boolean
   onOpen: () => void
   onSave: () => void
   onInvite: () => void
 }) {
   const hourly = hourlyLabel(person)
   const experienceText = person.yearsExperience > 0 ? `${person.yearsExperience}+ years` : null
+  const invited = invites.length > 0
+  const latestInvite = invites[0]
 
   return (
     <article className="rounded-xl border border-[#e4ebe6] bg-white p-4 shadow-[0_4px_16px_rgba(19,38,31,0.04)] sm:p-5">
@@ -639,7 +661,19 @@ function CandidateCard({
               <Clock className="size-3.5 shrink-0" />
               {availabilityLabel(person.availability)}
             </span>
+            {invited ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#e8f3ec] px-2.5 py-0.5 text-xs font-medium text-[#147a48]">
+                <Check className="size-3.5 shrink-0" />
+                Invited
+              </span>
+            ) : null}
           </div>
+          {invited && latestInvite ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Invited to <span className="text-[var(--forest)]">{latestInvite.jobTitle}</span>
+              {invites.length > 1 ? ` · +${invites.length - 1} more` : ''}
+            </p>
+          ) : null}
 
           {person.skills.length ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
@@ -669,13 +703,24 @@ function CandidateCard({
             >
               View Profile
             </Button>
-            <Button
-              type="button"
-              className="h-10 rounded-lg bg-[#13261f] px-5 hover:bg-[#0d1b16] sm:min-w-[8.5rem]"
-              onClick={onInvite}
-            >
-              Invite to Job
-            </Button>
+            {allJobsInvited ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 rounded-lg border-[#147a48] bg-[#e8f3ec] px-5 text-[#147a48] sm:min-w-[8.5rem]"
+                disabled
+              >
+                Invited
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                className="h-10 rounded-lg bg-[#13261f] px-5 hover:bg-[#0d1b16] sm:min-w-[8.5rem]"
+                onClick={onInvite}
+              >
+                {invited ? 'Invite Again' : 'Invite to Job'}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -698,16 +743,22 @@ function Avatar({ person, large }: { person: TalentCard; large?: boolean }) {
 function ProfileDrawer({
   person,
   saved,
+  invites,
+  allJobsInvited,
   onClose,
   onSave,
   onInvite,
 }: {
   person: TalentCard
   saved: boolean
+  invites: TalentInvite[]
+  allJobsInvited: boolean
   onClose: () => void
   onSave: () => void
   onInvite: () => void
 }) {
+  const invited = invites.length > 0
+
   return (
     <div className="fixed inset-0 z-[110] bg-[#13261f]/40" onClick={onClose}>
       <aside
@@ -743,7 +794,22 @@ function ProfileDrawer({
             {person.matchScore != null ? (
               <span className="rounded-full bg-[#eaf2ff] px-2.5 py-1 text-[#3b6fd8]">{person.matchScore}% match</span>
             ) : null}
+            {invited ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#e8f3ec] px-2.5 py-1 text-[#147a48]">
+                <Check className="size-3.5" />
+                Invited
+              </span>
+            ) : null}
           </div>
+          {invited ? (
+            <ul className="space-y-1 text-sm text-muted-foreground">
+              {invites.map((row) => (
+                <li key={row.id}>
+                  Invited to <span className="text-[var(--forest)]">{row.jobTitle}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {person.matchJobTitle ? (
             <p className="text-sm text-muted-foreground">
               Best fit for <span className="text-[var(--forest)]">{person.matchJobTitle}</span>
@@ -774,9 +840,20 @@ function ProfileDrawer({
           <Button type="button" variant="outline" className="flex-1 rounded-full" onClick={onSave}>
             {saved ? 'Saved' : 'Save'}
           </Button>
-          <Button type="button" className="flex-1 rounded-full bg-[#13261f] hover:bg-[#0d1b16]" onClick={onInvite}>
-            Invite to Job
-          </Button>
+          {allJobsInvited ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 rounded-full border-[#147a48] bg-[#e8f3ec] text-[#147a48]"
+              disabled
+            >
+              Invited
+            </Button>
+          ) : (
+            <Button type="button" className="flex-1 rounded-full bg-[#13261f] hover:bg-[#0d1b16]" onClick={onInvite}>
+              {invited ? 'Invite Again' : 'Invite to Job'}
+            </Button>
+          )}
         </div>
       </aside>
     </div>
