@@ -39,7 +39,7 @@ const LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean; badge
   { to: '/employer/inbox', label: 'Applicants', icon: Users, badge: 'inbox' },
   { to: '/employer/messages', label: 'Messages', icon: MessagesSquare, badge: 'messages' },
   { to: '/employer/contracts', label: 'Contracts', icon: FileCheck },
-  { to: '/employer/finances', label: 'Payments', icon: Wallet },
+  { to: '/employer/finances', label: 'Payments & Billing', icon: Wallet },
   { to: '/employer/company', label: 'Company Profile', icon: Building2 },
   { to: '/employer/settings', label: 'Settings', icon: Settings },
 ]

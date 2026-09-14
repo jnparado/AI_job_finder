@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDownToLine, Building2, Wallet } from 'lucide-react'
+import { BillingDesk } from '@/components/employer/BillingDesk'
 import type { FinanceOverview, LedgerEntry } from '@shared/finances'
 import { emptyFinance } from '@shared/finances'
 import type { Job } from '@shared/types'
@@ -12,7 +12,6 @@ import { Button } from '@/components/ui/button'
 import { Card, Badge } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/feedback'
-import { HiringHero } from '@/components/employer/HiringChrome'
 
 type Desk = 'overview' | 'ledger' | 'withdraw' | 'year'
 
@@ -34,7 +33,7 @@ export function FinancesPage() {
     queryKey: ['finances'],
     queryFn: () => api<CandidatePayload | EmployerPayload>('/api/finances'),
   })
-  if (employer) return <EmployerFinances rows={q.data && 'sent' in q.data ? q.data.sent : []} loading={q.isLoading} />
+  if (employer) return <BillingDesk />
   return <CandidateFinances overview={q.data && 'overview' in q.data ? q.data.overview : emptyFinance(profile.currency)} />
 }
 
@@ -162,44 +161,6 @@ function CandidateFinances({ overview }: { overview: FinanceOverview }) {
           )}
         </Card>
       ) : null}
-    </div>
-  )
-}
-
-function EmployerFinances({ rows, loading }: { rows: LedgerEntry[]; loading: boolean }) {
-  const sent = rows.filter((e) => e.kind === 'from_employer')
-  const total = sent.reduce((n, e) => n + e.amount, 0)
-  return (
-    <div className="space-y-6">
-      <HiringHero
-        kicker="Finances"
-        title="Pay candidates"
-        description="Send pay to people who applied on Atelier. They withdraw it from their own desk."
-        image="employer-office.jpg"
-        imageAlt="Studio office"
-        compact
-        actions={
-          <Button variant="paper" asChild>
-            <Link to="/employer/inbox">Open inbox</Link>
-          </Button>
-        }
-      />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Stat label="Sent" value={money(total)} />
-        <Stat label="Payments" value={String(sent.length)} />
-      </div>
-      <Card className="space-y-3">
-        <h2>Sent from your desk</h2>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : sent.length ? (
-          sent.map((row) => <LedgerLine key={row.id} row={row} />)
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Open a packet in your inbox and send pay. Only Atelier roles can pay through this desk.
-          </p>
-        )}
-      </Card>
     </div>
   )
 }

@@ -19,6 +19,7 @@ import { currencyForLocation } from '@/lib/countries'
 import { cn, moneyBand, payCodeLabel, paySymbol } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, Textarea } from '@/components/ui/card'
+import { CommaSkillsInput } from '@/components/ui/comma-skills-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CountrySelect } from '@/components/ui/country-select'
@@ -513,10 +514,10 @@ function PostJobWizardForm({
               </div>
               <label className="block space-y-1.5">
                 <Label>Skills (comma separated)</Label>
-                <Input
+                <CommaSkillsInput
                   value={d.skills}
-                  onChange={(e) => patch({ skills: e.target.value })}
-                  placeholder="Figma, user research, design systems"
+                  onChange={(skills) => patch({ skills })}
+                  placeholder="Type a skill and press Enter or comma"
                 />
               </label>
               <label className="block space-y-1.5">
