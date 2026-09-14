@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   BadgeCheck,
   Briefcase,
@@ -15,6 +15,7 @@ import { isOpenListing } from '@shared/engine/jobFields'
 import type { CareerLevel, Currency, Job } from '@shared/types'
 import { api } from '@/lib/api'
 import { cn, initials, money, textSnippet } from '@/lib/utils'
+import { InviteToJobDialog, type InviteCandidate } from '@/components/employer/InviteToJobDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -109,7 +110,6 @@ function hourlyLabel(person: TalentCard) {
 }
 
 export function FindCandidatesDesk() {
-  const qc = useQueryClient()
   const [params, setParams] = useSearchParams()
   const tab = (['search', 'recommended', 'saved'].includes(params.get('tab') ?? '')
     ? params.get('tab')
@@ -125,9 +125,7 @@ export function FindCandidatesDesk() {
   const [sort, setSort] = useState<SortKey>('match')
   const [page, setPage] = useState(0)
   const [saved, setSaved] = useState<string[]>(readSaved)
-  const [inviteFor, setInviteFor] = useState<TalentCard | null>(null)
-  const [inviteJobId, setInviteJobId] = useState('')
-  const [inviteNote, setInviteNote] = useState('')
+  const [inviteFor, setInviteFor] = useState<InviteCandidate | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
 
@@ -210,21 +208,6 @@ export function FindCandidatesDesk() {
   const slice = filtered.slice(page * PAGE, page * PAGE + PAGE)
   const selected = people.find((row) => row.id === selectedId) ?? null
 
-  const invite = useMutation({
-    mutationFn: ({ id, jobId }: { id: string; jobId: string }) =>
-      api<{ invite: TalentInvite; already?: boolean }>(`/api/employer/candidates/${encodeURIComponent(id)}/invite`, {
-        method: 'POST',
-        body: JSON.stringify({ jobId }),
-      }),
-    onSuccess: async (res) => {
-      await qc.invalidateQueries({ queryKey: ['employer-candidates'] })
-      setInviteNote(res.already ? 'Already invited to this role.' : 'Invite sent. They can review the job and apply if they want.')
-    },
-    onError: (err) => {
-      setInviteNote(err instanceof Error ? err.message : 'Could not send the invite.')
-    },
-  })
-
   function setTab(next: DeskTab) {
     const cur = new URLSearchParams(params)
     if (next === 'search') cur.delete('tab')
@@ -265,19 +248,12 @@ export function FindCandidatesDesk() {
   }
 
   function startInvite(person: TalentCard) {
-    setInviteFor(person)
-    const nextJob =
-      openJobs.find((job) => !invites.some((row) => row.candidateId === person.id && row.jobId === job.id)) ??
-      openJobs[0]
-    setInviteJobId(nextJob?.id ?? '')
-    setInviteNote('')
+    setInviteFor({
+      id: person.id,
+      name: person.name,
+      matchJobTitle: person.matchJobTitle,
+    })
   }
-
-  const alreadyInvited = Boolean(
-    inviteFor &&
-      inviteJobId &&
-      invites.some((row) => row.candidateId === inviteFor.id && row.jobId === inviteJobId),
-  )
 
   const filteredSkillCounts = useMemo(() => {
     const q = skillSearch.trim().toLowerCase()
@@ -585,78 +561,13 @@ export function FindCandidatesDesk() {
         />
       ) : null}
 
-      {inviteFor ? (
-        <div
-          className="fixed inset-0 z-[120] grid place-items-center bg-[#13261f]/45 p-4"
-          onClick={() => !invite.isPending && setInviteFor(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl border border-[#e4ebe6] bg-white p-5 shadow-[0_20px_50px_rgba(19,38,31,0.18)]"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <h2 className="font-serif text-2xl text-[var(--forest)]">Invite to Job</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {inviteFor.name} will get a notice to review the role. Nothing is sent as an application until they
-              approve.
-            </p>
-            {openJobs.length ? (
-              <label className="mt-4 block space-y-1.5">
-                <span className="text-sm text-[var(--forest)]">Job</span>
-                <select
-                  className="h-10 w-full rounded-lg border border-[#e4ebe6] bg-white px-3 text-sm"
-                  value={inviteJobId}
-                  onChange={(e) => {
-                    setInviteJobId(e.target.value)
-                    setInviteNote('')
-                  }}
-                >
-                  {openJobs.map((job) => (
-                    <option key={job.id} value={job.id}>
-                      {job.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <p className="mt-4 text-sm text-[#8f4326]">Post an open job first, then invite people to it.</p>
-            )}
-            {alreadyInvited || inviteNote ? (
-              <p className="mt-3 text-sm text-[#147a48]">
-                {alreadyInvited ? 'Already invited to this role.' : inviteNote}
-              </p>
-            ) : null}
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-xl"
-                onClick={() => {
-                  setInviteFor(null)
-                  setInviteNote('')
-                }}
-              >
-                Close
-              </Button>
-              {openJobs.length ? (
-                <Button
-                  type="button"
-                  className="rounded-xl bg-[#147a48] hover:bg-[#0f5e37]"
-                  disabled={invite.isPending || !inviteJobId || alreadyInvited}
-                  onClick={() => invite.mutate({ id: inviteFor.id, jobId: inviteJobId })}
-                >
-                  {invite.isPending ? 'Sending…' : 'Send invite'}
-                </Button>
-              ) : (
-                <Button className="rounded-xl bg-[#147a48] !text-white hover:bg-[#0f5e37]" asChild>
-                  <Link to="/employer/jobs/new">Post a Job</Link>
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <InviteToJobDialog
+        person={inviteFor}
+        jobs={openJobs}
+        invites={invites}
+        jobsLoading={jobs.isLoading}
+        onClose={() => setInviteFor(null)}
+      />
     </>
   )
 }

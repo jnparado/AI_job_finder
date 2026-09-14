@@ -2258,7 +2258,13 @@ app.post('/api/employer/candidates/:id/invite', async (c) => {
   if (!isOpenListing(job)) return c.json({ error: 'Reopen this job before inviting candidates.' }, 400)
 
   const people = await loadDirectoryProfiles()
-  const candidate = people.find((row) => row.id === candidateId)
+  const candidate =
+    people.find((row) => row.id === candidateId) ??
+    (() => {
+      const mem = memory.getProfile(candidateId)
+      if (!mem.id || parseAccountRole(mem.role) === 'employer') return undefined
+      return mem
+    })()
   if (!candidate?.id) return c.json({ error: 'Candidate not found.' }, 404)
 
   await loadTalentInvites(user.id)
