@@ -3,6 +3,14 @@ import { LoadingScreen } from '@/components/ui/feedback'
 import { useAuth } from '@/lib/auth'
 import { isStaffRole } from '@shared/types'
 
+/** Marketing landing pages — signed-in users go straight to their workspace. */
+export function GuestOnly() {
+  const { loading, ready, user, demo, profile, destinationFor } = useAuth()
+  if (loading || !ready) return <LoadingScreen label="Loading…" />
+  if (user || demo) return <Navigate to={destinationFor(profile)} replace />
+  return <Outlet />
+}
+
 export function RequireSession() {
   const { loading, ready, user, demo } = useAuth()
   if (loading || !ready) return <LoadingScreen label="Restoring your session…" />

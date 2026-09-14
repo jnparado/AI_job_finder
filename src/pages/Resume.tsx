@@ -7,10 +7,23 @@ import { api, apiUpload } from '@/lib/api'
 import { useApplyToJob } from '@/lib/useApplyToJob'
 import { listOwnResumes, resumeMime, saveResumeToSupabase } from '@/lib/resumeStorage'
 import { Button } from '@/components/ui/button'
-import { Card, Badge, Textarea } from '@/components/ui/card'
-import { PageHeader } from '@/components/ui/feedback'
+import { Badge, Textarea } from '@/components/ui/card'
 import { MatchCard } from '@/components/jobs/MatchCard'
 import type { DiscoverySummary, JobMatch, ParsedResume } from '@shared/types'
+import {
+  ResumeAiPanel,
+  ResumeAiTips,
+  ResumeDeskHeader,
+  ResumePreviewBanner,
+  ResumeProfileCard,
+  ResumeSectionList,
+  ResumeStrengthPanel,
+  ResumeTabs,
+  ResumeTemplatesPanel,
+  buildResumeChecks,
+  resumeStrengthPercent,
+  type ResumeTab,
+} from '@/components/candidate/ResumeDesk'
 
 interface SearchResult {
   discovered: number
@@ -30,6 +43,7 @@ type Phase = 'idle' | 'uploading' | 'parsing' | 'searching' | 'done'
 const MAX_BYTES = 8 * 1024 * 1024
 const ACCEPT =
   '.pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain'
+const TEMPLATE_KEY = 'atelier-resume-template'
 
 function fileLooksLikeResume(file: File) {
   const name = file.name.toLowerCase()
@@ -54,12 +68,6 @@ function fileToBase64(file: File) {
   })
 }
 
-function prettySize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 function isPdf(name: string, type = '') {
   return name.toLowerCase().endsWith('.pdf') || /pdf/i.test(type)
 }
@@ -72,11 +80,8 @@ function UploadProgress({ value, label }: { value: number; label: string }) {
         <span>{label}</span>
         <span className="tabular-nums text-muted-foreground">{pct}%</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-[var(--forest)] transition-[width] duration-200"
-          style={{ width: `${pct}%` }}
-        />
+      <div className="h-2 overflow-hidden rounded-full bg-[#eef2f0]">
+        <div className="h-full rounded-full bg-[#2f9a6f] transition-[width] duration-200" style={{ width: `${pct}%` }} />
       </div>
     </div>
   )
@@ -87,6 +92,14 @@ export function ResumePage() {
   const qc = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
   const previewRef = useRef<string | null>(null)
+  const [tab, setTab] = useState<ResumeTab>('edit')
+  const [template, setTemplate] = useState(() => {
+    try {
+      return localStorage.getItem(TEMPLATE_KEY) || 'modern'
+    } catch {
+      return 'modern'
+    }
+  })
   const [phase, setPhase] = useState<Phase>(profile.resumeText ? 'done' : 'idle')
   const [progress, setProgress] = useState(0)
   const [fileName, setFileName] = useState('')
@@ -106,6 +119,8 @@ export function ResumePage() {
   const shownText = paste.trim() || profile.resumeText
   const shownName = fileName || 'Resume on file'
   const pdfOpen = Boolean(previewUrl && isPdf(fileName, fileMeta.type))
+  const checks = buildResumeChecks(profile, parsed)
+  const strength = resumeStrengthPercent(checks)
 
   useEffect(() => {
     if (!user?.id) return
@@ -113,7 +128,7 @@ export function ResumePage() {
       const latest = rows[0]
       if (latest?.file_name && !fileName) setFileName(latest.file_name)
     })
-  }, [user?.id])
+  }, [user?.id, fileName])
 
   useEffect(() => {
     if (profile.parsedProfile && !parsed) setParsed(profile.parsedProfile)
@@ -141,6 +156,34 @@ export function ResumePage() {
       void file.text().then((text) => {
         if (text.trim()) setPaste(text)
       })
+    }
+  }
+
+  function pickTemplate(id: string) {
+    setTemplate(id)
+    try {
+      localStorage.setItem(TEMPLATE_KEY, id)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function downloadResume() {
+    if (previewUrl && pdfOpen) {
+      const a = document.createElement('a')
+      a.href = previewUrl
+      a.download = fileName || 'resume.pdf'
+      a.click()
+      return
+    }
+    if (shownText) {
+      const blob = new Blob([shownText], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = (fileName.replace(/\.[^.]+$/, '') || 'resume') + '.txt'
+      a.click()
+      URL.revokeObjectURL(url)
     }
   }
 
@@ -189,7 +232,7 @@ export function ResumePage() {
           }),
         })
       } catch {
-        // Fall through to a direct API upload if storage is missing or blocked.
+        /* fall through */
       }
     }
     if (file.size <= 3.2 * 1024 * 1024) {
@@ -223,6 +266,7 @@ export function ResumePage() {
     setProgress(4)
     setError('')
     setSearch(null)
+    setTab('ai')
     try {
       const res = await sendFile(file, (pct) => {
         setProgress(Math.max(4, Math.round(pct * 0.62)))
@@ -305,258 +349,272 @@ export function ResumePage() {
     }
   }
 
-  const status =
-    phase === 'uploading'
-      ? `Uploading ${fileName || 'your resume'}…`
-      : phase === 'parsing'
-        ? 'Reading your resume and updating your profile…'
-        : phase === 'searching'
-          ? 'Searching authorized boards and scoring roles against this resume…'
-          : hasResume
-            ? `${shownName} is on file. ${parsed?.skills.length ? `${parsed.skills.length} skills read.` : 'Upload a new file to replace it.'}`
-            : 'Upload a resume to fill your profile. The file stays on this page after it lands.'
+  const uploadZone = (
+    <div
+      className={`flex flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-10 text-center text-sm ${
+        dragOver ? 'border-[#2f9a6f] bg-[#e7f6ef]/40' : 'border-[#e7ebe9] bg-[#f7faf8]'
+      } ${busy ? 'pointer-events-none opacity-70' : ''}`}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setDragOver(true)
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDragOver(false)
+        const f = e.dataTransfer.files[0]
+        if (f) void onFile(f)
+      }}
+    >
+      <Upload className="size-6 text-[#2f9a6f]" />
+      <span className="mt-3 font-medium text-[#002018]">
+        {busy
+          ? phase === 'searching'
+            ? 'Finding jobs…'
+            : phase === 'parsing'
+              ? 'Reading resume…'
+              : `Uploading ${fileName || 'file'}…`
+          : 'Drop your resume here'}
+      </span>
+      <span className="mt-1 text-muted-foreground">PDF, DOCX, or TXT — up to 8 MB</span>
+      <Button
+        type="button"
+        variant="outline"
+        className="mt-4 rounded-full"
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+      >
+        Browse files
+      </Button>
+    </div>
+  )
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        kicker="Documents"
-        title="Resume"
-        description="Upload a PDF, DOCX, or TXT. The file stays visible here, we read the text, then we score live roles against you."
-      />
+    <div className="mx-auto grid max-w-[1400px] gap-4 pb-6 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_17rem] xl:items-start">
+      <div className="min-w-0 space-y-4 sm:space-y-5">
+        <ResumeDeskHeader onDownload={downloadResume} canDownload={Boolean(pdfOpen || shownText)} />
+        <ResumeTabs tab={tab} onTab={setTab} />
 
-      <Card className="rounded-3xl">
-        <p className="text-sm leading-relaxed">{status}</p>
-        {busy ? (
-          <div className="mt-4">
-            <UploadProgress
-              value={progress}
-              label={
-                phase === 'uploading'
-                  ? `Uploading${fileName ? ` ${fileName}` : ''}`
-                  : phase === 'parsing'
-                    ? 'Reading resume'
-                    : 'Finding jobs'
-              }
-            />
+        {tab === 'edit' ? (
+          <div className="space-y-4">
+            <ResumeProfileCard profile={profile} />
+            <ResumeSectionList profile={profile} parsed={parsed} checks={checks} />
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+              <ResumePreviewBanner onPreview={() => setTab('preview')} />
+              <ResumeAiTips />
+            </div>
           </div>
         ) : null}
-      </Card>
 
-      {hasResume ? (
-        <Card className="space-y-4 rounded-3xl">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[#eef3f0] text-[var(--forest)]">
-                <FileText className="size-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Your resume
+        {tab === 'preview' ? (
+          <div className="space-y-4">
+            {hasResume ? (
+              <section className="rounded-2xl border border-[#e7ebe9] bg-white p-4 shadow-[0_8px_20px_rgba(19,38,31,0.04)] sm:p-5">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      {shownName}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Template: {template.charAt(0).toUpperCase() + template.slice(1)}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {pdfOpen && shownText ? (
+                      <Button variant="outline" className="rounded-full" onClick={() => setView(view === 'file' ? 'text' : 'file')}>
+                        {view === 'file' ? 'Show text' : 'Show file'}
+                      </Button>
+                    ) : null}
+                    <Button variant="outline" className="rounded-full" disabled={busy} onClick={() => inputRef.current?.click()}>
+                      Replace file
+                    </Button>
+                  </div>
+                </div>
+                {view === 'file' && pdfOpen ? (
+                  <div className="overflow-hidden rounded-2xl border border-[#e7ebe9] bg-[#eef3f0]">
+                    <iframe title={shownName} src={previewUrl} className="h-[28rem] w-full bg-white sm:h-[40rem]" />
+                  </div>
+                ) : shownText ? (
+                  <pre className="max-h-[40rem] overflow-auto whitespace-pre-wrap rounded-2xl border border-[#e7ebe9] bg-[#f7faf8] p-4 font-sans text-sm leading-relaxed text-[#002018]">
+                    {shownText}
+                  </pre>
+                ) : (
+                  <p className="rounded-2xl bg-[#eef3f0] px-4 py-6 text-sm text-muted-foreground">
+                    The file is on file. Text will appear here once parsing finishes.
+                  </p>
+                )}
+              </section>
+            ) : (
+              <section className="rounded-2xl border border-[#e7ebe9] bg-white p-6 text-center shadow-[0_8px_20px_rgba(19,38,31,0.04)]">
+                <FileText className="mx-auto size-10 text-[#2f9a6f]" />
+                <p className="mt-3 font-serif text-xl text-[#002018]">No resume uploaded yet</p>
+                <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                  Upload a PDF, DOCX, or TXT file to preview it here.
                 </p>
-                <h2 className="mt-1 truncate text-xl">{shownName}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {[
-                    fileMeta.size ? prettySize(fileMeta.size) : null,
-                    fileMeta.type?.includes('pdf') || shownName.toLowerCase().endsWith('.pdf')
-                      ? 'PDF'
-                      : shownName.toLowerCase().endsWith('.docx')
-                        ? 'DOCX'
-                        : shownText
-                          ? `${shownText.length.toLocaleString()} characters`
-                          : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {pdfOpen && shownText ? (
-                <Button variant="outline" className="rounded-full" onClick={() => setView(view === 'file' ? 'text' : 'file')}>
-                  {view === 'file' ? 'Show text' : 'Show file'}
+                <Button className="mt-4 rounded-full bg-[#002018] !text-white" onClick={() => setTab('ai')}>
+                  Upload resume
                 </Button>
-              ) : null}
+              </section>
+            )}
+          </div>
+        ) : null}
+
+        {tab === 'templates' ? (
+          <ResumeTemplatesPanel selected={template} onSelect={pickTemplate} />
+        ) : null}
+
+        {tab === 'ai' ? (
+          <div className="space-y-4">
+            {busy ? (
+              <section className="rounded-2xl border border-[#e7ebe9] bg-white p-4 sm:p-5">
+                <UploadProgress
+                  value={progress}
+                  label={
+                    phase === 'uploading'
+                      ? `Uploading${fileName ? ` ${fileName}` : ''}`
+                      : phase === 'parsing'
+                        ? 'Reading resume'
+                        : 'Finding jobs'
+                  }
+                />
+              </section>
+            ) : null}
+
+            <section className="rounded-2xl border border-[#e7ebe9] bg-white p-4 sm:p-5">
+              <h2 className="font-medium text-[#002018]">{hasResume ? 'Upload a new file' : 'Upload your resume'}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                We read the text, update your profile, then score live roles against you.
+              </p>
+              <div className="mt-4">{uploadZone}</div>
+              {error ? <p className="mt-3 text-sm text-[#c47b12]">{error}</p> : null}
+            </section>
+
+            <section className="rounded-2xl border border-[#e7ebe9] bg-white p-4 sm:p-5">
+              <h2 className="font-medium text-[#002018]">Or paste text</h2>
+              <Textarea
+                className="mt-3 min-h-40 rounded-2xl"
+                value={paste}
+                onChange={(e) => setPaste(e.target.value)}
+                placeholder="Paste your resume here if you would rather not upload a file."
+              />
               <Button
                 variant="outline"
-                className="rounded-full"
-                disabled={busy}
-                onClick={() => inputRef.current?.click()}
+                className="mt-3 rounded-full"
+                disabled={busy || !paste.trim()}
+                onClick={() => void parsePasted()}
               >
-                Replace file
+                {busy ? 'Working…' : 'Parse and find jobs'}
               </Button>
-            </div>
+            </section>
+
+            {parsed ? (
+              <section className="rounded-2xl border border-[#e7ebe9] bg-white p-4 sm:p-5">
+                <h2 className="font-medium text-[#002018]">What we read from your resume</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Edit anything that looks wrong, then search again.</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    Name
+                    <input
+                      className="mt-1 h-10 w-full rounded-lg border border-[#e7ebe9] px-3"
+                      value={parsed.name}
+                      onChange={(e) => setParsed({ ...parsed, name: e.target.value })}
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    Headline
+                    <input
+                      className="mt-1 h-10 w-full rounded-lg border border-[#e7ebe9] px-3"
+                      value={parsed.headline}
+                      onChange={(e) => setParsed({ ...parsed, headline: e.target.value })}
+                    />
+                  </label>
+                  <label className="block text-sm sm:col-span-2">
+                    Years
+                    <input
+                      type="number"
+                      className="mt-1 h-10 w-full rounded-lg border border-[#e7ebe9] px-3"
+                      value={parsed.experience_years}
+                      onChange={(e) => setParsed({ ...parsed, experience_years: Number(e.target.value) })}
+                    />
+                  </label>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {parsed.skills.map((s) => (
+                    <Badge key={s}>{s}</Badge>
+                  ))}
+                </div>
+                <Button
+                  className="mt-4 rounded-full bg-[#002018] !text-white"
+                  disabled={busy}
+                  onClick={() => void acceptAndSearch()}
+                >
+                  {busy ? 'Searching platforms…' : 'Search jobs that fit this profile'}
+                </Button>
+              </section>
+            ) : null}
+
+            {search ? (
+              <section className="rounded-2xl border border-[#e7ebe9] bg-white p-4 sm:p-5">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <h2 className="font-medium text-[#002018]">Jobs that fit you</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {search.discovered} listings pulled, {search.normalized} after duplicates.
+                    </p>
+                  </div>
+                  <Button variant="outline" className="rounded-full" asChild>
+                    <Link to="/app/jobs" replace>
+                      See all matches
+                    </Link>
+                  </Button>
+                </div>
+                {recommended.length ? (
+                  <div className="mt-4 space-y-3">
+                    {recommended.map((m) => (
+                      <MatchCard
+                        key={m.job.id}
+                        match={m}
+                        applying={apply.applying && apply.applyingId === m.job.id}
+                        onApply={() => apply.applyToJob(m.job.id)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Nothing cleared 70% yet. Open all scored jobs and tighten your title or skills.
+                  </p>
+                )}
+              </section>
+            ) : null}
           </div>
+        ) : null}
 
-          {view === 'file' && pdfOpen ? (
-            <div className="overflow-hidden rounded-2xl border border-border bg-[#eef3f0]">
-              <iframe title={shownName} src={previewUrl} className="h-[22rem] w-full bg-white sm:h-[36rem]" />
-            </div>
-          ) : shownText ? (
-            <pre className="max-h-[36rem] overflow-auto whitespace-pre-wrap rounded-2xl border border-border bg-[var(--paper)] p-4 font-sans text-sm leading-relaxed text-[var(--forest)]">
-              {shownText}
-            </pre>
-          ) : (
-            <p className="rounded-2xl bg-[#eef3f0] px-4 py-6 text-sm text-muted-foreground">
-              The file is on this page. Text will appear here as soon as we finish reading it.
-            </p>
-          )}
-        </Card>
-      ) : null}
-
-      <Card className="space-y-3 rounded-3xl">
-        <h2>{hasResume ? 'Upload a new file' : 'Upload a file'}</h2>
-        <p className="text-sm text-muted-foreground">
-          PDF, DOCX, or TXT, up to 8 MB. After it uploads, the resume stays on this page so you can read it.
-        </p>
-        <div
-          className={`flex flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-10 text-center text-sm ${
-            dragOver ? 'border-[var(--copper)] bg-muted/60' : 'border-border bg-[#f7faf8]'
-          } ${busy ? 'pointer-events-none opacity-70' : ''}`}
-          onDragOver={(e) => {
-            e.preventDefault()
-            setDragOver(true)
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault()
-            setDragOver(false)
-            const f = e.dataTransfer.files[0]
+        <input
+          id="resume-file"
+          ref={inputRef}
+          className="sr-only"
+          type="file"
+          accept={ACCEPT}
+          disabled={busy}
+          onChange={(e) => {
+            const f = e.target.files?.[0]
             if (f) void onFile(f)
           }}
-        >
-          <Upload className="size-6 text-[var(--forest)]" />
-          <span className="mt-3 font-medium">
-            {busy
-              ? phase === 'searching'
-                ? 'Finding jobs…'
-                : phase === 'parsing'
-                  ? 'Reading resume…'
-                  : `Uploading ${fileName || 'file'}…`
-              : 'Drop your resume here'}
-          </span>
-          <span className="mt-1 text-muted-foreground">{fileName && !busy ? fileName : 'or choose a PDF, DOCX, or TXT'}</span>
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-4 rounded-full"
-            disabled={busy}
-            onClick={() => inputRef.current?.click()}
-          >
-            Browse files
-          </Button>
-          <input
-            id="resume-file"
-            ref={inputRef}
-            className="sr-only"
-            type="file"
-            accept={ACCEPT}
-            disabled={busy}
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) void onFile(f)
-            }}
+        />
+      </div>
+
+      <aside className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:sticky xl:top-24 xl:grid-cols-1">
+        <ResumeStrengthPanel checks={checks} strength={strength} />
+        <ResumeAiPanel onImprove={() => setTab('ai')} />
+        <div className="sm:col-span-2 xl:col-span-1">
+          <ResumeTemplatesPanel
+            selected={template}
+            onSelect={pickTemplate}
+            compact
+            onSeeAll={() => setTab('templates')}
           />
         </div>
-        {error ? <p className="text-[var(--copper)]">{error}</p> : null}
-      </Card>
-
-      <Card className="space-y-3 rounded-3xl">
-        <h2>Or paste text</h2>
-        <Textarea
-          className="min-h-48 rounded-2xl"
-          value={paste}
-          onChange={(e) => setPaste(e.target.value)}
-          placeholder="Paste the resume here if you would rather not upload a file."
-        />
-        <Button variant="outline" className="rounded-full" disabled={busy || !paste.trim()} onClick={() => void parsePasted()}>
-          {busy ? 'Working…' : 'Parse and find jobs'}
-        </Button>
-      </Card>
-
-      {parsed ? (
-        <Card className="space-y-3 rounded-3xl">
-          <h2>What we read from your resume</h2>
-          <p className="text-sm text-muted-foreground">Edit anything that looks wrong, then search again.</p>
-          <label className="block text-sm">
-            Name
-            <input
-              className="mt-1 h-10 w-full rounded-lg border border-input px-3"
-              value={parsed.name}
-              onChange={(e) => setParsed({ ...parsed, name: e.target.value })}
-            />
-          </label>
-          <label className="block text-sm">
-            Headline
-            <input
-              className="mt-1 h-10 w-full rounded-lg border border-input px-3"
-              value={parsed.headline}
-              onChange={(e) => setParsed({ ...parsed, headline: e.target.value })}
-            />
-          </label>
-          <label className="block text-sm">
-            Years
-            <input
-              type="number"
-              className="mt-1 h-10 w-full rounded-lg border border-input px-3"
-              value={parsed.experience_years}
-              onChange={(e) => setParsed({ ...parsed, experience_years: Number(e.target.value) })}
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {parsed.skills.map((s) => (
-              <Badge key={s}>{s}</Badge>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {parsed.ai_skills.map((s) => (
-              <Badge key={s} tone="copper">
-                {s}
-              </Badge>
-            ))}
-          </div>
-          <Button variant="copper" className="rounded-full" disabled={busy} onClick={() => void acceptAndSearch()}>
-            {busy ? 'Searching platforms…' : 'Search jobs that fit this profile'}
-          </Button>
-        </Card>
-      ) : null}
-
-      {search ? (
-        <Card className="space-y-4 rounded-3xl">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2>Jobs that fit you</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {search.discovered} listings pulled, {search.normalized} after duplicates. Excellent{' '}
-                {search.counts.excellent ?? 0} · Strong {search.counts.strong ?? 0} · Good {search.counts.good ?? 0}.
-              </p>
-            </div>
-            <Button variant="copper" className="rounded-full" asChild>
-              <Link to="/app/jobs" replace>See all matches</Link>
-            </Button>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Prepare a packet here, then apply on the official listing. Atelier never submits for you on LinkedIn,
-            Indeed, Upwork, or similar boards.
-          </p>
-          {apply.error ? <p className="text-[var(--copper)]">{apply.error}</p> : null}
-          {recommended.length ? (
-            <div className="space-y-3">
-              {recommended.map((m) => (
-                <MatchCard
-                  key={m.job.id}
-                  match={m}
-                  applying={apply.applying && apply.applyingId === m.job.id}
-                  onApply={() => apply.applyToJob(m.job.id)}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Nothing cleared 70% yet. Open all scored jobs and tighten your title or skills.
-            </p>
-          )}
-        </Card>
-      ) : null}
+      </aside>
     </div>
   )
 }

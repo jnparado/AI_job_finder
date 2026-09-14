@@ -4,7 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/lib/auth'
 import { AppShell } from '@/components/layout/AppShell'
 import { ScrollToHash } from '@/components/layout/ScrollToHash'
-import { RequireEmployer, RequireOnboarding, RequireSession, RequireStaff } from '@/pages/guards'
+import { GuestOnly, RequireEmployer, RequireOnboarding, RequireSession, RequireStaff } from '@/pages/guards'
 import { EmployerShell } from '@/components/layout/EmployerShell'
 import { LoadingScreen } from '@/components/ui/feedback'
 import { MetaPixel } from '@/components/social/MetaPixel'
@@ -82,9 +82,11 @@ export default function App() {
           <ScrollToHash />
           <Suspense fallback={<LoadingScreen label="Opening…" />}>
             <Routes>
-              <Route path="/" element={<CandidateLandingPage />} />
-              <Route path="/candidates" element={<Navigate to="/" replace />} />
-              <Route path="/employers" element={<EmployerLandingPage />} />
+              <Route element={<GuestOnly />}>
+                <Route path="/" element={<CandidateLandingPage />} />
+                <Route path="/candidates" element={<Navigate to="/" replace />} />
+                <Route path="/employers" element={<EmployerLandingPage />} />
+              </Route>
               <Route path="/about" element={<AboutPage />} />
               <Route path="/privacy" element={<PrivacyPage />} />
               <Route path="/terms" element={<TermsPage />} />

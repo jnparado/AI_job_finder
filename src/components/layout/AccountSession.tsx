@@ -35,7 +35,7 @@ export function MarketingSessionButtons({ hiring }: { hiring?: boolean }) {
         </span>
         <span className="hidden max-w-[8.5rem] truncate text-sm text-[#d8d0c0] sm:inline">{name}</span>
         <Button variant="paper" className="h-9 px-3 text-xs sm:h-10 sm:px-4 sm:text-sm" asChild>
-          <Link to={home} onMouseEnter={() => prefetchRoute(home)}>
+          <Link to={home} replace onMouseEnter={() => prefetchRoute(home)}>
             {openLabel}
           </Link>
         </Button>
@@ -88,7 +88,9 @@ export function SessionHomeCtas({
           className="h-12 px-7 text-[0.8rem] font-semibold uppercase tracking-[0.1em]"
           asChild
         >
-          <Link to={home}>{openLabel}</Link>
+          <Link to={home} replace>
+            {openLabel}
+          </Link>
         </Button>
       </div>
     )
